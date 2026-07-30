@@ -14,7 +14,7 @@ A lightweight, open-source per-process network speed monitor for your Mac menu b
 
 **[Try Bytetally Free](https://bytetally.app/)** — the modern, separately developed commercial edition from the same developer.
 
-Bytetally Free goes far beyond iTraffic's real-time list. It adds a native dashboard, month-to-date usage, a 7-day device trend, monthly top apps, live charts, app drill-down, and accurate attribution through VPNs and local proxies. Core monitoring is free forever, with no account, and your network-usage data stays on your Mac.
+Bytetally Free goes far beyond iTraffic's real-time list. It adds a native dashboard, month-to-date usage, a 7-day device trend, monthly top apps, live charts, app drill-down, and accurate attribution through VPNs and local proxies. Pro goes one dimension further and shows the websites and services behind the traffic. Core monitoring is free forever, with no account, and your network-usage data stays on your Mac.
 
 <p align="center">
   <a href="https://bytetally.app/">
@@ -37,6 +37,8 @@ Bytetally Free goes far beyond iTraffic's real-time list. It adds a native dashb
 | Attribution through VPNs and local proxies | — | ✅ | ✅ |
 | Mac App Store install and full sandboxing | — | ✅ | ✅ |
 | Long-range per-app rankings and traffic heatmap | — | — | ✅ |
+| Websites and services behind the traffic, app → site and site → app | — | — | ✅ |
+| Block or throttle one website, scoped to a single app | — | — | ✅ |
 | Data caps and separate budgets for each Wi-Fi network | — | — | ✅ |
 | Unusual-upload alerts | — | — | ✅ |
 | Limit or block an app, automatic overage actions, CSV/JSON export | — | — | ✅ |
@@ -49,22 +51,58 @@ Choose **iTraffic** if you want a small, hackable open-source utility or need to
   <a href="https://bytetally.app/">Explore all features</a>
 </p>
 
+### A closer look
+
+<p align="center">
+  <a href="https://bytetally.app/#features"><img src="./docs/images/bytetally-overview.png" width="900" alt="Bytetally Overview tab: total for the week, projected month-end usage, a 7-day trend line, the month's top apps, and a banner warning that one app is uploading unusually" /></a>
+  <br />
+  <sub><strong>Overview · Free</strong> — this week's total, a projection for month end, a 7-day trend and the month's top apps. A banner appears when an app starts uploading unusually.</sub>
+</p>
+
+<p align="center">
+  <a href="https://bytetally.app/#pro"><img src="./docs/images/bytetally-websites.png" width="900" alt="Bytetally Websites &amp; Services tab listing destination domains ranked by traffic, each with upload, download and total bytes" /></a>
+  <br />
+  <sub><strong>Websites &amp; Services · Pro</strong> — every domain, hostname and IP your Mac talked to, ranked by traffic. Connections routed through a local proxy such as ClashX or Surge still resolve to the real destination.</sub>
+</p>
+
+<p align="center">
+  <a href="https://bytetally.app/#pro"><img src="./docs/images/bytetally-app-websites.png" width="900" alt="Bytetally app drill-down for ChatGPT showing its upload, download and total traffic alongside the list of websites it contacted" /></a>
+  <br />
+  <sub><strong>App → destinations · Pro</strong> — open any app to see which websites it actually reached, then drill into hostnames and connection details. It works the other way round too: pick a website and see which apps reached it.</sub>
+</p>
+
 <table>
   <tr>
-    <td width="42%" align="center">
-      <a href="https://bytetally.app/"><img src="./docs/images/bytetally-menubar.png" width="360" alt="Bytetally menu-bar network monitor with per-app upload and download totals" /></a>
+    <td width="50%" align="center" valign="top">
+      <a href="https://bytetally.app/#pro"><img src="./docs/images/bytetally-host-control.png" width="430" alt="Bytetally rule sheet: block access to one Google APIs host, applied to ChatGPT only" /></a>
       <br />
-      <strong>Bytetally Free</strong><br />
-      <sub>Live menu-bar rate and per-app traffic</sub>
+      <sub><strong>Per-website rules · Pro</strong><br />Block or throttle a single host without cutting off the whole app, and scope the rule to one app or all of them.</sub>
     </td>
-    <td width="58%" align="center">
-      <a href="https://bytetally.app/"><img src="./docs/images/bytetally-heatmap.png" width="540" alt="Bytetally Pro traffic history heatmap and per-app ranking" /></a>
+    <td width="50%" align="center" valign="top">
+      <a href="https://bytetally.app/#pro"><img src="./docs/images/bytetally-app-control.png" width="430" alt="Right-click menu on an app in Bytetally offering Disconnect, Limit speed and Set quota" /></a>
       <br />
-      <strong>Bytetally Pro</strong><br />
-      <sub>Deep history, heatmaps, budgets, alerts, controls, and export</sub>
+      <sub><strong>Per-app control · Pro</strong><br />Right-click an app to disconnect it, set a smooth up/down speed limit, or give it its own data quota — no rules to write.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <a href="https://bytetally.app/#pro"><img src="./docs/images/bytetally-heatmap.png" width="430" alt="Bytetally traffic history with an hour-by-day heatmap and per-app ranking over a custom range" /></a>
+      <br />
+      <sub><strong>Full history · Pro</strong><br />Any custom range, an hour-by-day heatmap of when traffic peaked, and filtering by Wi-Fi network.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <a href="https://bytetally.app/#pro"><img src="./docs/images/bytetally-caps.png" width="300" alt="Bytetally settings for a monthly data cap with warning thresholds and a separate budget per Wi-Fi network" /></a>
+      <br />
+      <sub><strong>Caps &amp; budgets · Pro</strong><br />A monthly, weekly or daily cap, a separate budget for each Wi-Fi network, and an automatic cut-off or throttle when a cap runs out.</sub>
     </td>
   </tr>
 </table>
+
+<p align="center">
+  <a href="https://bytetally.app/"><img src="./docs/images/bytetally-menubar.png" width="380" alt="Bytetally menu-bar popover showing live upload and download rates with per-app totals for the week" /></a>
+  <br />
+  <sub><strong>Menu bar · Free</strong> — the surface iTraffic users already know: live ↑↓ rates and who is responsible, without opening a window.</sub>
+</p>
 
 Bytetally Pro features include a free trial and can then be unlocked with a subscription or one-time lifetime purchase. [See current details on the Bytetally website.](https://bytetally.app/#pricing)
 
