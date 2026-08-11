@@ -33,9 +33,51 @@ func formatBytesTotal(bytes: Int) -> String {
     return String(format: "%.2f TB", gb / 1024)
 }
 
+/// Local epoch-day basis: local midnight of 1970-01-01. Consistent with
+/// `dayIndex(for:calendar:)` so stored `day` values round-trip exactly.
+private let epochDayZero = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 0))
+
+/// Local epoch-day index (local days since 1970-01-01) for a date.
+/// Truncating `startOfDay.timeIntervalSince1970 / 86400` is off by a day for
+/// negative-offset timezones, so compute the whole-day difference via Calendar.
+func dayIndex(for date: Date, calendar: Calendar) -> Int {
+    let dayZero = calendar.startOfDay(for: Date(timeIntervalSince1970: 0))
+    return calendar.dateComponents([.day], from: dayZero, to: calendar.startOfDay(for: date)).day ?? 0
+}
+
 /// Local midnight Date for a `day` value stored in the DB.
 func dateFromDay(_ day: Int) -> Date {
-    Date(timeIntervalSince1970: TimeInterval(day) * 86400)
+    Calendar.current.date(byAdding: .day, value: day, to: epochDayZero)
+        ?? Date(timeIntervalSince1970: TimeInterval(day) * 86400)
+}
+
+/// Best-effort app icon for a history `app_key`. Bundle identifiers can be
+/// resolved via LaunchServices; display-name keys (e.g. "iTerm2 · node")
+/// have no bundle, so they fall back to the blank placeholder.
+/// Results are cached (including the blank fallback) so the 200-row Apps
+/// list doesn't hit LaunchServices on every render.
+private var iconCache: [String: NSImage] = [:]
+private let iconCacheLock = NSLock()
+
+func iconForAppKey(_ key: String) -> NSImage {
+    iconCacheLock.lock()
+    if let cached = iconCache[key] {
+        iconCacheLock.unlock()
+        return cached
+    }
+    iconCacheLock.unlock()
+
+    let icon: NSImage
+    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: key) {
+        icon = NSWorkspace.shared.icon(forFile: url.path)
+    } else {
+        icon = NSImage(named: "blank") ?? NSImage()
+    }
+
+    iconCacheLock.lock()
+    iconCache[key] = icon
+    iconCacheLock.unlock()
+    return icon
 }
 
 /// Compact unit format for list rows: "55K", "9.1M", "1.2G", "—" for 0.

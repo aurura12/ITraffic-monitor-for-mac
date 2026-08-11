@@ -112,6 +112,11 @@ final class TrafficRecorder {
         database.heatmap(days: days, completion: completion)
     }
 
+    func exportRows(start: Int, end: Int, granularity: ExportGranularity,
+                    completion: @escaping ([ExportTrafficRow]) -> Void) {
+        database.exportRows(start: start, end: end, granularity: granularity, completion: completion)
+    }
+
     // MARK: - Helpers
 
     private func maybePrune(now: Date) {
@@ -122,13 +127,10 @@ final class TrafficRecorder {
         }
     }
 
-    /// Local day (days since epoch of local calendar) and hour (0-23).
+    /// Local day (local days since 1970-01-01, timezone-safe) and hour (0-23).
     static func dayAndHour(for date: Date, calendar: Calendar) -> (day: Int, hour: Int) {
         let comps = calendar.dateComponents([.day, .hour], from: date)
         let hour = comps.hour ?? 0
-        // Local midnight of this date, then epochDay = seconds / 86400.
-        let dayStart = calendar.startOfDay(for: date)
-        let day = Int(dayStart.timeIntervalSince1970 / 86400)
-        return (day, hour)
+        return (dayIndex(for: date, calendar: calendar), hour)
     }
 }

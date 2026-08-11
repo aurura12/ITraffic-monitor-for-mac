@@ -39,6 +39,27 @@ struct TrafficMatrixRow {
     let outBytes: Int
 }
 
+enum ExportGranularity: CaseIterable {
+    case minute, hour, day, month
+
+    var label: String {
+        switch self {
+        case .minute: return "Minute"
+        case .hour: return "Hour"
+        case .day: return "Day"
+        case .month: return "Month"
+        }
+    }
+}
+
+struct ExportTrafficRow {
+    let appKey: String
+    let displayName: String
+    let period: Date
+    let inBytes: Int
+    let outBytes: Int
+}
+
 struct HeatmapCell: Hashable {
     let day: Int
     let hour: Int
@@ -141,7 +162,12 @@ final class TrafficDatabase {
         ON CONFLICT(app_key) DO UPDATE SET display_name=excluded.display_name,last_seen=excluded.last_seen;
         """
 
-        sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil)
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] BEGIN failed, dropping batch of \(batch.rows.count) rows: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+
+        var failed = false
 
         var stmt: OpaquePointer?
         if sqlite3_prepare_v2(db, insertTraffic, -1, &stmt, nil) == SQLITE_OK {
@@ -153,30 +179,48 @@ final class TrafficDatabase {
                 sqlite3_bind_int64(stmt, 5, Int64(row.inBytes))
                 sqlite3_bind_int64(stmt, 6, Int64(row.outBytes))
                 if sqlite3_step(stmt) != SQLITE_DONE {
+                    failed = true
                     print("[TrafficDatabase] upsert traffic failed: \(String(cString: sqlite3_errmsg(db)))")
                 }
                 sqlite3_reset(stmt)
                 sqlite3_clear_bindings(stmt)
             }
+        } else {
+            failed = true
+            print("[TrafficDatabase] prepare traffic upsert failed: \(String(cString: sqlite3_errmsg(db)))")
         }
         sqlite3_finalize(stmt)
         stmt = nil
 
-        if sqlite3_prepare_v2(db, insertApp, -1, &stmt, nil) == SQLITE_OK {
-            for row in batch.rows {
-                sqlite3_bind_text(stmt, 1, row.appKey, -1, SQLITE_TRANSIENT)
-                sqlite3_bind_text(stmt, 2, row.displayName, -1, SQLITE_TRANSIENT)
-                sqlite3_bind_int64(stmt, 3, Int64(batch.bucketStart))
-                if sqlite3_step(stmt) != SQLITE_DONE {
-                    print("[TrafficDatabase] upsert app failed: \(String(cString: sqlite3_errmsg(db)))")
+        if !failed {
+            if sqlite3_prepare_v2(db, insertApp, -1, &stmt, nil) == SQLITE_OK {
+                for row in batch.rows {
+                    sqlite3_bind_text(stmt, 1, row.appKey, -1, SQLITE_TRANSIENT)
+                    sqlite3_bind_text(stmt, 2, row.displayName, -1, SQLITE_TRANSIENT)
+                    sqlite3_bind_int64(stmt, 3, Int64(batch.bucketStart))
+                    if sqlite3_step(stmt) != SQLITE_DONE {
+                        failed = true
+                        print("[TrafficDatabase] upsert app failed: \(String(cString: sqlite3_errmsg(db)))")
+                    }
+                    sqlite3_reset(stmt)
+                    sqlite3_clear_bindings(stmt)
                 }
-                sqlite3_reset(stmt)
-                sqlite3_clear_bindings(stmt)
+            } else {
+                failed = true
+                print("[TrafficDatabase] prepare app upsert failed: \(String(cString: sqlite3_errmsg(db)))")
+            }
+            sqlite3_finalize(stmt)
+        }
+
+        if failed {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            print("[TrafficDatabase] rolled back batch of \(batch.rows.count) rows")
+        } else {
+            let rc = sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+            if rc != SQLITE_OK {
+                print("[TrafficDatabase] COMMIT failed: \(String(cString: sqlite3_errmsg(db)))")
             }
         }
-        sqlite3_finalize(stmt)
-
-        sqlite3_exec(db, "COMMIT;", nil, nil, nil)
     }
 
     /// Delete rows older than `retentionDays` so the table stays small.
@@ -354,5 +398,96 @@ final class TrafficDatabase {
             sqlite3_finalize(stmt)
             DispatchQueue.main.async { completion(cells) }
         }
+    }
+
+    // MARK: - Export
+
+    /// Export aggregated traffic rows within [start, end). Period label is a
+    /// local-time Date for the bucket. Month rows are aggregated in Swift
+    /// from day-granular data (no month column in the schema).
+    func exportRows(start: Int, end: Int, granularity: ExportGranularity,
+                    completion: @escaping ([ExportTrafficRow]) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            let names = self.displayNameMap()
+            let rows: [ExportTrafficRow]
+            switch granularity {
+            case .minute:
+                rows = self.exportGrouped(db: db, start: start, end: end, names: names,
+                                          sql: "SELECT app_key, bucket_start, SUM(in_bytes), SUM(out_bytes) FROM app_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY app_key, bucket_start ORDER BY bucket_start;",
+                                          period: { a, _ in Date(timeIntervalSince1970: TimeInterval(a)) })
+            case .hour:
+                rows = self.exportGrouped(db: db, start: start, end: end, names: names,
+                                          sql: "SELECT app_key, day, hour, SUM(in_bytes), SUM(out_bytes) FROM app_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY app_key, day, hour ORDER BY day, hour;",
+                                          hasHour: true,
+                                          period: { a, h in dateFromDay(a).addingTimeInterval(TimeInterval(h) * 3600) })
+            case .day:
+                rows = self.exportGrouped(db: db, start: start, end: end, names: names,
+                                          sql: "SELECT app_key, day, SUM(in_bytes), SUM(out_bytes) FROM app_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY app_key, day ORDER BY day;",
+                                          period: { a, _ in dateFromDay(a) })
+            case .month:
+                let dayRows = self.exportGrouped(db: db, start: start, end: end, names: names,
+                                                 sql: "SELECT app_key, day, SUM(in_bytes), SUM(out_bytes) FROM app_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY app_key, day ORDER BY day;",
+                                                 period: { a, _ in dateFromDay(a) })
+                rows = Self.aggregateMonths(dayRows)
+            }
+            DispatchQueue.main.async { completion(rows) }
+        }
+    }
+
+    /// Run an export SQL (expects `periodCol0`, optional `periodCol1`, sum_in, sum_out)
+    /// and map rows to ExportTrafficRow with the given period builder.
+    private func exportGrouped(db: OpaquePointer?, start: Int, end: Int, names: [String: String],
+                               sql: String, hasHour: Bool = false,
+                               period: (Int, Int) -> Date) -> [ExportTrafficRow] {
+        var rows: [ExportTrafficRow] = []
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return rows }
+        sqlite3_bind_int64(stmt, 1, Int64(start))
+        sqlite3_bind_int64(stmt, 2, Int64(end))
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let key = String(cString: sqlite3_column_text(stmt, 0))
+            let col1 = Int(sqlite3_column_int64(stmt, 1))
+            let date: Date
+            if hasHour {
+                let hour = Int(sqlite3_column_int64(stmt, 2))
+                date = period(col1, hour)
+                rows.append(ExportTrafficRow(appKey: key, displayName: names[key] ?? key, period: date,
+                                             inBytes: Int(sqlite3_column_int64(stmt, 3)),
+                                             outBytes: Int(sqlite3_column_int64(stmt, 4))))
+            } else {
+                date = period(col1, 0)
+                rows.append(ExportTrafficRow(appKey: key, displayName: names[key] ?? key, period: date,
+                                             inBytes: Int(sqlite3_column_int64(stmt, 2)),
+                                             outBytes: Int(sqlite3_column_int64(stmt, 3))))
+            }
+        }
+        sqlite3_finalize(stmt)
+        return rows
+    }
+
+    private struct MonthKey: Hashable {
+        let appKey: String
+        let displayName: String
+        let monthStart: Date
+    }
+
+    /// Re-group day rows into calendar-month rows (local timezone).
+    static func aggregateMonths(_ dayRows: [ExportTrafficRow]) -> [ExportTrafficRow] {
+        let calendar = Calendar.current
+        var acc: [MonthKey: (inBytes: Int, outBytes: Int)] = [:]
+        for row in dayRows {
+            let monthStart = calendar.dateInterval(of: .month, for: row.period)?.start ?? row.period
+            let key = MonthKey(appKey: row.appKey, displayName: row.displayName, monthStart: monthStart)
+            var a = acc[key] ?? (0, 0)
+            a.inBytes += row.inBytes
+            a.outBytes += row.outBytes
+            acc[key] = a
+        }
+        return acc.map { key, value in
+            ExportTrafficRow(appKey: key.appKey, displayName: key.displayName, period: key.monthStart,
+                             inBytes: value.inBytes, outBytes: value.outBytes)
+        }
+        .sorted { $0.period < $1.period }
     }
 }

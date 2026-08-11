@@ -54,6 +54,7 @@ class Network {
             self.statusDataModel.update(totalInBytes: inRate, totalOutBytes: outRate)
             self.viewModel.updateData(newItems: entities)
             SharedStore.realtimeRateStore.append(inRate: Double(inRate), outRate: Double(outRate))
+            SharedStore.perAppRateStore.update(entities: entities, interval: self.interval)
         }
     }
 
