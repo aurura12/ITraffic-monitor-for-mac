@@ -1,58 +1,30 @@
 //
-//  ContentView.swift
+//  ProcessesTab.swift
 //  ITrafficMonitorForMac
 //
-//  Created by f.zou on 2021/5/19.
+//  Live per-process traffic list. Formerly the menu-bar popover content,
+//  now a dashboard tab.
 //
 
 import SwiftUI
 
-struct ContentView: View {
-    @ObservedObject var viewModel = SharedStore.listViewModel
-    let appVersion = Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String
+struct ProcessesTab: View {
+    @EnvironmentObject var viewModel: ListViewModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 8) {
-                Image("Itraffic-logo-text")
-                    .resizable()
-                    .frame(width: 89.39, height: 20)
-                Text("v\(appVersion)")
-                    .foregroundColor(.secondary)
-                    .font(.system(size: 11, weight: .regular))
-                Spacer()
-                MenuItem(id: "menu.dashboard", text: "Dashboard", action: {
-                    AppDelegate.showDashboard()
-                })
-                MenuItem(id: "menu.github", text: "Github", action: {
-                    NSWorkspace.shared.open(URL(string: "https://github.com/foamzou/ITraffic-monitor-for-mac")!)
-                })
-                MenuItem(id: "menu.quit", text: "Quit", action: AppDelegate.quit)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            // Process list (ScrollView + LazyVStack for full layout control;
-            // SwiftUI List adds platform-specific leading insets that hid icons.)
-            ScrollView {
-                VStack(spacing: 0) {
-                    let maxTotal = viewModel.items
-                        .map { $0.inBytes + $0.outBytes }
-                        .max() ?? 0
-                    ForEach(viewModel.items) { entity in
-                        ProcessRow(processEntity: entity, maxTotal: maxTotal)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 5)
-                    }
+        ScrollView {
+            VStack(spacing: 0) {
+                let maxTotal = viewModel.items
+                    .map { $0.inBytes + $0.outBytes }
+                    .max() ?? 0
+                ForEach(viewModel.items) { entity in
+                    ProcessRow(processEntity: entity, maxTotal: maxTotal)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
                 }
             }
-            .frame(maxHeight: 420)
         }
-        .frame(width: 340)
-        .background(Color("ContentBGColor"))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -118,11 +90,5 @@ struct ProcessRow: View {
                 }
             }
         )
-    }
-}
-
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView()
     }
 }

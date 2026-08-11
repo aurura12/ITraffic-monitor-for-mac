@@ -25,6 +25,8 @@ struct DashboardView: View {
                 .tabItem { Label("Heatmap", systemImage: "square.grid.3x3.fill") }
             AppsTab()
                 .tabItem { Label("Apps", systemImage: "square.grid.2x2.fill") }
+            ProcessesTab()
+                .tabItem { Label("Processes", systemImage: "list.bullet") }
         }
         .environmentObject(viewModel)
         .onAppear { viewModel.refreshAll() }

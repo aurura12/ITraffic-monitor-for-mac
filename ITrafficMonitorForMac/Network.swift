@@ -11,7 +11,6 @@ import SwiftUI
 class Network {
     @ObservedObject var viewModel = SharedStore.listViewModel
     @ObservedObject var statusDataModel = SharedStore.statusDataModel
-    @ObservedObject var globalModel = SharedStore.globalModel
 
     private let interval = 2
 
@@ -32,8 +31,6 @@ class Network {
     }
 
     private func handleFrame(_ lines: [String]) {
-        tryToMakeAppSleepDeep()
-
         var totalInBytes = 0
         var totalOutBytes = 0
         let entities: [ProcessEntity] = lines.compactMap { line -> ProcessEntity? in
@@ -56,29 +53,6 @@ class Network {
             SharedStore.realtimeRateStore.append(inRate: Double(inRate), outRate: Double(outRate))
             SharedStore.perAppRateStore.update(entities: entities, interval: self.interval)
         }
-    }
-
-    var sleepCounter = 0
-    let MAX_COUNT = 30
-    func tryToMakeAppSleepDeep() {
-        if !globalModel.viewShowing && sleepCounter >= MAX_COUNT {
-            globalModel.isSleepDeep = true
-            if globalModel.controllerHaveBeenReleased == false {
-                print("into sleep deep, release controller")
-                DispatchQueue.main.async {
-                    AppDelegate.popover.contentViewController = nil
-                }
-                globalModel.controllerHaveBeenReleased = true
-            }
-            return
-        }
-        if sleepCounter >= MAX_COUNT {
-            sleepCounter = 0
-        }
-        if !globalModel.viewShowing {
-            sleepCounter += 1
-        }
-        globalModel.isSleepDeep = false
     }
 
     func parser(text: String) -> ProcessEntity? {
