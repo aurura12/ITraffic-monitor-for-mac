@@ -112,6 +112,16 @@ final class TrafficRecorder {
         database.heatmap(days: days, completion: completion)
     }
 
+    func trafficSeries(start: Int, end: Int, granularity: TimeSeriesGranularity,
+                       completion: @escaping ([TrafficSeriesPoint]) -> Void) {
+        database.trafficSeries(start: start, end: end, granularity: granularity, completion: completion)
+    }
+
+    func topAppsWithPeak(start: Int, end: Int, limit: Int = 20,
+                         completion: @escaping ([AppPeakTrafficRow]) -> Void) {
+        database.topAppsWithPeak(start: start, end: end, limit: limit, completion: completion)
+    }
+
     func exportRows(start: Int, end: Int, granularity: ExportGranularity,
                     completion: @escaping ([ExportTrafficRow]) -> Void) {
         database.exportRows(start: start, end: end, granularity: granularity, completion: completion)

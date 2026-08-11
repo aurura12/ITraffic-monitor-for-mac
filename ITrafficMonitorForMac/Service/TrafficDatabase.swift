@@ -72,6 +72,27 @@ struct TrafficPoint {
     let outRate: Double
 }
 
+enum TimeSeriesGranularity {
+    case minute, hour, day
+}
+
+struct TrafficSeriesPoint: Identifiable {
+    let date: Date
+    let inBytes: Int
+    let outBytes: Int
+    var id: Date { date }
+}
+
+struct AppPeakTrafficRow: Identifiable {
+    let appKey: String
+    let displayName: String
+    let inBytes: Int
+    let outBytes: Int
+    let peakBytesPerSecond: Int
+    var id: String { appKey }
+    var totalBytes: Int { inBytes + outBytes }
+}
+
 /// One upsert batch: app traffic rows plus the display-name map.
 struct TrafficBatch {
     let bucketStart: Int          // epoch seconds, minute-aligned
@@ -364,6 +385,93 @@ final class TrafficDatabase {
                     day: Int(sqlite3_column_int64(stmt, 1)),
                     inBytes: Int(sqlite3_column_int64(stmt, 2)),
                     outBytes: Int(sqlite3_column_int64(stmt, 3))
+                ))
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(rows) }
+        }
+    }
+
+    /// Total traffic series aggregated by minute / hour / day for charting.
+    func trafficSeries(start: Int, end: Int, granularity: TimeSeriesGranularity,
+                       completion: @escaping ([TrafficSeriesPoint]) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            var rows: [TrafficSeriesPoint] = []
+            var stmt: OpaquePointer?
+            let sql: String
+            switch granularity {
+            case .minute:
+                sql = """
+                SELECT bucket_start, SUM(in_bytes), SUM(out_bytes)
+                FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
+                GROUP BY bucket_start ORDER BY bucket_start;
+                """
+            case .hour:
+                sql = """
+                SELECT strftime('%s', datetime(bucket_start, 'unixepoch', 'localtime', 'start of hour')) AS hour_start,
+                       SUM(in_bytes), SUM(out_bytes)
+                FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
+                GROUP BY hour_start ORDER BY hour_start;
+                """
+            case .day:
+                sql = """
+                SELECT day, SUM(in_bytes), SUM(out_bytes)
+                FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
+                GROUP BY day ORDER BY day;
+                """
+            }
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                completion([]); return
+            }
+            sqlite3_bind_int64(stmt, 1, Int64(start))
+            sqlite3_bind_int64(stmt, 2, Int64(end))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let period: Date
+                switch granularity {
+                case .minute, .hour:
+                    period = Date(timeIntervalSince1970: TimeInterval(sqlite3_column_int64(stmt, 0)))
+                case .day:
+                    period = dateFromDay(Int(sqlite3_column_int64(stmt, 0)))
+                }
+                rows.append(TrafficSeriesPoint(
+                    date: period,
+                    inBytes: Int(sqlite3_column_int64(stmt, 1)),
+                    outBytes: Int(sqlite3_column_int64(stmt, 2))
+                ))
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(rows) }
+        }
+    }
+
+    /// Top apps by total traffic, including peak one-minute rate (bytes/sec).
+    func topAppsWithPeak(start: Int, end: Int, limit: Int = 20,
+                         completion: @escaping ([AppPeakTrafficRow]) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            let names = self.displayNameMap()
+            var rows: [AppPeakTrafficRow] = []
+            var stmt: OpaquePointer?
+            let sql = """
+            SELECT app_key, SUM(in_bytes), SUM(out_bytes), MAX(in_bytes + out_bytes)
+            FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
+            GROUP BY app_key ORDER BY (SUM(in_bytes)+SUM(out_bytes)) DESC LIMIT ?;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                completion([]); return
+            }
+            sqlite3_bind_int64(stmt, 1, Int64(start))
+            sqlite3_bind_int64(stmt, 2, Int64(end))
+            sqlite3_bind_int64(stmt, 3, Int64(limit))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let key = String(cString: sqlite3_column_text(stmt, 0))
+                rows.append(AppPeakTrafficRow(
+                    appKey: key,
+                    displayName: names[key] ?? key,
+                    inBytes: Int(sqlite3_column_int64(stmt, 1)),
+                    outBytes: Int(sqlite3_column_int64(stmt, 2)),
+                    peakBytesPerSecond: Int(sqlite3_column_int64(stmt, 3)) / 60
                 ))
             }
             sqlite3_finalize(stmt)
