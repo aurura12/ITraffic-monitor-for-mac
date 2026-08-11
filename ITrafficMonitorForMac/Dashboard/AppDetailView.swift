@@ -87,9 +87,9 @@ struct AppDetailView: View {
                 header
 
                 HStack(spacing: 16) {
-                    StatCard(title: i18n.text("Last 7 Days"), value: formatBytesTotal(bytes: viewModel.total7d))
-                    StatCard(title: i18n.text("Last 30 Days"), value: formatBytesTotal(bytes: viewModel.total30d))
-                    StatCard(title: i18n.text("30d ↓ / ↑"), value: "\(formatBytesTotal(bytes: viewModel.in30d)) / \(formatBytesTotal(bytes: viewModel.out30d))")
+                    StatCard(title: i18n.text("Last 7 Days"), value: formatBytesTotal(bytes: viewModel.total7d), accent: Theme.total)
+                    StatCard(title: i18n.text("Last 30 Days"), value: formatBytesTotal(bytes: viewModel.total30d), accent: Theme.total)
+                    StatCard(title: i18n.text("30d ↓ / ↑"), value: "\(formatBytesTotal(bytes: viewModel.in30d)) / \(formatBytesTotal(bytes: viewModel.out30d))", accent: Theme.total)
                 }
                 .padding(.horizontal, 16)
 

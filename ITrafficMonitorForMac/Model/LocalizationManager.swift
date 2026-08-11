@@ -64,6 +64,9 @@ final class LocalizationManager: ObservableObject {
         "Collecting samples…": "正在采样…",
 
         // Ranges / granularity
+        "10 Minutes": "10 分钟",
+        "1 Hour": "1 小时",
+        "Today": "今天",
         "7 Days": "7 天",
         "30 Days": "30 天",
         "90 Days": "90 天",
@@ -72,6 +75,21 @@ final class LocalizationManager: ObservableObject {
         "Hour": "小时",
         "Day": "天",
         "Month": "月",
+
+        // Unified dashboard
+        "Line": "曲线",
+        "Download": "下载",
+        "Upload": "上传",
+        "Traffic Timeline": "流量时间轴",
+        "Drag to zoom any range": "拖拽可缩放任意区间",
+        "Click any hour cell to zoom in": "点击任意小时格子可放大查看",
+        "App Ranking": "区间内应用排行",
+        "Rank updates with visible range": "随可见区间联动——框选图表即可缩小范围",
+        "Name": "名称",
+        "Peak": "峰值",
+        "No apps match the current filter.": "没有匹配当前筛选的应用",
+        "Refresh": "手动",
+        "All Networks": "全部网络",
 
         // App detail
         "Last 30 Days": "最近 30 天",
