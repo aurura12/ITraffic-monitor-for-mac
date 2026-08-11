@@ -11,6 +11,8 @@ enum SharedStore {
     static let listViewModel = ListViewModel()
     static let statusDataModel = StatusDataModel()
     static let globalModel = GlobalModel()
+    static let recorder = TrafficRecorder()
+    static let realtimeRateStore = RealtimeRateStore()
 }
 
 extension View {
@@ -18,5 +20,6 @@ extension View {
         environmentObject(SharedStore.listViewModel)
         .environmentObject(SharedStore.statusDataModel)
         .environmentObject(SharedStore.globalModel)
+        .environmentObject(SharedStore.realtimeRateStore)
     }
 }

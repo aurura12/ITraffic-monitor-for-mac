@@ -1,0 +1,358 @@
+//
+//  TrafficDatabase.swift
+//  ITrafficMonitorForMac
+//
+//  Thin wrapper around the system sqlite3 C API. All access happens on
+//  a dedicated serial queue (`dbQueue`) so the recorder and dashboard
+//  queries never race on the connection.
+//
+
+import Foundation
+import SQLite3
+
+/// SQLITE_TRANSIENT is a C macro; Swift exposes it as this unsafe bitcast.
+private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+struct AppTrafficRow {
+    let appKey: String
+    let displayName: String
+    let inBytes: Int
+    let outBytes: Int
+}
+
+struct DayTrafficRow {
+    let day: Int      // local days since 1970-01-01
+    let inBytes: Int
+    let outBytes: Int
+}
+
+struct TrafficTotal {
+    let inBytes: Int
+    let outBytes: Int
+}
+
+struct TrafficMatrixRow {
+    let appKey: String
+    let displayName: String
+    let day: Int
+    let inBytes: Int
+    let outBytes: Int
+}
+
+struct HeatmapCell: Hashable {
+    let day: Int
+    let hour: Int
+    let totalBytes: Int
+}
+
+struct TrafficPoint {
+    let date: Date
+    let inRate: Double
+    let outRate: Double
+}
+
+/// One upsert batch: app traffic rows plus the display-name map.
+struct TrafficBatch {
+    let bucketStart: Int          // epoch seconds, minute-aligned
+    let day: Int                  // local day
+    let hour: Int                 // local hour
+    let rows: [AppTrafficRow]     // inBytes/outBytes are deltas within this bucket
+}
+
+final class TrafficDatabase {
+
+    private let dbQueue = DispatchQueue(label: "traffic-db", qos: .utility)
+    private var db: OpaquePointer?
+
+    private let retentionDays = 90
+
+    init() {
+        dbQueue.sync {
+            self.open()
+        }
+    }
+
+    // MARK: - Lifecycle
+
+    private func open() {
+        let fm = FileManager.default
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ITraffic", isDirectory: true)
+        try? fm.createDirectory(at: appSupport, withIntermediateDirectories: true)
+
+        let dbPath = appSupport.appendingPathComponent("traffic.sqlite3").path
+        guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
+            let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown"
+            print("[TrafficDatabase] open failed: \(msg)")
+            return
+        }
+        sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
+        migrate()
+    }
+
+    private func migrate() {
+        let schema = """
+        CREATE TABLE IF NOT EXISTS app_traffic (
+          app_key      TEXT NOT NULL,
+          bucket_start INTEGER NOT NULL,
+          day          INTEGER NOT NULL,
+          hour         INTEGER NOT NULL,
+          in_bytes     INTEGER NOT NULL DEFAULT 0,
+          out_bytes    INTEGER NOT NULL DEFAULT 0,
+          sample_count INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (app_key, bucket_start)
+        );
+        CREATE INDEX IF NOT EXISTS idx_traffic_bucket ON app_traffic(bucket_start);
+        CREATE TABLE IF NOT EXISTS apps (
+          app_key      TEXT PRIMARY KEY,
+          display_name TEXT NOT NULL,
+          last_seen    INTEGER NOT NULL
+        );
+        """
+        guard sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK else {
+            let msg = String(cString: sqlite3_errmsg(db))
+            print("[TrafficDatabase] migrate failed: \(msg)")
+            return
+        }
+    }
+
+    // MARK: - Write
+
+    /// Commit one minute-bucket batch inside a transaction. Executes on dbQueue.
+    func commitBatch(_ batch: TrafficBatch) {
+        dbQueue.sync {
+            commitBatchLocked(batch)
+        }
+    }
+
+    private func commitBatchLocked(_ batch: TrafficBatch) {
+        guard let db else { return }
+
+        let insertTraffic = """
+        INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
+        VALUES(?,?,?,?,?,?,1)
+        ON CONFLICT(app_key,bucket_start) DO UPDATE SET
+          in_bytes=in_bytes+excluded.in_bytes,
+          out_bytes=out_bytes+excluded.out_bytes,
+          sample_count=sample_count+1;
+        """
+        let insertApp = """
+        INSERT INTO apps(app_key,display_name,last_seen) VALUES(?,?,?)
+        ON CONFLICT(app_key) DO UPDATE SET display_name=excluded.display_name,last_seen=excluded.last_seen;
+        """
+
+        sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil)
+
+        var stmt: OpaquePointer?
+        if sqlite3_prepare_v2(db, insertTraffic, -1, &stmt, nil) == SQLITE_OK {
+            for row in batch.rows {
+                sqlite3_bind_text(stmt, 1, row.appKey, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_int64(stmt, 2, Int64(batch.bucketStart))
+                sqlite3_bind_int64(stmt, 3, Int64(batch.day))
+                sqlite3_bind_int64(stmt, 4, Int64(batch.hour))
+                sqlite3_bind_int64(stmt, 5, Int64(row.inBytes))
+                sqlite3_bind_int64(stmt, 6, Int64(row.outBytes))
+                if sqlite3_step(stmt) != SQLITE_DONE {
+                    print("[TrafficDatabase] upsert traffic failed: \(String(cString: sqlite3_errmsg(db)))")
+                }
+                sqlite3_reset(stmt)
+                sqlite3_clear_bindings(stmt)
+            }
+        }
+        sqlite3_finalize(stmt)
+        stmt = nil
+
+        if sqlite3_prepare_v2(db, insertApp, -1, &stmt, nil) == SQLITE_OK {
+            for row in batch.rows {
+                sqlite3_bind_text(stmt, 1, row.appKey, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_text(stmt, 2, row.displayName, -1, SQLITE_TRANSIENT)
+                sqlite3_bind_int64(stmt, 3, Int64(batch.bucketStart))
+                if sqlite3_step(stmt) != SQLITE_DONE {
+                    print("[TrafficDatabase] upsert app failed: \(String(cString: sqlite3_errmsg(db)))")
+                }
+                sqlite3_reset(stmt)
+                sqlite3_clear_bindings(stmt)
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+    }
+
+    /// Delete rows older than `retentionDays` so the table stays small.
+    func pruneIfNeeded() {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            let cutoff = Int(Date().timeIntervalSince1970) - self.retentionDays * 86400
+            let sql = "DELETE FROM app_traffic WHERE bucket_start < ?;"
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+            sqlite3_bind_int64(stmt, 1, Int64(cutoff))
+            sqlite3_step(stmt)
+            sqlite3_finalize(stmt)
+        }
+    }
+
+    // MARK: - Read (each returns via a completion on the given queue)
+
+    private func displayNameMap() -> [String: String] {
+        guard let db else { return [:] }
+        var map: [String: String] = [:]
+        var stmt: OpaquePointer?
+        let sql = "SELECT app_key, display_name FROM apps;"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return map }
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let key = String(cString: sqlite3_column_text(stmt, 0))
+            let name = String(cString: sqlite3_column_text(stmt, 1))
+            map[key] = name
+        }
+        sqlite3_finalize(stmt)
+        return map
+    }
+
+    /// Top apps by total (in+out) within [start, end).
+    func topApps(start: Int, end: Int, limit: Int = 20, completion: @escaping ([AppTrafficRow]) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            let names = self.displayNameMap()
+            var rows: [AppTrafficRow] = []
+            var stmt: OpaquePointer?
+            let sql = """
+            SELECT app_key, SUM(in_bytes), SUM(out_bytes)
+            FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
+            GROUP BY app_key ORDER BY (SUM(in_bytes)+SUM(out_bytes)) DESC LIMIT ?;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                completion([]); return
+            }
+            sqlite3_bind_int64(stmt, 1, Int64(start))
+            sqlite3_bind_int64(stmt, 2, Int64(end))
+            sqlite3_bind_int64(stmt, 3, Int64(limit))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let key = String(cString: sqlite3_column_text(stmt, 0))
+                rows.append(AppTrafficRow(
+                    appKey: key,
+                    displayName: names[key] ?? key,
+                    inBytes: Int(sqlite3_column_int64(stmt, 1)),
+                    outBytes: Int(sqlite3_column_int64(stmt, 2))
+                ))
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(rows) }
+        }
+    }
+
+    /// Daily totals for a range (or a single app when appKey != nil).
+    func dailyTraffic(start: Int, end: Int, appKey: String? = nil, completion: @escaping ([DayTrafficRow]) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            var rows: [DayTrafficRow] = []
+            var stmt: OpaquePointer?
+            var sql = "SELECT day, SUM(in_bytes), SUM(out_bytes) FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?"
+            if appKey != nil { sql += " AND app_key = ?" }
+            sql += " GROUP BY day ORDER BY day;"
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                completion([]); return
+            }
+            sqlite3_bind_int64(stmt, 1, Int64(start))
+            sqlite3_bind_int64(stmt, 2, Int64(end))
+            if let appKey {
+                sqlite3_bind_text(stmt, 3, appKey, -1, SQLITE_TRANSIENT)
+            }
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                rows.append(DayTrafficRow(
+                    day: Int(sqlite3_column_int64(stmt, 0)),
+                    inBytes: Int(sqlite3_column_int64(stmt, 1)),
+                    outBytes: Int(sqlite3_column_int64(stmt, 2))
+                ))
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(rows) }
+        }
+    }
+
+    /// Sum of all traffic within [start, end).
+    func totalTraffic(start: Int, end: Int, completion: @escaping (TrafficTotal) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            var inBytes = 0, outBytes = 0
+            var stmt: OpaquePointer?
+            let sql = "SELECT SUM(in_bytes), SUM(out_bytes) FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?;"
+            if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+                sqlite3_bind_int64(stmt, 1, Int64(start))
+                sqlite3_bind_int64(stmt, 2, Int64(end))
+                if sqlite3_step(stmt) == SQLITE_ROW {
+                    if sqlite3_column_type(stmt, 0) != SQLITE_NULL {
+                        inBytes = Int(sqlite3_column_int64(stmt, 0))
+                    }
+                    if sqlite3_column_type(stmt, 1) != SQLITE_NULL {
+                        outBytes = Int(sqlite3_column_int64(stmt, 1))
+                    }
+                }
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(TrafficTotal(inBytes: inBytes, outBytes: outBytes)) }
+        }
+    }
+
+    /// Per-app daily totals within [start, end). One row per (app_key, day).
+    func trafficMatrix(start: Int, end: Int, completion: @escaping ([TrafficMatrixRow]) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            let names = self.displayNameMap()
+            var rows: [TrafficMatrixRow] = []
+            var stmt: OpaquePointer?
+            let sql = """
+            SELECT app_key, day, SUM(in_bytes), SUM(out_bytes)
+            FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
+            GROUP BY app_key, day ORDER BY app_key, day;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                completion([]); return
+            }
+            sqlite3_bind_int64(stmt, 1, Int64(start))
+            sqlite3_bind_int64(stmt, 2, Int64(end))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                let key = String(cString: sqlite3_column_text(stmt, 0))
+                rows.append(TrafficMatrixRow(
+                    appKey: key,
+                    displayName: names[key] ?? key,
+                    day: Int(sqlite3_column_int64(stmt, 1)),
+                    inBytes: Int(sqlite3_column_int64(stmt, 2)),
+                    outBytes: Int(sqlite3_column_int64(stmt, 3))
+                ))
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(rows) }
+        }
+    }
+
+    /// Hour × day heatmap cells for the last `days` days.
+    func heatmap(days: Int, completion: @escaping ([HeatmapCell]) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            let now = Int(Date().timeIntervalSince1970)
+            let start = now - days * 86400
+            var cells: [HeatmapCell] = []
+            var stmt: OpaquePointer?
+            let sql = """
+            SELECT day, hour, SUM(in_bytes+out_bytes)
+            FROM app_traffic WHERE bucket_start >= ?
+            GROUP BY day, hour ORDER BY day, hour;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                completion([]); return
+            }
+            sqlite3_bind_int64(stmt, 1, Int64(start))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                cells.append(HeatmapCell(
+                    day: Int(sqlite3_column_int64(stmt, 0)),
+                    hour: Int(sqlite3_column_int64(stmt, 1)),
+                    totalBytes: Int(sqlite3_column_int64(stmt, 2))
+                ))
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(cells) }
+        }
+    }
+}

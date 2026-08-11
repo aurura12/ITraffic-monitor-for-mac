@@ -22,6 +22,9 @@ struct ContentView: View {
                     .foregroundColor(.secondary)
                     .font(.system(size: 11, weight: .regular))
                 Spacer()
+                MenuItem(id: "menu.dashboard", text: "Dashboard", action: {
+                    AppDelegate.showDashboard()
+                })
                 MenuItem(id: "menu.github", text: "Github", action: {
                     NSWorkspace.shared.open(URL(string: "https://github.com/foamzou/ITraffic-monitor-for-mac")!)
                 })

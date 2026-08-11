@@ -12,6 +12,7 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var popover: NSPopover!
+    static var dashboardWindow: NSWindow?
     var statusBarItem: NSStatusItem!
     var contentView: ContentView!
     var network: Network!
@@ -19,6 +20,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     static func quit() {
         NSApplication.shared.terminate(self)
+    }
+
+    /// Open (or reuse) the dashboard window. LSUIElement apps have no
+    /// standard main, so the window must be created programmatically.
+    static func showDashboard() {
+        if dashboardWindow == nil {
+            let window = NSWindow(
+                contentViewController: NSHostingController(
+                    rootView: DashboardView().withGlobalEnvironmentObjects()
+                )
+            )
+            window.setContentSize(NSSize(width: 900, height: 640))
+            window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            dashboardWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        dashboardWindow?.makeKeyAndOrderFront(nil)
     }
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
@@ -96,6 +116,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         print("applicationWillTerminate")
+        SharedStore.recorder.flush()
     }
 
 }

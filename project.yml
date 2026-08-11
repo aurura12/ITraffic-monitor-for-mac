@@ -12,13 +12,13 @@ configs:
 settings:
   base:
     PRODUCT_NAME: ITraffic
-    MACOSX_DEPLOYMENT_TARGET: "10.15"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
 
 targets:
   ITrafficMonitorForMac:
     type: application
     platform: macOS
-    deploymentTarget: "10.15"
+    deploymentTarget: "13.0"
     sources:
       - path: ITrafficMonitorForMac
         excludes:
@@ -51,6 +51,8 @@ targets:
           - "@executable_path/../Frameworks"
         MARKETING_VERSION: 0.2.0
         PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMac
+        OTHER_LDFLAGS:
+          - "-lsqlite3"
         SWIFT_VERSION: 5.0
 
 schemes:

@@ -43,6 +43,9 @@ class Network {
             return entity
         }
 
+        // Persist this frame's deltas into the minute-bucket history.
+        SharedStore.recorder.record(entities: entities)
+
         // parser stores raw delta bytes; convert to bytes/sec for the status bar.
         let inRate  = totalInBytes  / interval
         let outRate = totalOutBytes / interval
@@ -50,6 +53,7 @@ class Network {
         DispatchQueue.main.async {
             self.statusDataModel.update(totalInBytes: inRate, totalOutBytes: outRate)
             self.viewModel.updateData(newItems: entities)
+            SharedStore.realtimeRateStore.append(inRate: Double(inRate), outRate: Double(outRate))
         }
     }
 
