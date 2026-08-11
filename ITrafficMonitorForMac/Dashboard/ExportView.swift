@@ -30,6 +30,7 @@ enum ExportRange: Int, CaseIterable {
 
 struct ExportView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var i18n: LocalizationManager
 
     @State private var format: ExportFormat = .csv
     @State private var granularity: ExportGranularity = .day
@@ -41,45 +42,45 @@ struct ExportView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Export Traffic Data")
+            Text(i18n.text("Export Traffic Data"))
                 .font(.headline)
 
-            Picker("Format", selection: $format) {
+            Picker(i18n.text("Format"), selection: $format) {
                 ForEach(ExportFormat.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
 
-            Picker("Granularity", selection: $granularity) {
-                ForEach(ExportGranularity.allCases, id: \.self) { Text($0.label).tag($0) }
+            Picker(i18n.text("Granularity"), selection: $granularity) {
+                ForEach(ExportGranularity.allCases, id: \.self) { Text(i18n.text($0.label)).tag($0) }
             }
             .onChange(of: granularity) { g in
                 if g == .minute { range = .oneDay }
             }
 
-            Picker("Range", selection: $range) {
-                ForEach(ExportRange.allCases, id: \.self) { Text($0.label).tag($0) }
+            Picker(i18n.text("Range"), selection: $range) {
+                ForEach(ExportRange.allCases, id: \.self) { Text(i18n.text($0.label)).tag($0) }
             }
             .disabled(granularity == .minute)
 
             if granularity == .minute {
-                Text("Minute granularity is limited to 1 day to keep the file size reasonable.")
+                Text(i18n.text("Minute granularity is limited to 1 day to keep the file size reasonable."))
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
 
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }
-                Button(isExporting ? "Exporting…" : "Export") { export() }
+                Button(i18n.text("Cancel")) { dismiss() }
+                Button(isExporting ? i18n.text("Exporting…") : i18n.text("Export")) { export() }
                     .disabled(isExporting)
             }
         }
         .padding(20)
         .frame(width: 380)
-        .alert("Export Failed", isPresented: Binding(
+        .alert(i18n.text("Export Failed"), isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
-            Button("OK", role: .cancel) {}
+            Button(i18n.text("OK"), role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
         }

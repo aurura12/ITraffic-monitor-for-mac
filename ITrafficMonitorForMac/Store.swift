@@ -21,5 +21,6 @@ extension View {
         .environmentObject(SharedStore.statusDataModel)
         .environmentObject(SharedStore.realtimeRateStore)
         .environmentObject(SharedStore.perAppRateStore)
+        .environmentObject(LocalizationManager.shared)
     }
 }

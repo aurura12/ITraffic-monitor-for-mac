@@ -22,10 +22,12 @@
 		5EDE6F411DC81721B4AEC422 /* AppDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA22D03B2B11F19C7F5DFE3 /* AppDetailView.swift */; };
 		648F740B5AE97C6D13950706 /* ProcessesTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F85721D5F4BE59CD5DD683 /* ProcessesTab.swift */; };
 		7A1983D97A841B400C97C921 /* ProcessEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */; };
+		7F6633B2B1C6637EC54CDC9C /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5338D25E880B4A7444E80A /* LocalizationManager.swift */; };
 		86796EEAA169C66F8B477EE8 /* HeatmapTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D794D713B180529BA5E3FDB /* HeatmapTab.swift */; };
 		89CBFC2CD4505CEE4266FA83 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F0324CEDB56F043E9676BA /* DashboardView.swift */; };
 		9419659EEBE860E8E43AD67B /* ListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB270FCE9653D5465B9967DE /* ListViewModel.swift */; };
 		9BD14EA0943240F218E8154F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F7073581DC3527238C3C97F5 /* Main.storyboard */; };
+		AC61612D9F0AF5B394911092 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E83DF0462DC3E858E4B86679 /* SettingsView.swift */; };
 		B2D8BF451CC944FE4FFF61CD /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D30F89C22ACDFD9102801CD /* Utils.swift */; };
 		C17313D7F40F6AA244E2B66E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */; };
 		D854C7C07782DAFA709E5C66 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DC67E0DE60F9255C3A54E63 /* Assets.xcassets */; };
@@ -61,8 +63,10 @@
 		CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessEntity.swift; sourceTree = "<group>"; };
 		E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeRateStore.swift; sourceTree = "<group>"; };
 		E760B012490A706D383888B1 /* TrafficDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficDatabase.swift; sourceTree = "<group>"; };
+		E83DF0462DC3E858E4B86679 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F7073581DC3527238C3C97F5 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		FAC7303753732C9E0A5C756B /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
+		FF5338D25E880B4A7444E80A /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -70,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				CB270FCE9653D5465B9967DE /* ListViewModel.swift */,
+				FF5338D25E880B4A7444E80A /* LocalizationManager.swift */,
 				2200E367B287B2B15A0DD387 /* PerAppRateStore.swift */,
 				E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */,
 				CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */,
@@ -90,6 +95,7 @@
 				5F5CAA28FA20E59D6C80BAB4 /* OverviewTab.swift */,
 				77F85721D5F4BE59CD5DD683 /* ProcessesTab.swift */,
 				A5684973951D4AAC12E17D6B /* RealtimeTab.swift */,
+				E83DF0462DC3E858E4B86679 /* SettingsView.swift */,
 				9DFF04D1A8DE2C56BA6DCF43 /* TrendsTab.swift */,
 			);
 			path = Dashboard;
@@ -235,6 +241,7 @@
 				266B81EFA9249B22632C4E84 /* ExportView.swift in Sources */,
 				86796EEAA169C66F8B477EE8 /* HeatmapTab.swift in Sources */,
 				9419659EEBE860E8E43AD67B /* ListViewModel.swift in Sources */,
+				7F6633B2B1C6637EC54CDC9C /* LocalizationManager.swift in Sources */,
 				3D9B8E011AA9AF9085E70333 /* MonthlyTopTab.swift in Sources */,
 				ED92E8103B5EA56B695BE2EE /* NettopRunner.swift in Sources */,
 				403DD76556F421C4383180FB /* Network.swift in Sources */,
@@ -244,6 +251,7 @@
 				648F740B5AE97C6D13950706 /* ProcessesTab.swift in Sources */,
 				3D1C49846A28204225568646 /* RealtimeRateStore.swift in Sources */,
 				DA68DA35BE8B6CC457BA043E /* RealtimeTab.swift in Sources */,
+				AC61612D9F0AF5B394911092 /* SettingsView.swift in Sources */,
 				351C3DAE423EA025FD8CD086 /* StatusDataModel.swift in Sources */,
 				47E3ABDEBFE7000CE5F116FC /* Store.swift in Sources */,
 				523838588E2F8ED5D7A7110D /* TrafficDatabase.swift in Sources */,

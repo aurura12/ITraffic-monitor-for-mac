@@ -14,6 +14,7 @@ struct AppNavTarget: Hashable {
 
 struct AppsTab: View {
     @EnvironmentObject var viewModel: DashboardViewModel
+    @EnvironmentObject var i18n: LocalizationManager
     @State private var searchText = ""
 
     private var filtered: [AppTrafficRow] {
@@ -30,11 +31,11 @@ struct AppsTab: View {
                     AppRow(row: row)
                 }
             }
-            .searchable(text: $searchText, prompt: "Search apps")
+            .searchable(text: $searchText, prompt: i18n.text("Search apps"))
             .navigationDestination(for: AppNavTarget.self) { target in
                 AppDetailView(target: target)
             }
-            .navigationTitle("Apps")
+            .navigationTitle(i18n.text("Apps"))
         }
     }
 }

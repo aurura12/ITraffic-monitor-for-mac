@@ -8,6 +8,7 @@ import Charts
 
 struct TrendsTab: View {
     @EnvironmentObject var viewModel: DashboardViewModel
+    @EnvironmentObject var i18n: LocalizationManager
 
     private var points: [AppTrendPoint] {
         viewModel.appSeries.flatMap { series in
@@ -23,9 +24,9 @@ struct TrendsTab: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Range", selection: $viewModel.trendRange) {
+            Picker(i18n.text("Range"), selection: $viewModel.trendRange) {
                 ForEach(TrendRange.allCases) { range in
-                    Text(range.rawValue).tag(range)
+                    Text(i18n.text(range.rawValue)).tag(range)
                 }
             }
             .pickerStyle(.segmented)
@@ -34,7 +35,7 @@ struct TrendsTab: View {
 
             if points.isEmpty {
                 Spacer()
-                Text("No recorded traffic in this range.")
+                Text(i18n.text("No recorded traffic in this range."))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity)
                 Spacer()

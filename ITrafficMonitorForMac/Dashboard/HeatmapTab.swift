@@ -8,13 +8,14 @@ import Charts
 
 struct HeatmapTab: View {
     @EnvironmentObject var viewModel: DashboardViewModel
+    @EnvironmentObject var i18n: LocalizationManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Range", selection: $viewModel.heatmapDays) {
-                Text("7 Days").tag(7)
-                Text("30 Days").tag(30)
-                Text("90 Days").tag(90)
+            Picker(i18n.text("Range"), selection: $viewModel.heatmapDays) {
+                Text(i18n.text("7 Days")).tag(7)
+                Text(i18n.text("30 Days")).tag(30)
+                Text(i18n.text("90 Days")).tag(90)
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -25,7 +26,7 @@ struct HeatmapTab: View {
 
             if viewModel.heatmapCells.isEmpty {
                 Spacer()
-                Text("No recorded traffic in this range.")
+                Text(i18n.text("No recorded traffic in this range."))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity)
                 Spacer()
