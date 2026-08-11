@@ -8,17 +8,18 @@ import Charts
 
 struct OverviewTab: View {
     @EnvironmentObject var viewModel: DashboardViewModel
+    @EnvironmentObject var i18n: LocalizationManager
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 16) {
-                    StatCard(title: "This Week", value: formatBytesTotal(bytes: viewModel.weekTotalBytes))
-                    StatCard(title: "This Month", value: formatBytesTotal(bytes: viewModel.monthTotalBytes))
-                    StatCard(title: "Month Projection", value: formatBytesTotal(bytes: viewModel.monthProjectedBytes))
+                    StatCard(title: i18n.text("This Week"), value: formatBytesTotal(bytes: viewModel.weekTotalBytes))
+                    StatCard(title: i18n.text("This Month"), value: formatBytesTotal(bytes: viewModel.monthTotalBytes))
+                    StatCard(title: i18n.text("Month Projection"), value: formatBytesTotal(bytes: viewModel.monthProjectedBytes))
                 }
 
-                GroupBox("Last 7 Days") {
+                GroupBox(i18n.text("Last 7 Days")) {
                     Chart(viewModel.weekTrend, id: \.day) { row in
                         BarMark(
                             x: .value("Day", dateFromDay(row.day)),
@@ -35,10 +36,10 @@ struct OverviewTab: View {
                     .padding(.top, 4)
                 }
 
-                GroupBox("Monthly Top Apps") {
+                GroupBox(i18n.text("Monthly Top Apps")) {
                     VStack(alignment: .leading, spacing: 8) {
                         if viewModel.monthTop.isEmpty {
-                            Text("No data yet — traffic is being recorded.")
+                            Text(i18n.text("No data yet — traffic is being recorded."))
                                 .foregroundColor(.secondary)
                                 .font(.system(size: 12))
                         } else {

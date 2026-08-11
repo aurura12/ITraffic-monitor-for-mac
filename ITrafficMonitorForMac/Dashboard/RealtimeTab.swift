@@ -8,23 +8,24 @@ import Charts
 
 struct RealtimeTab: View {
     @EnvironmentObject var realtimeStore: RealtimeRateStore
+    @EnvironmentObject var i18n: LocalizationManager
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Total network rate — last ~10 minutes")
+            Text(i18n.text("Total network rate — last ~10 minutes"))
                 .font(.system(size: 13, weight: .semibold))
                 .padding(.horizontal, 16)
 
             HStack(spacing: 16) {
                 HStack(spacing: 4) {
                     Circle().fill(Color.blue).frame(width: 8, height: 8)
-                    Text("↓ Download")
+                    Text(i18n.text("↓ Download"))
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
                 HStack(spacing: 4) {
                     Circle().fill(Color.orange).frame(width: 8, height: 8)
-                    Text("↑ Upload")
+                    Text(i18n.text("↑ Upload"))
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
@@ -34,7 +35,7 @@ struct RealtimeTab: View {
 
             if realtimeStore.samples.isEmpty {
                 Spacer()
-                Text("Collecting samples…")
+                Text(i18n.text("Collecting samples…"))
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity)
                 Spacer()

@@ -53,6 +53,7 @@ private struct DailyBar: Identifiable {
 struct AppDetailView: View {
     let target: AppNavTarget
     @EnvironmentObject var perAppRates: PerAppRateStore
+    @EnvironmentObject var i18n: LocalizationManager
     @StateObject private var viewModel: AppDetailViewModel
 
     private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -86,22 +87,22 @@ struct AppDetailView: View {
                 header
 
                 HStack(spacing: 16) {
-                    StatCard(title: "Last 7 Days", value: formatBytesTotal(bytes: viewModel.total7d))
-                    StatCard(title: "Last 30 Days", value: formatBytesTotal(bytes: viewModel.total30d))
-                    StatCard(title: "30d ↓ / ↑", value: "\(formatBytesTotal(bytes: viewModel.in30d)) / \(formatBytesTotal(bytes: viewModel.out30d))")
+                    StatCard(title: i18n.text("Last 7 Days"), value: formatBytesTotal(bytes: viewModel.total7d))
+                    StatCard(title: i18n.text("Last 30 Days"), value: formatBytesTotal(bytes: viewModel.total30d))
+                    StatCard(title: i18n.text("30d ↓ / ↑"), value: "\(formatBytesTotal(bytes: viewModel.in30d)) / \(formatBytesTotal(bytes: viewModel.out30d))")
                 }
                 .padding(.horizontal, 16)
 
-                GroupBox("Daily Traffic — Last 30 Days") {
+                GroupBox(i18n.text("Daily Traffic — Last 30 Days")) {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 16) {
                             HStack(spacing: 4) {
                                 Circle().fill(Color.blue).frame(width: 8, height: 8)
-                                Text("↓ Download").font(.system(size: 11)).foregroundColor(.secondary)
+                                Text(i18n.text("↓ Download")).font(.system(size: 11)).foregroundColor(.secondary)
                             }
                             HStack(spacing: 4) {
                                 Circle().fill(Color.orange).frame(width: 8, height: 8)
-                                Text("↑ Upload").font(.system(size: 11)).foregroundColor(.secondary)
+                                Text(i18n.text("↑ Upload")).font(.system(size: 11)).foregroundColor(.secondary)
                             }
                             Spacer()
                         }
@@ -126,13 +127,13 @@ struct AppDetailView: View {
                 }
                 .padding(.horizontal, 16)
 
-                GroupBox("Daily Breakdown — Last 14 Days") {
+                GroupBox(i18n.text("Daily Breakdown — Last 14 Days")) {
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
-                            Text("Date").frame(width: 90, alignment: .leading)
+                            Text(i18n.text("Date")).frame(width: 90, alignment: .leading)
                             Text("↓").frame(width: 60, alignment: .trailing)
                             Text("↑").frame(width: 60, alignment: .trailing)
-                            Text("Total").frame(width: 70, alignment: .trailing)
+                            Text(i18n.text("Total")).frame(width: 70, alignment: .trailing)
                         }
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.secondary)
@@ -186,7 +187,7 @@ struct AppDetailView: View {
                     .foregroundColor(.secondary)
                     .font(.system(size: 11))
                 } else {
-                    Text("No active traffic")
+                    Text(i18n.text("No active traffic"))
                         .foregroundColor(.secondary)
                         .font(.system(size: 11))
                 }

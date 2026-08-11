@@ -12,6 +12,7 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var dashboardWindow: NSWindow?
+    static var settingsWindow: NSWindow?
     var network: Network!
 
     /// Open (or reuse) the dashboard window. This is the app's main window —
@@ -35,7 +36,55 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         dashboardWindow?.makeKeyAndOrderFront(nil)
     }
 
+    /// Open (or reuse) the settings window, shared by the gear button and
+    /// the Preferences menu item (⌘,).
+    static func showSettings() {
+        if settingsWindow == nil {
+            let window = NSWindow(
+                contentViewController: NSHostingController(
+                    rootView: SettingsView().withGlobalEnvironmentObjects()
+                )
+            )
+            window.title = L("Settings")
+            window.setContentSize(NSSize(width: 380, height: 220))
+            window.styleMask = [.titled, .closable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            settingsWindow = window
+        }
+        settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    @objc func showSettingsWindow(_ sender: Any?) {
+        AppDelegate.showSettings()
+    }
+
+    /// Keep the settings window title in sync with the active language.
+    static func refreshSettingsWindowTitle() {
+        settingsWindow?.title = L("Settings")
+    }
+
+    /// Apply a saved appearance ("system" / "light" / "dark") to the whole app.
+    static func applyAppearance(_ raw: String) {
+        switch raw {
+        case "light":
+            NSApp.appearance = NSAppearance(named: .aqua)
+        case "dark":
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+        default:
+            NSApp.appearance = nil
+        }
+    }
+
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        AppDelegate.applyAppearance(UserDefaults.standard.string(forKey: "appAppearance") ?? "system")
+
+        // Wire the storyboard's Preferences… menu item (⌘,) to the settings window.
+        if let prefs = NSApp.mainMenu?.item(at: 0)?.submenu?.items.first(where: { $0.keyEquivalent == "," }) {
+            prefs.target = self
+            prefs.action = #selector(showSettingsWindow(_:))
+        }
+
         self.network = Network()
         self.network.startListenNetwork()
 

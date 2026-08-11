@@ -7,6 +7,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
+    @EnvironmentObject var i18n: LocalizationManager
     @State private var showExport = false
 
     private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -14,35 +15,45 @@ struct DashboardView: View {
     var body: some View {
         TabView {
             OverviewTab()
-                .tabItem { Label("Overview", systemImage: "chart.bar.fill") }
+                .tabItem { Label(i18n.text("Overview"), systemImage: "chart.bar.fill") }
             TrendsTab()
-                .tabItem { Label("Trends", systemImage: "chart.line.uptrend.xyaxis") }
+                .tabItem { Label(i18n.text("Trends"), systemImage: "chart.line.uptrend.xyaxis") }
             MonthlyTopTab()
-                .tabItem { Label("Monthly Top", systemImage: "trophy.fill") }
+                .tabItem { Label(i18n.text("Monthly Top"), systemImage: "trophy.fill") }
             RealtimeTab()
-                .tabItem { Label("Realtime", systemImage: "waveform.path.ecg") }
+                .tabItem { Label(i18n.text("Realtime"), systemImage: "waveform.path.ecg") }
             HeatmapTab()
-                .tabItem { Label("Heatmap", systemImage: "square.grid.3x3.fill") }
+                .tabItem { Label(i18n.text("Heatmap"), systemImage: "square.grid.3x3.fill") }
             AppsTab()
-                .tabItem { Label("Apps", systemImage: "square.grid.2x2.fill") }
+                .tabItem { Label(i18n.text("Apps"), systemImage: "square.grid.2x2.fill") }
             ProcessesTab()
-                .tabItem { Label("Processes", systemImage: "list.bullet") }
+                .tabItem { Label(i18n.text("Processes"), systemImage: "list.bullet") }
         }
         .environmentObject(viewModel)
+        .environment(\.locale, i18n.locale)
         .onAppear { viewModel.refreshAll() }
         .onReceive(refreshTimer) { _ in
             viewModel.refreshAll()
         }
         .safeAreaInset(edge: .bottom, alignment: .trailing) {
-            // Floating export action — .toolbar doesn't reliably render in a
-            // window created programmatically via NSHostingController, and a
+            // Floating actions — .toolbar doesn't reliably render in a window
+            // created programmatically via NSHostingController, and a
             // safeAreaInset bar keeps tab content from scrolling under it.
-            Button {
-                showExport = true
-            } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
+            HStack(spacing: 8) {
+                Button {
+                    AppDelegate.showSettings()
+                } label: {
+                    Label(i18n.text("Settings"), systemImage: "gearshape")
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    showExport = true
+                } label: {
+                    Label(i18n.text("Export"), systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.bordered)
             }
-            .buttonStyle(.bordered)
             .padding(10)
         }
         .sheet(isPresented: $showExport) {
