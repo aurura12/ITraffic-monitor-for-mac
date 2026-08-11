@@ -7,39 +7,59 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0209ACBC34238EB5EDD16B40 /* TrendsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DFF04D1A8DE2C56BA6DCF43 /* TrendsTab.swift */; };
+		044B84B65F63E4F22D36F249 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */; };
 		110910FF9B56F77D57F2BFCE /* GlobalModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0022369AA8C7A1C5D91EBF94 /* GlobalModel.swift */; };
 		18C1A7695438BEC38408C768 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */; };
 		351C3DAE423EA025FD8CD086 /* StatusDataModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */; };
+		38C18D205EE7C456EEB4AE1D /* TrafficRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031A75F509B62CC97841A678 /* TrafficRecorder.swift */; };
 		3CA4E9B67FC3BEF7F53DE411 /* StatusBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7BF572DB43FB64590A52C78 /* StatusBarView.swift */; };
+		3D1C49846A28204225568646 /* RealtimeRateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */; };
+		3D9B8E011AA9AF9085E70333 /* MonthlyTopTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0347CBD77BB21DBC5AE900FF /* MonthlyTopTab.swift */; };
 		403DD76556F421C4383180FB /* Network.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DE4AB076FAF20A640BD23F /* Network.swift */; };
 		47BB0E5A5A06A259F5A60930 /* MenuItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D087345A4276425E5C66002 /* MenuItem.swift */; };
 		47E3ABDEBFE7000CE5F116FC /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 748FB46B5B1D40583CCBFC28 /* Store.swift */; };
 		4C5971DF435E26F48866D29B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C5BBF936E71BDC274DA2015 /* ContentView.swift */; };
+		523838588E2F8ED5D7A7110D /* TrafficDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = E760B012490A706D383888B1 /* TrafficDatabase.swift */; };
 		7A1983D97A841B400C97C921 /* ProcessEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */; };
+		86796EEAA169C66F8B477EE8 /* HeatmapTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D794D713B180529BA5E3FDB /* HeatmapTab.swift */; };
+		89CBFC2CD4505CEE4266FA83 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F0324CEDB56F043E9676BA /* DashboardView.swift */; };
 		9419659EEBE860E8E43AD67B /* ListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB270FCE9653D5465B9967DE /* ListViewModel.swift */; };
 		9BD14EA0943240F218E8154F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F7073581DC3527238C3C97F5 /* Main.storyboard */; };
 		B2D8BF451CC944FE4FFF61CD /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D30F89C22ACDFD9102801CD /* Utils.swift */; };
 		C17313D7F40F6AA244E2B66E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */; };
 		D854C7C07782DAFA709E5C66 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DC67E0DE60F9255C3A54E63 /* Assets.xcassets */; };
+		DA68DA35BE8B6CC457BA043E /* RealtimeTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5684973951D4AAC12E17D6B /* RealtimeTab.swift */; };
 		ED92E8103B5EA56B695BE2EE /* NettopRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30BFFD61518831774A91BFE /* NettopRunner.swift */; };
+		F08876FD128AC6B948281FDC /* OverviewTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F5CAA28FA20E59D6C80BAB4 /* OverviewTab.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0022369AA8C7A1C5D91EBF94 /* GlobalModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlobalModel.swift; sourceTree = "<group>"; };
+		031A75F509B62CC97841A678 /* TrafficRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficRecorder.swift; sourceTree = "<group>"; };
+		0347CBD77BB21DBC5AE900FF /* MonthlyTopTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MonthlyTopTab.swift; sourceTree = "<group>"; };
 		0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		11F0324CEDB56F043E9676BA /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		1D794D713B180529BA5E3FDB /* HeatmapTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapTab.swift; sourceTree = "<group>"; };
 		3D30F89C22ACDFD9102801CD /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
 		4B40D6B010727301F2E83F30 /* ITrafficMonitorForMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ITrafficMonitorForMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5C5BBF936E71BDC274DA2015 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		5F5CAA28FA20E59D6C80BAB4 /* OverviewTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OverviewTab.swift; sourceTree = "<group>"; };
+		5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		748FB46B5B1D40583CCBFC28 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		7D087345A4276425E5C66002 /* MenuItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuItem.swift; sourceTree = "<group>"; };
 		8DC67E0DE60F9255C3A54E63 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		9DFF04D1A8DE2C56BA6DCF43 /* TrendsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendsTab.swift; sourceTree = "<group>"; };
+		A5684973951D4AAC12E17D6B /* RealtimeTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeTab.swift; sourceTree = "<group>"; };
 		B30BFFD61518831774A91BFE /* NettopRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NettopRunner.swift; sourceTree = "<group>"; };
 		B4DE4AB076FAF20A640BD23F /* Network.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Network.swift; sourceTree = "<group>"; };
 		B7BF572DB43FB64590A52C78 /* StatusBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarView.swift; sourceTree = "<group>"; };
 		CB270FCE9653D5465B9967DE /* ListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListViewModel.swift; sourceTree = "<group>"; };
 		CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusDataModel.swift; sourceTree = "<group>"; };
 		CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessEntity.swift; sourceTree = "<group>"; };
+		E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeRateStore.swift; sourceTree = "<group>"; };
+		E760B012490A706D383888B1 /* TrafficDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficDatabase.swift; sourceTree = "<group>"; };
 		F7073581DC3527238C3C97F5 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -49,9 +69,24 @@
 			children = (
 				0022369AA8C7A1C5D91EBF94 /* GlobalModel.swift */,
 				CB270FCE9653D5465B9967DE /* ListViewModel.swift */,
+				E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */,
 				CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */,
 			);
 			path = Model;
+			sourceTree = "<group>";
+		};
+		27F00417CB2C3A88E4CD181C /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				11F0324CEDB56F043E9676BA /* DashboardView.swift */,
+				5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */,
+				1D794D713B180529BA5E3FDB /* HeatmapTab.swift */,
+				0347CBD77BB21DBC5AE900FF /* MonthlyTopTab.swift */,
+				5F5CAA28FA20E59D6C80BAB4 /* OverviewTab.swift */,
+				A5684973951D4AAC12E17D6B /* RealtimeTab.swift */,
+				9DFF04D1A8DE2C56BA6DCF43 /* TrendsTab.swift */,
+			);
+			path = Dashboard;
 			sourceTree = "<group>";
 		};
 		4120213D73F4C876D85E3432 = {
@@ -74,6 +109,8 @@
 			isa = PBXGroup;
 			children = (
 				B30BFFD61518831774A91BFE /* NettopRunner.swift */,
+				E760B012490A706D383888B1 /* TrafficDatabase.swift */,
+				031A75F509B62CC97841A678 /* TrafficRecorder.swift */,
 			);
 			path = Service;
 			sourceTree = "<group>";
@@ -107,6 +144,7 @@
 				748FB46B5B1D40583CCBFC28 /* Store.swift */,
 				3D30F89C22ACDFD9102801CD /* Utils.swift */,
 				93A1FCAC2059C9BA4F8137C5 /* Base.lproj */,
+				27F00417CB2C3A88E4CD181C /* Dashboard */,
 				1084C47DA714E5ED8C50E54D /* Model */,
 				BBD02EC3A58E02C9B9D09A87 /* Preview Content */,
 				B04E2F28E667BBA2ADAE07F6 /* Service */,
@@ -150,7 +188,6 @@
 				};
 			};
 			buildConfigurationList = 969B2988406CD78CE4DD735A /* Build configuration list for PBXProject "ITrafficMonitorForMac" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -160,6 +197,7 @@
 			mainGroup = 4120213D73F4C876D85E3432;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			productRefGroup = C7F7F27CEDA49B8A0BBE19D9 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -188,15 +226,25 @@
 			files = (
 				C17313D7F40F6AA244E2B66E /* AppDelegate.swift in Sources */,
 				4C5971DF435E26F48866D29B /* ContentView.swift in Sources */,
+				89CBFC2CD4505CEE4266FA83 /* DashboardView.swift in Sources */,
+				044B84B65F63E4F22D36F249 /* DashboardViewModel.swift in Sources */,
 				110910FF9B56F77D57F2BFCE /* GlobalModel.swift in Sources */,
+				86796EEAA169C66F8B477EE8 /* HeatmapTab.swift in Sources */,
 				9419659EEBE860E8E43AD67B /* ListViewModel.swift in Sources */,
 				47BB0E5A5A06A259F5A60930 /* MenuItem.swift in Sources */,
+				3D9B8E011AA9AF9085E70333 /* MonthlyTopTab.swift in Sources */,
 				ED92E8103B5EA56B695BE2EE /* NettopRunner.swift in Sources */,
 				403DD76556F421C4383180FB /* Network.swift in Sources */,
+				F08876FD128AC6B948281FDC /* OverviewTab.swift in Sources */,
 				7A1983D97A841B400C97C921 /* ProcessEntity.swift in Sources */,
+				3D1C49846A28204225568646 /* RealtimeRateStore.swift in Sources */,
+				DA68DA35BE8B6CC457BA043E /* RealtimeTab.swift in Sources */,
 				3CA4E9B67FC3BEF7F53DE411 /* StatusBarView.swift in Sources */,
 				351C3DAE423EA025FD8CD086 /* StatusDataModel.swift in Sources */,
 				47E3ABDEBFE7000CE5F116FC /* Store.swift in Sources */,
+				523838588E2F8ED5D7A7110D /* TrafficDatabase.swift in Sources */,
+				38C18D205EE7C456EEB4AE1D /* TrafficRecorder.swift in Sources */,
+				0209ACBC34238EB5EDD16B40 /* TrendsTab.swift in Sources */,
 				B2D8BF451CC944FE4FFF61CD /* Utils.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -249,7 +297,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = ITraffic;
@@ -277,8 +325,11 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 0.2.0;
+				OTHER_LDFLAGS = (
+					"-lsqlite3",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.foamzou.ITrafficMonitorForMac;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
@@ -302,8 +353,11 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MARKETING_VERSION = 0.2.0;
+				OTHER_LDFLAGS = (
+					"-lsqlite3",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.foamzou.ITrafficMonitorForMac;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.0;
@@ -361,7 +415,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

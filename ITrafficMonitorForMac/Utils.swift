@@ -20,6 +20,24 @@ func formatBytes(bytes: Int) -> String {
     return String(format:"%.1f MB/s", kbyte / 1024)
 }
 
+/// Total-bytes formatter (no rate suffix): "512 B", "12.3 KB", "1.2 MB", "3.4 GB".
+func formatBytesTotal(bytes: Int) -> String {
+    let b = Double(bytes)
+    let kb = b / 1024
+    if kb < 1 { return String(format: "%d B", bytes) }
+    if kb < 1024 { return String(format: "%.1f KB", kb) }
+    let mb = kb / 1024
+    if mb < 1024 { return String(format: "%.1f MB", mb) }
+    let gb = mb / 1024
+    if gb < 1024 { return String(format: "%.2f GB", gb) }
+    return String(format: "%.2f TB", gb / 1024)
+}
+
+/// Local midnight Date for a `day` value stored in the DB.
+func dateFromDay(_ day: Int) -> Date {
+    Date(timeIntervalSince1970: TimeInterval(day) * 86400)
+}
+
 /// Compact unit format for list rows: "55K", "9.1M", "1.2G", "—" for 0.
 /// `/s` is dropped — sampling cadence is implicit in the list context.
 func formatBytesCompact(bytes: Int) -> String {
@@ -40,11 +58,13 @@ func formatBytesCompact(bytes: Int) -> String {
 struct AppInfo {
     var icon: NSImage
     var name: String?
+    var bundleIdentifier: String?
     var updateTime: Int
 }
 
 var APP_INFO_CACHE = [Int: AppInfo]()
 var CACHE_TTL = 3600
+private let appInfoLock = NSLock()
 
 /// Resolve icon + display name for a PID:
 /// 1. Try `NSRunningApplication(pid)` directly (GUI apps).
@@ -53,12 +73,17 @@ var CACHE_TTL = 3600
 ///    the terminal / IDE that launched the CLI tool — and reuse its
 ///    icon. The display name becomes `ParentName-originalName` so the
 ///    raw binary name (`2.1.114`, `node`, …) is still visible.
-/// Cached per-PID for `CACHE_TTL` seconds.
+/// Cached per-PID for `CACHE_TTL` seconds. Thread-safe: may be called
+/// from both the main thread (list rows) and the nettop runner queue
+/// (history recorder).
 func getAppInfo(pid: Int, name: String) -> AppInfo? {
     let timestamp = Int(NSDate().timeIntervalSince1970)
+    appInfoLock.lock()
     if let cached = APP_INFO_CACHE[pid], (timestamp - cached.updateTime) < CACHE_TTL {
+        appInfoLock.unlock()
         return cached
     }
+    appInfoLock.unlock()
 
     var resolvedApp = NSRunningApplication(processIdentifier: pid_t(pid))
     var walkedToAncestor = false
@@ -81,6 +106,7 @@ func getAppInfo(pid: Int, name: String) -> AppInfo? {
     // icons on 2x displays. SwiftUI's Image will downscale crisply
     // when given an unrasterised NSImage + `.interpolation(.high)`.
     let icon = resolvedApp?.icon ?? NSImage(named: "blank") ?? NSImage()
+    let bundleIdentifier = resolvedApp?.bundleIdentifier
 
     let displayName: String
     if let label = resolvedApp?.localizedName, !label.isEmpty {
@@ -101,8 +127,10 @@ func getAppInfo(pid: Int, name: String) -> AppInfo? {
         displayName = name
     }
 
-    let info = AppInfo(icon: icon, name: displayName, updateTime: timestamp)
+    let info = AppInfo(icon: icon, name: displayName, bundleIdentifier: bundleIdentifier, updateTime: timestamp)
+    appInfoLock.lock()
     APP_INFO_CACHE[pid] = info
+    appInfoLock.unlock()
     return info
 }
 

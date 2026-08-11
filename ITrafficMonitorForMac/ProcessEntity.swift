@@ -23,4 +23,20 @@ struct ProcessEntity: Identifiable {
         self.outBytes = outBytes
         self.icon = nil
     }
+
+    /// Stable identity for history: bundle identifier when available,
+    /// otherwise the display name (e.g. "iTerm2 · node") that the CLI
+    /// ancestor walk produced. Falls back to the raw process name.
+    public var appKey: String {
+        let info = getAppInfo(pid: pid, name: name)
+        if let bundleId = info?.bundleIdentifier, !bundleId.isEmpty {
+            return bundleId
+        }
+        return displayName
+    }
+
+    public var displayName: String {
+        let info = getAppInfo(pid: pid, name: name)
+        return info?.name ?? name
+    }
 }
