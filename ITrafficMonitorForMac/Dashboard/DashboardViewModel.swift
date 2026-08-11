@@ -39,6 +39,9 @@ class DashboardViewModel: ObservableObject {
     @Published var weekTrend: [DayTrafficRow] = []
     @Published var monthTop: [AppTrafficRow] = []
 
+    // Apps list
+    @Published var apps: [AppTrafficRow] = []
+
     // Trends
     @Published var trendRange: TrendRange = .week
     @Published var appSeries: [AppSeries] = []
@@ -52,8 +55,24 @@ class DashboardViewModel: ObservableObject {
 
     func refreshAll() {
         refreshOverview()
+        refreshApps()
         refreshTrends()
         refreshHeatmap(days: heatmapDays)
+    }
+
+    func refreshApps() {
+        let calendar = Calendar.current
+        let now = Date()
+        let todayStart = calendar.startOfDay(for: now)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: todayStart)!
+        let start = calendar.date(byAdding: .day, value: -29, to: todayStart)!
+        recorder.topApps(
+            start: Int(start.timeIntervalSince1970),
+            end: Int(tomorrow.timeIntervalSince1970),
+            limit: 200
+        ) { [weak self] rows in
+            self?.apps = rows
+        }
     }
 
     func refreshOverview() {
@@ -69,25 +88,25 @@ class DashboardViewModel: ObservableObject {
         let monthStartE = Int(monthInterval.start.timeIntervalSince1970)
         let monthEndE = Int(monthInterval.end.timeIntervalSince1970)
 
+        // Month-end projection: used / elapsed days * days in month.
+        let daysInMonth = calendar.range(of: .day, in: .month, for: now)?.count ?? 30
+        let elapsed = max(1, (calendar.dateComponents([.day], from: monthInterval.start, to: now).day ?? 0) + 1)
+
         recorder.totalTraffic(start: weekStartE, end: endE) { [weak self] in
             self?.weekTotalBytes = $0.inBytes + $0.outBytes
         }
+        // Single month query feeds both the total card and the projection.
         recorder.totalTraffic(start: monthStartE, end: monthEndE) { [weak self] in
-            self?.monthTotalBytes = $0.inBytes + $0.outBytes
+            guard let self else { return }
+            let total = $0.inBytes + $0.outBytes
+            self.monthTotalBytes = total
+            self.monthProjectedBytes = Int((Double(total) / Double(elapsed) * Double(daysInMonth)).rounded())
         }
         recorder.dailyTraffic(start: weekStartE, end: endE) { [weak self] in
             self?.weekTrend = $0
         }
         recorder.topApps(start: monthStartE, end: monthEndE, limit: 20) { [weak self] in
             self?.monthTop = $0
-        }
-
-        // Month-end projection: used / elapsed days * days in month.
-        let daysInMonth = calendar.range(of: .day, in: .month, for: now)?.count ?? 30
-        let elapsed = max(1, (calendar.dateComponents([.day], from: monthInterval.start, to: now).day ?? 0) + 1)
-        recorder.totalTraffic(start: monthStartE, end: monthEndE) { [weak self] in
-            let total = $0.inBytes + $0.outBytes
-            self?.monthProjectedBytes = Int((Double(total) / Double(elapsed) * Double(daysInMonth)).rounded())
         }
     }
 
