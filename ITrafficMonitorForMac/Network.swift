@@ -33,12 +33,17 @@ class Network {
     private func handleFrame(_ lines: [String]) {
         var totalInBytes = 0
         var totalOutBytes = 0
-        let entities: [ProcessEntity] = lines.compactMap { line -> ProcessEntity? in
+        let rawEntities: [ProcessEntity] = lines.compactMap { line -> ProcessEntity? in
             guard let entity = parser(text: line) else { return nil }
             totalInBytes += entity.inBytes
             totalOutBytes += entity.outBytes
             return entity
         }
+
+        // Re-attribute traffic that nettop credited to a local proxy / VPN
+        // back to the real apps. Totals stay the raw interface bytes; only the
+        // per-entity distribution changes.
+        let entities = SharedStore.proxyAttributor.attributedEntities(rawEntities)
 
         // Persist this frame's deltas into the minute-bucket history.
         SharedStore.recorder.record(entities: entities)

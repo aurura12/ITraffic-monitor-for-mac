@@ -52,7 +52,7 @@ struct ExportView: View {
             Picker(i18n.text("Granularity"), selection: $granularity) {
                 ForEach(ExportGranularity.allCases, id: \.self) { Text(i18n.text($0.label)).tag($0) }
             }
-            .onChange(of: granularity) { g in
+            .onChange(of: granularity) { _, g in
                 if g == .minute { range = .oneDay }
             }
 

@@ -25,7 +25,6 @@ final class TrafficRecorder {
     private var currentHour = 0
 
     private let calendar = Calendar.current
-    private var lastPruneCheck = 0
 
     init() {
         let now = Date()
@@ -63,8 +62,6 @@ final class TrafficRecorder {
                     self.currentDict[key] = (entity.displayName, entity.inBytes, entity.outBytes)
                 }
             }
-
-            self.maybePrune(now: now)
         }
     }
 
@@ -108,14 +105,6 @@ final class TrafficRecorder {
         database.dailyTraffic(start: start, end: end, appKey: appKey, completion: completion)
     }
 
-    func heatmap(days: Int, completion: @escaping ([HeatmapCell]) -> Void) {
-        database.heatmap(days: days, completion: completion)
-    }
-
-    func heatmap(start: Int, end: Int, completion: @escaping ([HeatmapCell]) -> Void) {
-        database.heatmap(start: start, end: end, completion: completion)
-    }
-
     func trafficSeries(start: Int, end: Int, granularity: TimeSeriesGranularity,
                        completion: @escaping ([TrafficSeriesPoint]) -> Void) {
         database.trafficSeries(start: start, end: end, granularity: granularity, completion: completion)
@@ -132,14 +121,6 @@ final class TrafficRecorder {
     }
 
     // MARK: - Helpers
-
-    private func maybePrune(now: Date) {
-        let t = Int(now.timeIntervalSince1970)
-        if t - lastPruneCheck > 3600 {
-            lastPruneCheck = t
-            database.pruneIfNeeded()
-        }
-    }
 
     /// Local day (local days since 1970-01-01, timezone-safe) and hour (0-23).
     static func dayAndHour(for date: Date, calendar: Calendar) -> (day: Int, hour: Int) {

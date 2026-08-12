@@ -13,6 +13,7 @@ enum SharedStore {
     static let recorder = TrafficRecorder()
     static let realtimeRateStore = RealtimeRateStore()
     static let perAppRateStore = PerAppRateStore()
+    static let proxyAttributor = ProxyAttributor()
 }
 
 extension View {
@@ -21,6 +22,7 @@ extension View {
         .environmentObject(SharedStore.statusDataModel)
         .environmentObject(SharedStore.realtimeRateStore)
         .environmentObject(SharedStore.perAppRateStore)
+        .environmentObject(SharedStore.proxyAttributor)
         .environmentObject(LocalizationManager.shared)
     }
 }

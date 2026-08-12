@@ -30,19 +30,29 @@ struct UnifiedDashboardView: View {
             }
             .onAppear { viewModel.refreshDashboard() }
             .onReceive(refreshTimer) { _ in viewModel.refreshDashboard() }
-            .onChange(of: viewModel.timeRange) { _ in viewModel.refreshDashboard() }
-            .onChange(of: viewModel.chartMode) { _ in viewModel.refreshDashboard() }
+            .onChange(of: viewModel.timeRange) { viewModel.refreshDashboard() }
+            .onChange(of: viewModel.chartMode) { viewModel.refreshDashboard() }
+            .onChange(of: viewModel.barGranularity) { viewModel.refreshBarChart() }
         }
     }
 
     // MARK: - Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: 12) {
-            timeRangePicker
+        // ZStack keeps the chart-mode picker centered and stationary while the
+        // time-range picker appears/disappears depending on the selected mode.
+        ZStack {
+            HStack(spacing: 12) {
+                // The time range picker only affects the line chart / stat cards;
+                // the heatmap always shows the last 365 days and the usage chart
+                // shows all history, so hide it there.
+                if viewModel.chartMode == .line {
+                    timeRangePicker
+                }
+                Spacer()
+                toolbarActions
+            }
             chartModePicker
-            Spacer()
-            toolbarActions
         }
     }
 
@@ -53,7 +63,7 @@ struct UnifiedDashboardView: View {
             }
         }
         .pickerStyle(.segmented)
-        .frame(width: 360)
+        .frame(width: 300)
     }
 
     private var chartModePicker: some View {
@@ -63,7 +73,6 @@ struct UnifiedDashboardView: View {
             }
         }
         .pickerStyle(.segmented)
-        .frame(width: 140)
     }
 
     private var toolbarActions: some View {
@@ -113,30 +122,43 @@ struct UnifiedDashboardView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(i18n.text("Traffic Timeline"))
+                    Text(chartTitle)
                         .font(.system(size: 13, weight: .semibold))
                     Text(chartSubtitle)
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                legend
+                if viewModel.chartMode == .usage {
+                    barScalePicker
+                    barGranularityPicker
+                } else {
+                    legend
+                }
             }
             .padding(.horizontal, Theme.cardPadding)
             .padding(.top, Theme.cardPadding)
 
             ZStack {
-                if viewModel.chartMode == .line {
+                switch viewModel.chartMode {
+                case .line:
                     TrafficLineChart(
                         points: viewModel.seriesPoints,
                         timeRange: viewModel.timeRange,
                         emptyText: i18n.text("No recorded traffic in this range.")
                     )
-                } else {
-                    TrafficHeatmap(
-                        cells: viewModel.heatmapCells,
-                        maxBytes: viewModel.heatmapMaxBytes,
-                        emptyText: i18n.text("No recorded traffic in this range.")
+                case .heatmap:
+                    TrafficCalendarHeatmap(
+                        cells: viewModel.calendarCells,
+                        maxBytes: viewModel.calendarMaxBytes,
+                        emptyText: i18n.text("No recorded traffic in this range."),
+                        calendar: calendar(for: i18n)
+                    )
+                case .usage:
+                    TrafficBarChartView(
+                        points: viewModel.barPoints,
+                        scaleMode: viewModel.barScaleMode,
+                        emptyText: i18n.text("No recorded traffic yet.")
                     )
                 }
             }
@@ -151,10 +173,26 @@ struct UnifiedDashboardView: View {
         )
     }
 
+    private var chartTitle: String {
+        viewModel.chartMode == .usage
+            ? i18n.text("Traffic Usage")
+            : i18n.text("Traffic Timeline")
+    }
+
     private var chartSubtitle: String {
-        viewModel.chartMode == .line
-            ? i18n.text("Drag to zoom any range")
-            : i18n.text("Click any hour cell to zoom in")
+        switch viewModel.chartMode {
+        case .line:   return i18n.text("Drag to zoom any range")
+        case .heatmap: return i18n.text("Daily traffic per day")
+        case .usage:  return barSubtitle
+        }
+    }
+
+    /// Gregorian calendar localized to the active UI locale, so weekday
+    /// layout and labels respect `firstWeekday` differences (Mon vs Sun).
+    private func calendar(for i18n: LocalizationManager) -> Calendar {
+        var cal = Calendar(identifier: .gregorian)
+        cal.locale = i18n.locale
+        return cal
     }
 
     private var legend: some View {
@@ -170,6 +208,37 @@ struct UnifiedDashboardView: View {
             Text(label)
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
+        }
+    }
+
+    // MARK: - Usage bar chart controls
+
+    private var barScalePicker: some View {
+        Picker("", selection: $viewModel.barScaleMode) {
+            ForEach(BarScaleMode.allCases) { mode in
+                Text(i18n.text(mode.labelKey)).tag(mode)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 140)
+    }
+
+    private var barGranularityPicker: some View {
+        Picker("", selection: $viewModel.barGranularity) {
+            ForEach(BarGranularity.allCases) { granularity in
+                Text(i18n.text(granularity.labelKey)).tag(granularity)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 240)
+    }
+
+    private var barSubtitle: String {
+        switch viewModel.barGranularity {
+        case .day: return i18n.text("Daily usage")
+        case .month: return i18n.text("Monthly usage")
+        case .quarter: return i18n.text("Quarterly usage")
+        case .year: return i18n.text("Yearly usage")
         }
     }
 

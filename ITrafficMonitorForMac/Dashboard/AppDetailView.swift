@@ -54,6 +54,7 @@ struct AppDetailView: View {
     let target: AppNavTarget
     @EnvironmentObject var perAppRates: PerAppRateStore
     @EnvironmentObject var i18n: LocalizationManager
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: AppDetailViewModel
 
     private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
@@ -171,6 +172,16 @@ struct AppDetailView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .help(i18n.text("Back"))
+
             Image(nsImage: iconForAppKey(target.appKey))
                 .resizable()
                 .interpolation(.high)

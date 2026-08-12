@@ -12,13 +12,13 @@ configs:
 settings:
   base:
     PRODUCT_NAME: ITraffic
-    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
 
 targets:
   ITrafficMonitorForMac:
     type: application
     platform: macOS
-    deploymentTarget: "13.0"
+    deploymentTarget: "14.0"
     sources:
       - path: ITrafficMonitorForMac
         excludes:
