@@ -1,6 +1,11 @@
 # Mac file
 .DS_Store
 
+# Local database backups
+traffic-before-*.sqlite3
+traffic-before-*.sqlite3-shm
+traffic-before-*.sqlite3-wal
+
 
 # Xcode
 #

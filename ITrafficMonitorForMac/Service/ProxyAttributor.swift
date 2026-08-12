@@ -88,6 +88,45 @@ enum ProxyStatus: Equatable {
     case secretRequired
 }
 
+enum ProxyFetchOutcome: Equatable {
+    case success(connectionCount: Int)
+    case transportFailure
+    case authRequired
+    case httpFailure(statusCode: Int)
+    case invalidResponse
+}
+
+func proxyFetchOutcome(statusCode: Int?, hasBody: Bool, connectionCount: Int) -> ProxyFetchOutcome {
+    guard let statusCode else { return .transportFailure }
+    if statusCode == 401 || statusCode == 403 { return .authRequired }
+    guard statusCode == 200 else { return .httpFailure(statusCode: statusCode) }
+    guard hasBody else { return .invalidResponse }
+    return .success(connectionCount: connectionCount)
+}
+
+func proxyEndpointLabel(_ endpoint: String) -> String {
+    endpoint.hasPrefix("/") ? "unix:" + endpoint : endpoint
+}
+
+struct ProxyConfigEntry: Equatable {
+    let key: String
+    let value: String
+}
+
+func parseProxyConfigLine(_ line: String) -> ProxyConfigEntry? {
+    let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+    guard parts.count == 2 else { return nil }
+    let key = parts[0].trimmingCharacters(in: .whitespacesAndNewlines)
+    var value = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !key.isEmpty else { return nil }
+    if value.count >= 2,
+       ((value.first == "'" && value.last == "'") || (value.first == "\"" && value.last == "\"")) {
+        value.removeFirst()
+        value.removeLast()
+    }
+    return ProxyConfigEntry(key: key, value: value)
+}
+
 /// Normalized proxy connection: `sourcePort` is the client app's local port.
 private struct ProxyConnection {
     let id: String
@@ -356,16 +395,14 @@ final class ProxyAttributor: ObservableObject {
         case .clash:
             // Clash (9090) and Clash Verge / Mihomo (9097) use the same
             // /connections shape; probe both so either is detected in auto.
-            return [
-                Candidate(baseURL: "", path: "/connections", port: 9097, name: "Clash Verge", unixSocket: "/tmp/verge/verge-mihomo.sock"),
+            return clashVergeCandidates() + [
                 Candidate(baseURL: "http://127.0.0.1:9090", path: "/connections", port: 9090, name: "Clash", unixSocket: nil),
                 Candidate(baseURL: "http://127.0.0.1:9097", path: "/connections", port: 9097, name: "Clash Verge", unixSocket: nil),
             ]
         case .surge:
             return [Candidate(baseURL: "http://127.0.0.1:6171", path: "/v1/connections", port: 6171, name: "Surge", unixSocket: nil)]
         case .auto:
-            return [
-                Candidate(baseURL: "", path: "/connections", port: 9097, name: "Clash Verge", unixSocket: "/tmp/verge/verge-mihomo.sock"),
+            return clashVergeCandidates() + [
                 Candidate(baseURL: "http://127.0.0.1:9090", path: "/connections", port: 9090, name: "Clash", unixSocket: nil),
                 Candidate(baseURL: "http://127.0.0.1:9097", path: "/connections", port: 9097, name: "Clash Verge", unixSocket: nil),
                 Candidate(baseURL: "http://127.0.0.1:6171", path: "/v1/connections", port: 6171, name: "Surge", unixSocket: nil),
@@ -375,6 +412,51 @@ final class ProxyAttributor: ObservableObject {
         }
     }
 
+    private func clashVergeCandidates() -> [Candidate] {
+        let values = clashVergeConfigValues()
+        let socket = values["external-controller-unix"] ?? clashVergeSocketPath()
+        var result = [Candidate(
+            baseURL: "",
+            path: "/connections",
+            port: 9097,
+            name: "Clash Verge",
+            unixSocket: socket
+        )]
+        if let controller = values["external-controller"],
+           let url = URL(string: "http://" + controller),
+           let host = url.host,
+           host == "127.0.0.1" || host == "localhost" || host == "::1" {
+            result.append(Candidate(
+                baseURL: "http://" + controller,
+                path: "/connections",
+                port: url.port ?? 9097,
+                name: "Clash Verge",
+                unixSocket: nil
+            ))
+        }
+        return result
+    }
+
+    private func clashVergeConfigValues() -> [String: String] {
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/io.github.clash-verge-rev.clash-verge-rev/config.yaml")
+        guard let text = try? String(contentsOf: path, encoding: .utf8) else { return [:] }
+        return text.split(whereSeparator: { $0.isNewline }).compactMap { parseProxyConfigLine(String($0)) }
+            .reduce(into: [:]) { $0[$1.key] = $1.value }
+    }
+
+    private func clashVergeSocketPath() -> String {
+        let defaultPath = "/tmp/verge/verge-mihomo.sock"
+        let pidURL = URL(fileURLWithPath: "/tmp/verge/clash-verge-service.core.json")
+        guard let data = try? Data(contentsOf: pidURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let ipcPath = object["ipc_path"] as? String,
+              ipcPath.hasPrefix("/") else {
+            return defaultPath
+        }
+        return ipcPath
+    }
+
     private func tryDetect(_ candidates: [Candidate], secret: String) -> DetectResult {
         var sawAuthRequired = false
         for c in candidates {
@@ -382,7 +464,7 @@ final class ProxyAttributor: ObservableObject {
             case .authRequired:
                 sawAuthRequired = true
             case .ok(let connections):
-                // fetch() only returns .ok for a non-empty table.
+                // A valid empty table still proves that the proxy API is alive.
                 return .success(c, connections)
             case .failed:
                 continue
@@ -427,7 +509,7 @@ final class ProxyAttributor: ObservableObject {
         if statusCode == 401 || statusCode == 403 {
             return .authRequired
         }
-        guard statusCode == 200, let data, let conns = decodeConnections(data), !conns.isEmpty else {
+        guard statusCode == 200, let data, let conns = decodeConnections(data) else {
             return .failed
         }
         return .ok(conns)
@@ -463,8 +545,7 @@ final class ProxyAttributor: ObservableObject {
             }
             guard response.statusCode == 200,
                   let body = response.body.data(using: .utf8),
-                  let conns = decodeConnections(body),
-                  !conns.isEmpty else {
+                  let conns = decodeConnections(body) else {
                 return .failed
             }
             return .ok(conns)
@@ -510,7 +591,7 @@ final class ProxyAttributor: ObservableObject {
                 processPath: c.metadata?.processPath
             ))
         }
-        return out.isEmpty ? nil : out
+        return out
     }
 
     /// Resolve Mihomo's optional process metadata to a currently running PID.
@@ -656,11 +737,13 @@ final class ProxyAttributor: ObservableObject {
         case "off": type = .off
         default: type = .auto
         }
+        let configSecret = d.string(forKey: "proxyAttributionSecret") ?? ""
+        let autoSecret = (type == .auto || type == .clash) ? clashVergeConfigValues()["secret"] : nil
         return Config(
             enabled: enabled,
             type: type,
             baseURL: d.string(forKey: "proxyAttributionBaseURL") ?? "",
-            secret: d.string(forKey: "proxyAttributionSecret") ?? ""
+            secret: configSecret.isEmpty ? (autoSecret ?? "") : configSecret
         )
     }
 
