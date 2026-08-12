@@ -108,13 +108,26 @@ var APP_INFO_CACHE = [Int: AppInfo]()
 var CACHE_TTL = 3600
 private let appInfoLock = NSLock()
 
+func preferredDisplayName(applicationName: String?, processName: String, walkedToAncestor: Bool) -> String {
+    guard let applicationName, !applicationName.isEmpty else {
+        return processName
+    }
+
+    // Keep the list focused on applications. Helper and command-line child
+    // processes inherit the display name of the application that owns them.
+    // `walkedToAncestor` remains part of the resolver contract because it
+    // describes how the application was found, but does not change display.
+    _ = walkedToAncestor
+    return applicationName
+}
+
 /// Resolve icon + display name for a PID:
 /// 1. Try `NSRunningApplication(pid)` directly (GUI apps).
 /// 2. If not found, walk the parent process tree up to 6 levels until
 ///    we hit something `NSRunningApplication` recognises — typically
-///    the terminal / IDE that launched the CLI tool — and reuse its
-///    icon. The display name becomes `ParentName-originalName` so the
-///    raw binary name (`2.1.114`, `node`, …) is still visible.
+///    the terminal / IDE that launched the CLI tool — and reuse its icon.
+///    The display name uses the resolved application's localized name so
+///    helper and child processes do not clutter the list.
 /// Cached per-PID for `CACHE_TTL` seconds. Thread-safe: may be called
 /// from both the main thread (list rows) and the nettop runner queue
 /// (history recorder).
@@ -150,24 +163,11 @@ func getAppInfo(pid: Int, name: String) -> AppInfo? {
     let icon = resolvedApp?.icon ?? NSImage(named: "blank") ?? NSImage()
     let bundleIdentifier = resolvedApp?.bundleIdentifier
 
-    let displayName: String
-    if let label = resolvedApp?.localizedName, !label.isEmpty {
-        if walkedToAncestor {
-            // Avoid "Slack-Slack Helper" — drop the parent prefix if the
-            // child name already starts with it (case-insensitive).
-            let lname = name.lowercased()
-            let llabel = label.lowercased()
-            if lname.hasPrefix(llabel) || lname.contains(llabel) {
-                displayName = name
-            } else {
-                displayName = "\(label) · \(name)"
-            }
-        } else {
-            displayName = label
-        }
-    } else {
-        displayName = name
-    }
+    let displayName = preferredDisplayName(
+        applicationName: resolvedApp?.localizedName,
+        processName: name,
+        walkedToAncestor: walkedToAncestor
+    )
 
     let info = AppInfo(icon: icon, name: displayName, bundleIdentifier: bundleIdentifier, updateTime: timestamp)
     appInfoLock.lock()

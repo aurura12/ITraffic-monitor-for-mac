@@ -128,6 +128,8 @@ final class LocalizationManager: ObservableObject {
         "Follow System": "跟随系统",
         "Light": "浅色",
         "Dark": "深色",
+        "Launch at login": "开机自动启动",
+        "Launch at login failed": "开机自动启动设置失败",
 
         // Proxy attribution
         "Proxy attribution": "代理归属",
