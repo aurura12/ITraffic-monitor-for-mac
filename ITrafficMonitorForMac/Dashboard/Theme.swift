@@ -23,6 +23,9 @@ enum Theme {
     /// Neutral total accent.
     static let total = Color(red: 0.9, green: 0.9, blue: 0.9)
 
+    /// Heatmap cell color (blue-purple; intensity is controlled via opacity).
+    static let heatmap = Color(red: 0.45, green: 0.52, blue: 0.95)
+
     /// Primary text on cards (adapts to light/dark).
     static let textPrimary = Color.primary
 
