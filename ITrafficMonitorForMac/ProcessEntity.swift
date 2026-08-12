@@ -7,6 +7,9 @@
 import Cocoa
 import Foundation
 
+let unattributedTunnelAppKey = "com.itraffic.unattributed-tunnel"
+let unattributedTunnelProcessLabel = "VPN/TUN 未识别流量"
+
 struct ProcessEntity: Identifiable {
     var id = UUID()
     
@@ -28,6 +31,9 @@ struct ProcessEntity: Identifiable {
     /// otherwise the display name (e.g. "iTerm2 · node") that the CLI
     /// ancestor walk produced. Falls back to the raw process name.
     public var appKey: String {
+        if name == unattributedTunnelProcessLabel {
+            return unattributedTunnelAppKey
+        }
         let info = getAppInfo(pid: pid, name: name)
         if let bundleId = info?.bundleIdentifier, !bundleId.isEmpty {
             return bundleId
@@ -36,6 +42,9 @@ struct ProcessEntity: Identifiable {
     }
 
     public var displayName: String {
+        if name == unattributedTunnelProcessLabel {
+            return unattributedTunnelProcessLabel
+        }
         let info = getAppInfo(pid: pid, name: name)
         return info?.name ?? name
     }

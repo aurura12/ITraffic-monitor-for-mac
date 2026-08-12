@@ -102,6 +102,16 @@ struct AppPeakTrafficRow: Identifiable {
     var totalBytes: Int { inBytes + outBytes }
 }
 
+/// SQLite has no `start of hour` modifier. Group by a local calendar-hour
+/// key and use the earliest bucket timestamp as the chart point's date.
+let hourSeriesSQL = """
+SELECT MIN(bucket_start) AS hour_start,
+       SUM(in_bytes), SUM(out_bytes)
+FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
+GROUP BY strftime('%Y-%m-%d %H', bucket_start, 'unixepoch', 'localtime')
+ORDER BY hour_start;
+"""
+
 /// One upsert batch: app traffic rows plus the display-name map.
 struct TrafficBatch {
     let bucketStart: Int          // epoch seconds, minute-aligned
@@ -401,12 +411,7 @@ final class TrafficDatabase {
                 GROUP BY bucket_start ORDER BY bucket_start;
                 """
             case .hour:
-                sql = """
-                SELECT strftime('%s', datetime(bucket_start, 'unixepoch', 'localtime', 'start of hour')) AS hour_start,
-                       SUM(in_bytes), SUM(out_bytes)
-                FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
-                GROUP BY hour_start ORDER BY hour_start;
-                """
+                sql = hourSeriesSQL
             case .day:
                 sql = """
                 SELECT day, SUM(in_bytes), SUM(out_bytes)
