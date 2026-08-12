@@ -119,7 +119,8 @@ class DashboardViewModel: ObservableObject {
     }
 
     func refreshHeatmap() {
-        recorder.heatmap(days: timeRange.heatmapDays) { [weak self] cells in
+        let interval = timeRange.interval(calendar: calendar)
+        recorder.heatmap(start: interval.start, end: interval.end) { [weak self] cells in
             guard let self else { return }
             self.heatmapCells = cells
             self.heatmapMaxBytes = max(cells.map(\.totalBytes).max() ?? 1, 1)

@@ -508,6 +508,34 @@ final class TrafficDatabase {
         }
     }
 
+    /// Hour × day heatmap cells within [start, end).
+    func heatmap(start: Int, end: Int, completion: @escaping ([HeatmapCell]) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else { return }
+            var cells: [HeatmapCell] = []
+            var stmt: OpaquePointer?
+            let sql = """
+            SELECT day, hour, SUM(in_bytes+out_bytes)
+            FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
+            GROUP BY day, hour ORDER BY day, hour;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                completion([]); return
+            }
+            sqlite3_bind_int64(stmt, 1, Int64(start))
+            sqlite3_bind_int64(stmt, 2, Int64(end))
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                cells.append(HeatmapCell(
+                    day: Int(sqlite3_column_int64(stmt, 0)),
+                    hour: Int(sqlite3_column_int64(stmt, 1)),
+                    totalBytes: Int(sqlite3_column_int64(stmt, 2))
+                ))
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(cells) }
+        }
+    }
+
     // MARK: - Export
 
     /// Export aggregated traffic rows within [start, end). Period label is a

@@ -11,6 +11,11 @@ struct TrafficHeatmap: View {
     let maxBytes: Int
     let emptyText: String
 
+    /// Horizontal gap between hour cells (fraction of an hour).
+    private let hourGap: Double = 0.12
+    /// Vertical gap between day cells (hours at top/bottom of each day).
+    private let dayGapHours: TimeInterval = 1.5 * 3600
+
     var body: some View {
         if cells.isEmpty {
             emptyState
@@ -22,14 +27,13 @@ struct TrafficHeatmap: View {
     private var chart: some View {
         Chart(cells, id: \.self) { cell in
             RectangleMark(
-                xStart: .value("Hour", cell.hour),
-                xEnd: .value("Hour", cell.hour + 1),
-                yStart: .value("Day", dateFromDay(cell.day)),
-                yEnd: .value("Day", dateFromDay(cell.day).addingTimeInterval(86400))
+                xStart: .value("Hour", Double(cell.hour) + hourGap / 2),
+                xEnd: .value("Hour", Double(cell.hour) + 1 - hourGap / 2),
+                yStart: .value("Day", dateFromDay(cell.day).addingTimeInterval(dayGapHours)),
+                yEnd: .value("Day", dateFromDay(cell.day).addingTimeInterval(86400 - dayGapHours))
             )
-            .foregroundStyle(
-                Theme.download.opacity(0.12 + 0.88 * Double(cell.totalBytes) / Double(max(maxBytes, 1)))
-            )
+            .foregroundStyle(cellColor(cell.totalBytes))
+            .cornerRadius(4)
         }
         .chartXAxis {
             AxisMarks(values: .stride(by: 3)) { value in
@@ -42,11 +46,21 @@ struct TrafficHeatmap: View {
             }
         }
         .chartYAxis {
-            AxisMarks(values: .stride(by: .day)) { _ in
-                AxisValueLabel(format: .dateTime.month().day())
+            AxisMarks(values: .stride(by: .day)) { value in
+                AxisValueLabel {
+                    if let date = value.as(Date.self) {
+                        Text(date, format: .dateTime.month().day())
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func cellColor(_ bytes: Int) -> Color {
+        let ratio = Double(bytes) / Double(max(maxBytes, 1))
+        // Ensure zero/low values are still visible while allowing high values to pop.
+        return Theme.heatmap.opacity(0.22 + 0.78 * ratio)
     }
 
     private var emptyState: some View {

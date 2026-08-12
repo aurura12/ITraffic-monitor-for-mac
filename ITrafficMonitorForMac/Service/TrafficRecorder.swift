@@ -112,6 +112,10 @@ final class TrafficRecorder {
         database.heatmap(days: days, completion: completion)
     }
 
+    func heatmap(start: Int, end: Int, completion: @escaping ([HeatmapCell]) -> Void) {
+        database.heatmap(start: start, end: end, completion: completion)
+    }
+
     func trafficSeries(start: Int, end: Int, granularity: TimeSeriesGranularity,
                        completion: @escaping ([TrafficSeriesPoint]) -> Void) {
         database.trafficSeries(start: start, end: end, granularity: granularity, completion: completion)
