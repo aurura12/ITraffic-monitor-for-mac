@@ -96,10 +96,6 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertFalse(manager.isEnabled)
     }
 
-    func testUnattributedTunnelLabelIsExplicit() {
-        XCTAssertEqual(unattributedTunnelProcessLabel, "VPN/TUN 未识别流量")
-    }
-
     func testProxyCreditsAreDiscardedWhenProxyEntityIsNotVisible() {
         XCTAssertEqual(capProxyCredit(requested: 500, observedByNettop: 0, proxyVisible: false), 0)
     }
@@ -108,16 +104,19 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(capProxyCredit(requested: 500, observedByNettop: 300, proxyVisible: true), 300)
     }
 
-    func testUnattributedTunnelUsesDedicatedAppKey() {
-        let entity = ProcessEntity(
-            pid: 123,
-            name: unattributedTunnelProcessLabel,
-            inBytes: 10,
-            outBytes: 20
+    func testClashVergeCoreUsesClashVergeDisplayName() {
+        XCTAssertEqual(
+            proxyDisplayName(rawName: "verge-mihomo", isClashVerge: true),
+            "Clash Verge"
         )
+    }
 
-        XCTAssertEqual(entity.appKey, unattributedTunnelAppKey)
-        XCTAssertEqual(entity.displayName, unattributedTunnelProcessLabel)
+    func testExistingConnectionRetainsConfirmedPIDWhenLookupLaterFails() {
+        XCTAssertEqual(attributedPID(previousPID: 456, resolvedPID: 0), 456)
+    }
+
+    func testMissingNewConnectionPIDRemainsUnassigned() {
+        XCTAssertEqual(attributedPID(previousPID: 0, resolvedPID: 0), 0)
     }
 
     func testCustomProxyAPIOnlyAllowsLoopbackHosts() {
