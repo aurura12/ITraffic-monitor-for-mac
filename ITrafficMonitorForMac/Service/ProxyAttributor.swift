@@ -43,6 +43,14 @@ func capProxyCredit(requested: Int, observedByNettop: Int, proxyVisible: Bool) -
     return min(requested, observedByNettop)
 }
 
+func proxyDisplayName(rawName: String, isClashVerge: Bool) -> String {
+    isClashVerge ? "Clash Verge" : rawName
+}
+
+func attributedPID(previousPID: Int, resolvedPID: Int) -> Int {
+    previousPID > 0 ? previousPID : resolvedPID
+}
+
 /// Custom proxy endpoints are only allowed on the local machine. This keeps
 /// proxy credentials from being sent to an accidental or hostile remote URL.
 func isAllowedProxyAPIURL(_ raw: String) -> Bool {
@@ -88,7 +96,6 @@ private struct ProxyConnection {
     let download: Int64
     let process: String?
     let processPath: String?
-    let isTun: Bool
 }
 
 /// One tracked connection. Byte totals are session-cumulative; `pid` is the
@@ -112,6 +119,8 @@ final class ProxyAttributor: ObservableObject {
     private var pendingCredits: [Int: (inBytes: Int, outBytes: Int)] = [:]
     /// The proxy process pid (owns the external-controller listening socket).
     private var proxyPid: Int?
+    /// True when proxyPid belongs to Clash Verge's verge-mihomo core.
+    private var isClashVergeProxy = false
     /// pid -> process name from lsof, used as a fallback name for new entities.
     private var pidNameCache: [Int: String] = [:]
 
@@ -120,8 +129,6 @@ final class ProxyAttributor: ObservableObject {
     private let queue = DispatchQueue(label: "proxy-attributor", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var previousConnections: [String: TrackedConnection] = [:]
-    private var hasUnattributedTunnelTraffic = false
-
     private let interval = 2 // seconds, matches nettop cadence
 
     // MARK: - Config
@@ -185,8 +192,7 @@ final class ProxyAttributor: ObservableObject {
     /// takes a locked snapshot and transforms the entity array.
     func attributedEntities(_ raw: [ProcessEntity]) -> [ProcessEntity] {
         let snapshot = takeCreditsSnapshot()
-        guard let proxyPid = snapshot.proxyPid,
-              !snapshot.credits.isEmpty || snapshot.hasUnattributedTunnelTraffic else {
+        guard let proxyPid = snapshot.proxyPid else {
             return raw
         }
 
@@ -228,8 +234,6 @@ final class ProxyAttributor: ObservableObject {
         }
         let sumIn = creditedIn.values.reduce(0, +)
         let sumOut = creditedOut.values.reduce(0, +)
-        guard sumIn > 0 || sumOut > 0 || snapshot.hasUnattributedTunnelTraffic else { return raw }
-
         var result: [ProcessEntity] = []
         var existingByPid: [Int: Int] = [:]
 
@@ -239,9 +243,10 @@ final class ProxyAttributor: ObservableObject {
                 // Proxy keeps only its own uncarried bytes.
                 entity.inBytes = e.inBytes - min(e.inBytes, sumIn)
                 entity.outBytes = e.outBytes - min(e.outBytes, sumOut)
-                if snapshot.hasUnattributedTunnelTraffic {
-                    entity.name = unattributedTunnelProcessLabel
-                }
+                entity.name = proxyDisplayName(
+                    rawName: entity.name,
+                    isClashVerge: snapshot.isClashVergeProxy
+                )
             } else if let addIn = creditedIn[e.pid], let addOut = creditedOut[e.pid] {
                 entity.inBytes = e.inBytes + addIn
                 entity.outBytes = e.outBytes + addOut
@@ -300,9 +305,13 @@ final class ProxyAttributor: ObservableObject {
         var newPrevious: [String: TrackedConnection] = [:]
 
         for conn in connections {
-            let pid = portMap.ports[conn.sourcePort]
+            let resolvedPID = portMap.ports[conn.sourcePort]
                 ?? resolveProcessPID(name: conn.process, path: conn.processPath)
                 ?? 0
+            let pid = attributedPID(
+                previousPID: prev[conn.id]?.pid ?? 0,
+                resolvedPID: resolvedPID
+            )
             newPrevious[conn.id] = TrackedConnection(
                 pid: pid,
                 sourcePort: conn.sourcePort,
@@ -323,14 +332,10 @@ final class ProxyAttributor: ObservableObject {
         }
 
         previousConnections = newPrevious
-        let tunnelUnattributed = connections.contains {
-            $0.isTun && (portMap.ports[$0.sourcePort] == nil)
-                && resolveProcessPID(name: $0.process, path: $0.processPath) == nil
-        }
         stateLock.lock()
         pendingCredits = credits
         self.proxyPid = proxyPid
-        hasUnattributedTunnelTraffic = tunnelUnattributed
+        isClashVergeProxy = candidate.name == "Clash Verge"
         pidNameCache.merge(portMap.names) { _, new in new }
         stateLock.unlock()
     }
@@ -477,7 +482,6 @@ final class ProxyAttributor: ObservableObject {
                     let sourcePort: String?
                     let process: String?
                     let processPath: String?
-                    let inboundName: String?
                 }
                 struct Source: Decodable { let port: Int? }
                 struct Bytes: Decodable { let up: Int?; let down: Int? }
@@ -503,8 +507,7 @@ final class ProxyAttributor: ObservableObject {
                 upload: Int64(c.upload ?? c.bytes?.up ?? 0),
                 download: Int64(c.download ?? c.bytes?.down ?? 0),
                 process: c.metadata?.process,
-                processPath: c.metadata?.processPath,
-                isTun: c.metadata?.inboundName?.localizedCaseInsensitiveContains("tun") ?? false
+                processPath: c.metadata?.processPath
             ))
         }
         return out.isEmpty ? nil : out
@@ -666,20 +669,20 @@ final class ProxyAttributor: ObservableObject {
         stateLock.lock()
         pendingCredits = [:]
         proxyPid = nil
-        hasUnattributedTunnelTraffic = false
+        isClashVergeProxy = false
         stateLock.unlock()
     }
 
     private func takeCreditsSnapshot() -> (
         credits: [Int: (inBytes: Int, outBytes: Int)],
         proxyPid: Int?,
-        hasUnattributedTunnelTraffic: Bool
+        isClashVergeProxy: Bool
     ) {
         stateLock.lock()
         defer { stateLock.unlock() }
         let credits = pendingCredits
         pendingCredits = [:]
-        return (credits, proxyPid, hasUnattributedTunnelTraffic)
+        return (credits, proxyPid, isClashVergeProxy)
     }
 
     private func pidNamesSnapshot() -> [Int: String] {
