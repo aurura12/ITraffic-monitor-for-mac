@@ -11,6 +11,8 @@ import SwiftUI
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
 
+    static let appDisplayName = "iTraffic"
+
     static var dashboardWindow: NSWindow?
     static var settingsWindow: NSWindow?
     var network: Network!
@@ -24,7 +26,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     rootView: DashboardView().withGlobalEnvironmentObjects()
                 )
             )
-            window.title = "iTraffic"
+            window.title = Self.appDisplayName
             window.setContentSize(NSSize(width: 900, height: 640))
             window.minSize = NSSize(width: 900, height: 640)
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]

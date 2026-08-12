@@ -119,6 +119,27 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(attributedPID(previousPID: 0, resolvedPID: 0), 0)
     }
 
+    func testEmptyProxyConnectionTableIsStillDetected() {
+        XCTAssertEqual(
+            proxyFetchOutcome(statusCode: 200, hasBody: true, connectionCount: 0),
+            .success(connectionCount: 0)
+        )
+    }
+
+    func testProxyTransportFailureIsNotReportedAsAuthenticationFailure() {
+        XCTAssertEqual(
+            proxyFetchOutcome(statusCode: nil, hasBody: false, connectionCount: 0),
+            .transportFailure
+        )
+    }
+
+    func testClashConfigLineParsesControllerAndSecret() {
+        XCTAssertEqual(parseProxyConfigLine("external-controller: 127.0.0.1:9097"),
+                       ProxyConfigEntry(key: "external-controller", value: "127.0.0.1:9097"))
+        XCTAssertEqual(parseProxyConfigLine("secret: 'local-secret'"),
+                       ProxyConfigEntry(key: "secret", value: "local-secret"))
+    }
+
     func testCustomProxyAPIOnlyAllowsLoopbackHosts() {
         XCTAssertTrue(isAllowedProxyAPIURL("http://127.0.0.1:9090"))
         XCTAssertTrue(isAllowedProxyAPIURL("http://localhost:9090"))
