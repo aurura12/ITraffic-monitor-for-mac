@@ -34,17 +34,16 @@ struct TrafficLineChart: View {
 
     private var xAxisStride: Calendar.Component {
         switch timeRange {
-        case .tenMinutes, .oneHour: return .minute
         case .today: return .hour
-        case .sevenDays, .thirtyDays, .thisMonth: return .day
+        case .sevenDays, .thirtyDays: return .day
         }
     }
 
     private var xAxisFormat: Date.FormatStyle {
         switch timeRange {
-        case .tenMinutes, .oneHour, .today:
+        case .today:
             return .dateTime.hour().minute()
-        case .sevenDays, .thirtyDays, .thisMonth:
+        case .sevenDays, .thirtyDays:
             return .dateTime.month(.abbreviated).day()
         }
     }

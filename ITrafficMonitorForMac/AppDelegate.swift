@@ -46,7 +46,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             )
             window.title = L("Settings")
-            window.setContentSize(NSSize(width: 380, height: 220))
+            window.setContentSize(NSSize(width: 380, height: 340))
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
             window.center()
@@ -88,6 +88,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self.network = Network()
         self.network.startListenNetwork()
 
+        // Pierce Clash/Surge proxies so proxied traffic is attributed to the
+        // real apps. No-ops when no proxy is detected.
+        SharedStore.proxyAttributor.start()
+
         // Open the statistics dashboard as the main window.
         AppDelegate.showDashboard()
     }
@@ -111,6 +115,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         print("applicationWillTerminate")
+        SharedStore.proxyAttributor.stop()
         SharedStore.recorder.flush()
     }
 }

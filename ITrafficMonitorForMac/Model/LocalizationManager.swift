@@ -64,8 +64,6 @@ final class LocalizationManager: ObservableObject {
         "Collecting samples…": "正在采样…",
 
         // Ranges / granularity
-        "10 Minutes": "10 分钟",
-        "1 Hour": "1 小时",
         "Today": "今天",
         "7 Days": "7 天",
         "30 Days": "30 天",
@@ -75,14 +73,18 @@ final class LocalizationManager: ObservableObject {
         "Hour": "小时",
         "Day": "天",
         "Month": "月",
+        "Quarter": "季度",
+        "Year": "年",
 
         // Unified dashboard
         "Line": "曲线",
+        "Usage": "使用情况",
+        "Back": "返回",
         "Download": "下载",
         "Upload": "上传",
         "Traffic Timeline": "流量时间轴",
         "Drag to zoom any range": "拖拽可缩放任意区间",
-        "Click any hour cell to zoom in": "点击任意小时格子可放大查看",
+        "Daily traffic per day": "按天呈现每日流量",
         "App Ranking": "区间内应用排行",
         "Rank updates with visible range": "随可见区间联动——框选图表即可缩小范围",
         "Name": "名称",
@@ -90,6 +92,16 @@ final class LocalizationManager: ObservableObject {
         "No apps match the current filter.": "没有匹配当前筛选的应用",
         "Refresh": "手动",
         "All Networks": "全部网络",
+
+        // Usage bar chart
+        "Traffic Usage": "流量使用",
+        "Linear": "实际比例",
+        "Log": "对数比例",
+        "Daily usage": "每日使用情况",
+        "Monthly usage": "每月使用情况",
+        "Quarterly usage": "每季度使用情况",
+        "Yearly usage": "每年使用情况",
+        "No recorded traffic yet.": "暂无流量记录",
 
         // App detail
         "Last 30 Days": "最近 30 天",
@@ -116,6 +128,21 @@ final class LocalizationManager: ObservableObject {
         "Follow System": "跟随系统",
         "Light": "浅色",
         "Dark": "深色",
+
+        // Proxy attribution
+        "Proxy attribution": "代理归属",
+        "Enable proxy attribution": "启用代理归属",
+        "Proxy type": "代理类型",
+        "Auto detect": "自动检测",
+        "Clash": "Clash",
+        "Surge": "Surge",
+        "Off": "关闭",
+        "API base URL": "API 地址",
+        "Secret": "密钥",
+        "Proxy detected": "已检测到代理",
+        "No proxy detected": "未检测到代理",
+        "Secret required": "需要密钥",
+        "Redetect": "重新检测",
     ]
 
     private init() {

@@ -60,10 +60,19 @@ struct ExportTrafficRow {
     let outBytes: Int
 }
 
-struct HeatmapCell: Hashable {
+/// One cell in the day-granularity calendar heatmap (last 365 days).
+struct CalendarDayCell: Hashable {
     let day: Int
-    let hour: Int
     let totalBytes: Int
+}
+
+/// One bar in the horizontal usage bar chart: total traffic for a
+/// day / month / quarter / year period.
+struct BarPeriodPoint: Identifiable {
+    let period: Date
+    let label: String   // language-neutral category label, e.g. "2026-08", "2026-Q3"
+    let totalBytes: Int
+    var id: String { label }
 }
 
 struct TrafficPoint {
@@ -105,8 +114,6 @@ final class TrafficDatabase {
 
     private let dbQueue = DispatchQueue(label: "traffic-db", qos: .utility)
     private var db: OpaquePointer?
-
-    private let retentionDays = 90
 
     init() {
         dbQueue.sync {
@@ -241,20 +248,6 @@ final class TrafficDatabase {
             if rc != SQLITE_OK {
                 print("[TrafficDatabase] COMMIT failed: \(String(cString: sqlite3_errmsg(db)))")
             }
-        }
-    }
-
-    /// Delete rows older than `retentionDays` so the table stays small.
-    func pruneIfNeeded() {
-        dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
-            let cutoff = Int(Date().timeIntervalSince1970) - self.retentionDays * 86400
-            let sql = "DELETE FROM app_traffic WHERE bucket_start < ?;"
-            var stmt: OpaquePointer?
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
-            sqlite3_bind_int64(stmt, 1, Int64(cutoff))
-            sqlite3_step(stmt)
-            sqlite3_finalize(stmt)
         }
     }
 
@@ -476,63 +469,6 @@ final class TrafficDatabase {
             }
             sqlite3_finalize(stmt)
             DispatchQueue.main.async { completion(rows) }
-        }
-    }
-
-    /// Hour × day heatmap cells for the last `days` days.
-    func heatmap(days: Int, completion: @escaping ([HeatmapCell]) -> Void) {
-        dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
-            let now = Int(Date().timeIntervalSince1970)
-            let start = now - days * 86400
-            var cells: [HeatmapCell] = []
-            var stmt: OpaquePointer?
-            let sql = """
-            SELECT day, hour, SUM(in_bytes+out_bytes)
-            FROM app_traffic WHERE bucket_start >= ?
-            GROUP BY day, hour ORDER BY day, hour;
-            """
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-                completion([]); return
-            }
-            sqlite3_bind_int64(stmt, 1, Int64(start))
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                cells.append(HeatmapCell(
-                    day: Int(sqlite3_column_int64(stmt, 0)),
-                    hour: Int(sqlite3_column_int64(stmt, 1)),
-                    totalBytes: Int(sqlite3_column_int64(stmt, 2))
-                ))
-            }
-            sqlite3_finalize(stmt)
-            DispatchQueue.main.async { completion(cells) }
-        }
-    }
-
-    /// Hour × day heatmap cells within [start, end).
-    func heatmap(start: Int, end: Int, completion: @escaping ([HeatmapCell]) -> Void) {
-        dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
-            var cells: [HeatmapCell] = []
-            var stmt: OpaquePointer?
-            let sql = """
-            SELECT day, hour, SUM(in_bytes+out_bytes)
-            FROM app_traffic WHERE bucket_start >= ? AND bucket_start < ?
-            GROUP BY day, hour ORDER BY day, hour;
-            """
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-                completion([]); return
-            }
-            sqlite3_bind_int64(stmt, 1, Int64(start))
-            sqlite3_bind_int64(stmt, 2, Int64(end))
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                cells.append(HeatmapCell(
-                    day: Int(sqlite3_column_int64(stmt, 0)),
-                    hour: Int(sqlite3_column_int64(stmt, 1)),
-                    totalBytes: Int(sqlite3_column_int64(stmt, 2))
-                ))
-            }
-            sqlite3_finalize(stmt)
-            DispatchQueue.main.async { completion(cells) }
         }
     }
 

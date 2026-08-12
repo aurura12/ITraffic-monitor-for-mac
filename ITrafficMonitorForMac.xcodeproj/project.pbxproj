@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		044B84B65F63E4F22D36F249 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */; };
+		08F3F7A1B55319A05288CB08 /* ProxyAttributor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC43C0CA35F7577E3D134A8 /* ProxyAttributor.swift */; };
 		18C1A7695438BEC38408C768 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */; };
 		197CDA3635EA011D46FDF612 /* AppRankingTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB64FEF25D607571553044E0 /* AppRankingTable.swift */; };
 		266B81EFA9249B22632C4E84 /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC7303753732C9E0A5C756B /* ExportView.swift */; };
@@ -19,7 +20,6 @@
 		47E3ABDEBFE7000CE5F116FC /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 748FB46B5B1D40583CCBFC28 /* Store.swift */; };
 		523838588E2F8ED5D7A7110D /* TrafficDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = E760B012490A706D383888B1 /* TrafficDatabase.swift */; };
 		5EDE6F411DC81721B4AEC422 /* AppDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA22D03B2B11F19C7F5DFE3 /* AppDetailView.swift */; };
-		72BCB31219532EC68A6082BA /* TrafficHeatmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5753A29DE78416F886053225 /* TrafficHeatmap.swift */; };
 		7A1983D97A841B400C97C921 /* ProcessEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */; };
 		7F6633B2B1C6637EC54CDC9C /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5338D25E880B4A7444E80A /* LocalizationManager.swift */; };
 		89CBFC2CD4505CEE4266FA83 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F0324CEDB56F043E9676BA /* DashboardView.swift */; };
@@ -31,6 +31,8 @@
 		BA3CA77574B32E1DDE37B33F /* TrafficLineChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54D307461D73ABC43EA1B88 /* TrafficLineChart.swift */; };
 		C17313D7F40F6AA244E2B66E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */; };
 		C83A363AEF03C675946D2EB4 /* UnifiedDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9CF9AC9226D7A354F2DF2F /* UnifiedDashboardView.swift */; };
+		D4E5F60718293A4B5C6D7E8F /* TrafficCalendarHeatmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5D /* TrafficCalendarHeatmap.swift */; };
+		D6F0A1B2C3D4E5F60718293A4 /* TrafficBarChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E7A1B2C3D4E5F60718293A4B /* TrafficBarChartView.swift */; };
 		D854C7C07782DAFA709E5C66 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DC67E0DE60F9255C3A54E63 /* Assets.xcassets */; };
 		ED92E8103B5EA56B695BE2EE /* NettopRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30BFFD61518831774A91BFE /* NettopRunner.swift */; };
 /* End PBXBuildFile section */
@@ -38,13 +40,13 @@
 /* Begin PBXFileReference section */
 		031A75F509B62CC97841A678 /* TrafficRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficRecorder.swift; sourceTree = "<group>"; };
 		0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		0CC43C0CA35F7577E3D134A8 /* ProxyAttributor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyAttributor.swift; sourceTree = "<group>"; };
 		0DA22D03B2B11F19C7F5DFE3 /* AppDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDetailView.swift; sourceTree = "<group>"; };
 		116719D934B1B6383F92CBDC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		11F0324CEDB56F043E9676BA /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		2200E367B287B2B15A0DD387 /* PerAppRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerAppRateStore.swift; sourceTree = "<group>"; };
 		3D30F89C22ACDFD9102801CD /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
 		4B40D6B010727301F2E83F30 /* ITrafficMonitorForMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ITrafficMonitorForMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		5753A29DE78416F886053225 /* TrafficHeatmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficHeatmap.swift; sourceTree = "<group>"; };
 		5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		748FB46B5B1D40583CCBFC28 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
@@ -52,10 +54,12 @@
 		B30BFFD61518831774A91BFE /* NettopRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NettopRunner.swift; sourceTree = "<group>"; };
 		B4DE4AB076FAF20A640BD23F /* Network.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Network.swift; sourceTree = "<group>"; };
 		BB9CF9AC9226D7A354F2DF2F /* UnifiedDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedDashboardView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5D /* TrafficCalendarHeatmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficCalendarHeatmap.swift; sourceTree = "<group>"; };
 		CB270FCE9653D5465B9967DE /* ListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListViewModel.swift; sourceTree = "<group>"; };
 		CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusDataModel.swift; sourceTree = "<group>"; };
 		CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessEntity.swift; sourceTree = "<group>"; };
 		E54D307461D73ABC43EA1B88 /* TrafficLineChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficLineChart.swift; sourceTree = "<group>"; };
+		E7A1B2C3D4E5F60718293A4B /* TrafficBarChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficBarChartView.swift; sourceTree = "<group>"; };
 		E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeRateStore.swift; sourceTree = "<group>"; };
 		E760B012490A706D383888B1 /* TrafficDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficDatabase.swift; sourceTree = "<group>"; };
 		E83DF0462DC3E858E4B86679 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -88,7 +92,8 @@
 				FAC7303753732C9E0A5C756B /* ExportView.swift */,
 				E83DF0462DC3E858E4B86679 /* SettingsView.swift */,
 				116719D934B1B6383F92CBDC /* Theme.swift */,
-				5753A29DE78416F886053225 /* TrafficHeatmap.swift */,
+				E7A1B2C3D4E5F60718293A4B /* TrafficBarChartView.swift */,
+				A1B2C3D4E5F60718293A4B5D /* TrafficCalendarHeatmap.swift */,
 				E54D307461D73ABC43EA1B88 /* TrafficLineChart.swift */,
 				BB9CF9AC9226D7A354F2DF2F /* UnifiedDashboardView.swift */,
 			);
@@ -115,6 +120,7 @@
 			isa = PBXGroup;
 			children = (
 				B30BFFD61518831774A91BFE /* NettopRunner.swift */,
+				0CC43C0CA35F7577E3D134A8 /* ProxyAttributor.swift */,
 				E760B012490A706D383888B1 /* TrafficDatabase.swift */,
 				031A75F509B62CC97841A678 /* TrafficRecorder.swift */,
 			);
@@ -239,13 +245,15 @@
 				403DD76556F421C4383180FB /* Network.swift in Sources */,
 				2F2F1D0255B78909846B9451 /* PerAppRateStore.swift in Sources */,
 				7A1983D97A841B400C97C921 /* ProcessEntity.swift in Sources */,
+				08F3F7A1B55319A05288CB08 /* ProxyAttributor.swift in Sources */,
 				3D1C49846A28204225568646 /* RealtimeRateStore.swift in Sources */,
 				AC61612D9F0AF5B394911092 /* SettingsView.swift in Sources */,
 				351C3DAE423EA025FD8CD086 /* StatusDataModel.swift in Sources */,
 				47E3ABDEBFE7000CE5F116FC /* Store.swift in Sources */,
 				989BDBA14A37D405D36D0090 /* Theme.swift in Sources */,
 				523838588E2F8ED5D7A7110D /* TrafficDatabase.swift in Sources */,
-				72BCB31219532EC68A6082BA /* TrafficHeatmap.swift in Sources */,
+				D6F0A1B2C3D4E5F60718293A4 /* TrafficBarChartView.swift in Sources */,
+				D4E5F60718293A4B5C6D7E8F /* TrafficCalendarHeatmap.swift in Sources */,
 				BA3CA77574B32E1DDE37B33F /* TrafficLineChart.swift in Sources */,
 				38C18D205EE7C456EEB4AE1D /* TrafficRecorder.swift in Sources */,
 				C83A363AEF03C675946D2EB4 /* UnifiedDashboardView.swift in Sources */,
@@ -301,7 +309,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = ITraffic;
@@ -329,7 +337,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.2.0;
 				OTHER_LDFLAGS = (
 					"-lsqlite3",
@@ -357,7 +365,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.2.0;
 				OTHER_LDFLAGS = (
 					"-lsqlite3",
@@ -419,7 +427,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
