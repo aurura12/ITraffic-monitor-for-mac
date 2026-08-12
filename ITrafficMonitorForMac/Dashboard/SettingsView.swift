@@ -5,6 +5,50 @@
 
 import SwiftUI
 import AppKit
+import ServiceManagement
+
+final class LaunchAtLoginManager: ObservableObject {
+    @Published private(set) var isEnabled: Bool
+    @Published var errorMessage: String?
+
+    private let statusProvider: () -> Bool
+    private let setEnabled: (Bool) throws -> Void
+
+    init(
+        statusProvider: @escaping () -> Bool = {
+            SMAppService.mainApp.status == .enabled
+        },
+        setEnabled: @escaping (Bool) throws -> Void = { enabled in
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        }
+    ) {
+        self.statusProvider = statusProvider
+        self.setEnabled = setEnabled
+        self.isEnabled = statusProvider()
+    }
+
+    func refresh() {
+        isEnabled = statusProvider()
+    }
+
+    @discardableResult
+    func setEnabled(_ enabled: Bool) -> Bool {
+        do {
+            try setEnabled(enabled)
+            refresh()
+            errorMessage = nil
+            return true
+        } catch {
+            refresh()
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+}
 
 struct SettingsView: View {
     @EnvironmentObject var i18n: LocalizationManager
@@ -16,6 +60,7 @@ struct SettingsView: View {
     @AppStorage("proxyAttributionBaseURL") private var proxyBaseURL = ""
     @AppStorage("proxyAttributionSecret") private var proxySecret = ""
     @ObservedObject private var proxy = SharedStore.proxyAttributor
+    @StateObject private var launchAtLogin = LaunchAtLoginManager()
 
     private var proxyStatusText: String {
         switch proxy.status {
@@ -42,6 +87,11 @@ struct SettingsView: View {
                 Text(i18n.text("Light")).tag("light")
                 Text(i18n.text("Dark")).tag("dark")
             }
+
+            Toggle(i18n.text("Launch at login"), isOn: Binding(
+                get: { launchAtLogin.isEnabled },
+                set: { launchAtLogin.setEnabled($0) }
+            ))
 
             Section(i18n.text("Proxy attribution")) {
                 Toggle(i18n.text("Enable proxy attribution"), isOn: $proxyEnabled)
@@ -79,7 +129,19 @@ struct SettingsView: View {
             AppDelegate.applyAppearance(raw)
         }
         .onAppear {
+            launchAtLogin.refresh()
             AppDelegate.refreshSettingsWindowTitle()
+        }
+        .alert(
+            i18n.text("Launch at login failed"),
+            isPresented: Binding(
+                get: { launchAtLogin.errorMessage != nil },
+                set: { if !$0 { launchAtLogin.errorMessage = nil } }
+            )
+        ) {
+            Button(i18n.text("OK")) { launchAtLogin.errorMessage = nil }
+        } message: {
+            Text(launchAtLogin.errorMessage ?? "")
         }
     }
 }

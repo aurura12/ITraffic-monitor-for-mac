@@ -15,6 +15,7 @@
 //  How this pierces the proxy:
 //   1. Poll the proxy's own connection table every 2s:
 //        Clash: GET http://127.0.0.1:9090/connections
+//        Clash Verge: Unix socket /tmp/verge/verge-mihomo.sock
 //        Surge: GET http://127.0.0.1:6171/v1/connections
 //      Each connection reports `metadata.sourcePort` (the client app's
 //      local port on this Mac) plus session-cumulative `upload`/`download`.
@@ -33,6 +34,28 @@
 
 import Foundation
 import Combine
+import AppKit
+
+let unattributedTunnelProcessLabel = "VPN/TUN 未识别流量"
+
+struct UnixSocketCurlResponse: Equatable {
+    let statusCode: Int
+    let body: String
+}
+
+func parseUnixSocketCurlOutput(_ output: String) -> UnixSocketCurlResponse? {
+    let marker = "__ITRAFFIC_STATUS__:"
+    guard let markerRange = output.range(of: marker, options: .backwards),
+          let statusLine = output[markerRange.upperBound...]
+            .split(whereSeparator: { $0.isNewline })
+            .first,
+          let statusCode = Int(statusLine.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        return nil
+    }
+    let body = String(output[..<markerRange.lowerBound])
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    return UnixSocketCurlResponse(statusCode: statusCode, body: body)
+}
 
 enum ProxyStatus: Equatable {
     case disabled
@@ -47,6 +70,9 @@ private struct ProxyConnection {
     let sourcePort: Int
     let upload: Int64
     let download: Int64
+    let process: String?
+    let processPath: String?
+    let isTun: Bool
 }
 
 /// One tracked connection. Byte totals are session-cumulative; `pid` is the
@@ -78,6 +104,7 @@ final class ProxyAttributor: ObservableObject {
     private let queue = DispatchQueue(label: "proxy-attributor", qos: .utility)
     private var timer: DispatchSourceTimer?
     private var previousConnections: [String: TrackedConnection] = [:]
+    private var hasUnattributedTunnelTraffic = false
 
     private let interval = 2 // seconds, matches nettop cadence
 
@@ -99,6 +126,7 @@ final class ProxyAttributor: ObservableObject {
         let path: String
         let port: Int
         let name: String
+        let unixSocket: String?
     }
 
     private enum DetectResult {
@@ -141,7 +169,8 @@ final class ProxyAttributor: ObservableObject {
     /// takes a locked snapshot and transforms the entity array.
     func attributedEntities(_ raw: [ProcessEntity]) -> [ProcessEntity] {
         let snapshot = takeCreditsSnapshot()
-        guard !snapshot.credits.isEmpty, let proxyPid = snapshot.proxyPid else {
+        guard let proxyPid = snapshot.proxyPid,
+              !snapshot.credits.isEmpty || snapshot.hasUnattributedTunnelTraffic else {
             return raw
         }
 
@@ -177,7 +206,7 @@ final class ProxyAttributor: ObservableObject {
         }
         let sumIn = creditedIn.values.reduce(0, +)
         let sumOut = creditedOut.values.reduce(0, +)
-        guard sumIn > 0 || sumOut > 0 else { return raw }
+        guard sumIn > 0 || sumOut > 0 || snapshot.hasUnattributedTunnelTraffic else { return raw }
 
         var result: [ProcessEntity] = []
         var existingByPid: [Int: Int] = [:]
@@ -188,6 +217,9 @@ final class ProxyAttributor: ObservableObject {
                 // Proxy keeps only its own uncarried bytes.
                 entity.inBytes = e.inBytes - min(e.inBytes, sumIn)
                 entity.outBytes = e.outBytes - min(e.outBytes, sumOut)
+                if snapshot.hasUnattributedTunnelTraffic {
+                    entity.name = unattributedTunnelProcessLabel
+                }
             } else if let addIn = creditedIn[e.pid], let addOut = creditedOut[e.pid] {
                 entity.inBytes = e.inBytes + addIn
                 entity.outBytes = e.outBytes + addOut
@@ -239,14 +271,16 @@ final class ProxyAttributor: ObservableObject {
 
     private func applyDetection(candidate: Candidate, connections: [ProxyConnection]) {
         let portMap = socketPortMap()
-        let proxyPid = resolveProxyPid(port: candidate.port)
+        let proxyPid = resolveProxyPid(candidate: candidate)
         let prev = previousConnections
 
         var credits: [Int: (inBytes: Int, outBytes: Int)] = [:]
         var newPrevious: [String: TrackedConnection] = [:]
 
         for conn in connections {
-            let pid = portMap.ports[conn.sourcePort] ?? 0
+            let pid = portMap.ports[conn.sourcePort]
+                ?? resolveProcessPID(name: conn.process, path: conn.processPath)
+                ?? 0
             newPrevious[conn.id] = TrackedConnection(
                 pid: pid,
                 sourcePort: conn.sourcePort,
@@ -267,9 +301,14 @@ final class ProxyAttributor: ObservableObject {
         }
 
         previousConnections = newPrevious
+        let tunnelUnattributed = connections.contains {
+            $0.isTun && (portMap.ports[$0.sourcePort] == nil)
+                && resolveProcessPID(name: $0.process, path: $0.processPath) == nil
+        }
         stateLock.lock()
         pendingCredits = credits
         self.proxyPid = proxyPid
+        hasUnattributedTunnelTraffic = tunnelUnattributed
         pidNameCache.merge(portMap.names) { _, new in new }
         stateLock.unlock()
     }
@@ -283,23 +322,25 @@ final class ProxyAttributor: ObservableObject {
             let port = URL(string: base)?.port ?? (cfg.type == .surge ? 6171 : 9090)
             let path = cfg.type == .surge ? "/v1/connections" : "/connections"
             let name = cfg.type == .surge ? "Surge" : "Clash"
-            return [Candidate(baseURL: base, path: path, port: port, name: name)]
+            return [Candidate(baseURL: base, path: path, port: port, name: name, unixSocket: nil)]
         }
         switch cfg.type {
         case .clash:
             // Clash (9090) and Clash Verge / Mihomo (9097) use the same
             // /connections shape; probe both so either is detected in auto.
             return [
-                Candidate(baseURL: "http://127.0.0.1:9090", path: "/connections", port: 9090, name: "Clash"),
-                Candidate(baseURL: "http://127.0.0.1:9097", path: "/connections", port: 9097, name: "Clash Verge"),
+                Candidate(baseURL: "", path: "/connections", port: 9097, name: "Clash Verge", unixSocket: "/tmp/verge/verge-mihomo.sock"),
+                Candidate(baseURL: "http://127.0.0.1:9090", path: "/connections", port: 9090, name: "Clash", unixSocket: nil),
+                Candidate(baseURL: "http://127.0.0.1:9097", path: "/connections", port: 9097, name: "Clash Verge", unixSocket: nil),
             ]
         case .surge:
-            return [Candidate(baseURL: "http://127.0.0.1:6171", path: "/v1/connections", port: 6171, name: "Surge")]
+            return [Candidate(baseURL: "http://127.0.0.1:6171", path: "/v1/connections", port: 6171, name: "Surge", unixSocket: nil)]
         case .auto:
             return [
-                Candidate(baseURL: "http://127.0.0.1:9090", path: "/connections", port: 9090, name: "Clash"),
-                Candidate(baseURL: "http://127.0.0.1:9097", path: "/connections", port: 9097, name: "Clash Verge"),
-                Candidate(baseURL: "http://127.0.0.1:6171", path: "/v1/connections", port: 6171, name: "Surge"),
+                Candidate(baseURL: "", path: "/connections", port: 9097, name: "Clash Verge", unixSocket: "/tmp/verge/verge-mihomo.sock"),
+                Candidate(baseURL: "http://127.0.0.1:9090", path: "/connections", port: 9090, name: "Clash", unixSocket: nil),
+                Candidate(baseURL: "http://127.0.0.1:9097", path: "/connections", port: 9097, name: "Clash Verge", unixSocket: nil),
+                Candidate(baseURL: "http://127.0.0.1:6171", path: "/v1/connections", port: 6171, name: "Surge", unixSocket: nil),
             ]
         case .off:
             return []
@@ -309,7 +350,7 @@ final class ProxyAttributor: ObservableObject {
     private func tryDetect(_ candidates: [Candidate], secret: String) -> DetectResult {
         var sawAuthRequired = false
         for c in candidates {
-            switch fetch(c.baseURL + c.path, secret: secret) {
+            switch fetch(c, secret: secret) {
             case .authRequired:
                 sawAuthRequired = true
             case .ok(let connections):
@@ -328,7 +369,14 @@ final class ProxyAttributor: ObservableObject {
         case failed
     }
 
-    private func fetch(_ urlString: String, secret: String) -> FetchResult {
+    private func fetch(_ candidate: Candidate, secret: String) -> FetchResult {
+        if let unixSocket = candidate.unixSocket {
+            return fetchUnixSocket(unixSocket, path: candidate.path, secret: secret)
+        }
+        return fetchHTTP(candidate.baseURL + candidate.path, secret: secret)
+    }
+
+    private func fetchHTTP(_ urlString: String, secret: String) -> FetchResult {
         guard let url = URL(string: urlString) else { return .failed }
         var request = URLRequest(url: url)
         request.timeoutInterval = 1.5
@@ -357,12 +405,57 @@ final class ProxyAttributor: ObservableObject {
         return .ok(conns)
     }
 
+    private func fetchUnixSocket(_ socketPath: String, path: String, secret: String) -> FetchResult {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        var args = [
+            "-sS", "--max-time", "2",
+            "--unix-socket", socketPath,
+            "-H", "Accept: application/json"
+        ]
+        if !secret.isEmpty {
+            args += ["-H", "Authorization: Bearer \(secret)"]
+        }
+        args += ["-w", "\\n__ITRAFFIC_STATUS__:%{http_code}", "http://localhost\(path)"]
+        process.arguments = args
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        do {
+            try process.run()
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            process.waitUntilExit()
+            guard let text = String(data: data, encoding: .utf8),
+                  let response = parseUnixSocketCurlOutput(text) else {
+                return .failed
+            }
+            if response.statusCode == 401 || response.statusCode == 403 {
+                return .authRequired
+            }
+            guard response.statusCode == 200,
+                  let body = response.body.data(using: .utf8),
+                  let conns = decodeConnections(body),
+                  !conns.isEmpty else {
+                return .failed
+            }
+            return .ok(conns)
+        } catch {
+            return .failed
+        }
+    }
+
     /// Decodes both the Clash shape (metadata.sourcePort / upload / download)
     /// and the Surge shape (source.port / bytes.up / bytes.down).
     private func decodeConnections(_ data: Data) -> [ProxyConnection]? {
         struct Raw: Decodable {
             struct C: Decodable {
-                struct Metadata: Decodable { let sourcePort: String? }
+                struct Metadata: Decodable {
+                    let sourcePort: String?
+                    let process: String?
+                    let processPath: String?
+                    let inboundName: String?
+                }
                 struct Source: Decodable { let port: Int? }
                 struct Bytes: Decodable { let up: Int?; let down: Int? }
                 let id: String?
@@ -385,10 +478,38 @@ final class ProxyAttributor: ObservableObject {
                 id: id,
                 sourcePort: port,
                 upload: Int64(c.upload ?? c.bytes?.up ?? 0),
-                download: Int64(c.download ?? c.bytes?.down ?? 0)
+                download: Int64(c.download ?? c.bytes?.down ?? 0),
+                process: c.metadata?.process,
+                processPath: c.metadata?.processPath,
+                isTun: c.metadata?.inboundName?.localizedCaseInsensitiveContains("tun") ?? false
             ))
         }
         return out.isEmpty ? nil : out
+    }
+
+    /// Resolve Mihomo's optional process metadata to a currently running PID.
+    /// TUN connections can only be attributed this way; their virtual source
+    /// port does not belong to the originating application's socket table.
+    private func resolveProcessPID(name: String?, path: String?) -> Int? {
+        let normalizedPath = path?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !(normalizedPath?.isEmpty ?? true) || !(normalizedName?.isEmpty ?? true) else {
+            return nil
+        }
+
+        for app in NSWorkspace.shared.runningApplications {
+            if let normalizedPath,
+               !normalizedPath.isEmpty,
+               app.executableURL?.path == normalizedPath {
+                return Int(app.processIdentifier)
+            }
+            if let normalizedName,
+               !normalizedName.isEmpty,
+               app.localizedName?.localizedCaseInsensitiveCompare(normalizedName) == .orderedSame {
+                return Int(app.processIdentifier)
+            }
+        }
+        return nil
     }
 
     // MARK: - Socket table (lsof)
@@ -457,9 +578,35 @@ final class ProxyAttributor: ObservableObject {
         return nil
     }
 
-    /// PID of the process listening on the external-controller port.
+    /// PID of the process serving the proxy controller.
+    private func resolveProxyPid(candidate: Candidate) -> Int? {
+        if let unixSocket = candidate.unixSocket {
+            if let output = runLsof(["-nP", "-U", unixSocket]),
+               let pid = firstPID(in: output) {
+                return pid
+            }
+
+            // Clash Verge's privileged core keeps its PID next to the socket.
+            // This fallback handles the case where lsof cannot inspect the
+            // root-owned core process from the app context.
+            let socketURL = URL(fileURLWithPath: unixSocket)
+            let pidURL = socketURL.deletingLastPathComponent()
+                .appendingPathComponent("clash-verge-service.core.json")
+            if let data = try? Data(contentsOf: pidURL),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let pid = object["pid"] as? Int {
+                return pid
+            }
+        }
+        return resolveProxyPid(port: candidate.port)
+    }
+
     private func resolveProxyPid(port: Int) -> Int? {
         guard let output = runLsof(["-nP", "-iTCP:\(port)", "-sTCP:LISTEN"]) else { return nil }
+        return firstPID(in: output)
+    }
+
+    private func firstPID(in output: String) -> Int? {
         for line in output.split(separator: "\n").dropFirst() {
             let fields = line.split(separator: " ", omittingEmptySubsequences: true)
             if fields.count >= 2, let pid = Int(fields[1]) {
@@ -496,15 +643,20 @@ final class ProxyAttributor: ObservableObject {
         stateLock.lock()
         pendingCredits = [:]
         proxyPid = nil
+        hasUnattributedTunnelTraffic = false
         stateLock.unlock()
     }
 
-    private func takeCreditsSnapshot() -> (credits: [Int: (inBytes: Int, outBytes: Int)], proxyPid: Int?) {
+    private func takeCreditsSnapshot() -> (
+        credits: [Int: (inBytes: Int, outBytes: Int)],
+        proxyPid: Int?,
+        hasUnattributedTunnelTraffic: Bool
+    ) {
         stateLock.lock()
         defer { stateLock.unlock() }
         let credits = pendingCredits
         pendingCredits = [:]
-        return (credits, proxyPid)
+        return (credits, proxyPid, hasUnattributedTunnelTraffic)
     }
 
     private func pidNamesSnapshot() -> [Int: String] {
