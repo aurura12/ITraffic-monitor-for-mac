@@ -101,6 +101,8 @@ struct AppInfo {
     var icon: NSImage
     var name: String?
     var bundleIdentifier: String?
+    var executablePath: String?
+    var launchDate: Date?
     var updateTime: Int
 }
 
@@ -133,13 +135,6 @@ func preferredDisplayName(applicationName: String?, processName: String, walkedT
 /// (history recorder).
 func getAppInfo(pid: Int, name: String) -> AppInfo? {
     let timestamp = Int(NSDate().timeIntervalSince1970)
-    appInfoLock.lock()
-    if let cached = APP_INFO_CACHE[pid], (timestamp - cached.updateTime) < CACHE_TTL {
-        appInfoLock.unlock()
-        return cached
-    }
-    appInfoLock.unlock()
-
     var resolvedApp = NSRunningApplication(processIdentifier: pid_t(pid))
     var walkedToAncestor = false
 
@@ -156,6 +151,20 @@ func getAppInfo(pid: Int, name: String) -> AppInfo? {
         }
     }
 
+    // Validate the process identity before reusing a PID-keyed cache entry.
+    // PIDs are reused by macOS, so a time-only cache can assign a new process
+    // to the previous process's application.
+    appInfoLock.lock()
+    if let cached = APP_INFO_CACHE[pid],
+       (timestamp - cached.updateTime) < CACHE_TTL,
+       let resolvedApp,
+       cached.executablePath == resolvedApp.executableURL?.path,
+       cached.launchDate == resolvedApp.launchDate {
+        appInfoLock.unlock()
+        return cached
+    }
+    appInfoLock.unlock()
+
     // Keep the original NSImage (multi-rep, Retina-aware). Pre-
     // rasterising to a fixed pixel size via lockFocus produced soft
     // icons on 2x displays. SwiftUI's Image will downscale crisply
@@ -169,7 +178,14 @@ func getAppInfo(pid: Int, name: String) -> AppInfo? {
         walkedToAncestor: walkedToAncestor
     )
 
-    let info = AppInfo(icon: icon, name: displayName, bundleIdentifier: bundleIdentifier, updateTime: timestamp)
+    let info = AppInfo(
+        icon: icon,
+        name: displayName,
+        bundleIdentifier: bundleIdentifier,
+        executablePath: resolvedApp?.executableURL?.path,
+        launchDate: resolvedApp?.launchDate,
+        updateTime: timestamp
+    )
     appInfoLock.lock()
     APP_INFO_CACHE[pid] = info
     appInfoLock.unlock()

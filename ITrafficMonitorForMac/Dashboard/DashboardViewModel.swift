@@ -54,6 +54,23 @@ enum ChartMode: String, CaseIterable, Identifiable {
     var labelKey: String { rawValue }
 }
 
+/// Produces a fixed 24-point local-day series for the Today view. SQLite only
+/// returns buckets that contain traffic, so missing hours must be materialized
+/// as zeroes before the chart can represent the whole day.
+func hourlySeriesPoints(points: [TrafficSeriesPoint], start: Date, calendar: Calendar) -> [TrafficSeriesPoint] {
+    var pointsByHour: [Date: TrafficSeriesPoint] = [:]
+    for point in points {
+        let hourStart = calendar.dateInterval(of: .hour, for: point.date)?.start ?? point.date
+        pointsByHour[hourStart] = point
+    }
+
+    return (0..<24).map { offset in
+        let hourStart = calendar.date(byAdding: .hour, value: offset, to: start)!
+        return pointsByHour[hourStart]
+            ?? TrafficSeriesPoint(date: hourStart, inBytes: 0, outBytes: 0)
+    }
+}
+
 /// Bucketing used by the horizontal usage bar chart.
 enum BarGranularity: String, CaseIterable, Identifiable {
     case day, month, quarter, year
@@ -180,7 +197,17 @@ class DashboardViewModel: ObservableObject {
                 end: interval.end,
                 granularity: timeRange.seriesGranularity
             ) { [weak self] points in
-                self?.seriesPoints = points
+                guard let self else { return }
+                if self.timeRange == .today {
+                    let startDate = Date(timeIntervalSince1970: TimeInterval(interval.start))
+                    self.seriesPoints = hourlySeriesPoints(
+                        points: points,
+                        start: startDate,
+                        calendar: self.calendar
+                    )
+                } else {
+                    self.seriesPoints = points
+                }
             }
         case .heatmap:
             refreshHeatmap()

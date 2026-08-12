@@ -36,7 +36,23 @@ import Foundation
 import Combine
 import AppKit
 
-let unattributedTunnelProcessLabel = "VPN/TUN 未识别流量"
+/// Keep proxy attribution conservative: without a matching nettop proxy row,
+/// API bytes cannot be safely reconciled with interface bytes.
+func capProxyCredit(requested: Int, observedByNettop: Int, proxyVisible: Bool) -> Int {
+    guard proxyVisible, requested > 0, observedByNettop > 0 else { return 0 }
+    return min(requested, observedByNettop)
+}
+
+/// Custom proxy endpoints are only allowed on the local machine. This keeps
+/// proxy credentials from being sent to an accidental or hostile remote URL.
+func isAllowedProxyAPIURL(_ raw: String) -> Bool {
+    guard let url = URL(string: raw),
+          let scheme = url.scheme?.lowercased(),
+          scheme == "http" || scheme == "https",
+          url.user == nil,
+          let host = url.host?.lowercased() else { return false }
+    return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
 
 struct UnixSocketCurlResponse: Equatable {
     let statusCode: Int
@@ -181,8 +197,12 @@ final class ProxyAttributor: ObservableObject {
             proxyIndex = i
             break
         }
-        let proxyIn = proxyIndex.map { raw[$0].inBytes } ?? 0
-        let proxyOut = proxyIndex.map { raw[$0].outBytes } ?? 0
+        // Never apply API deltas without a matching nettop proxy entity. A
+        // missing entity means the two samplers are out of phase, and using
+        // the API total would create traffic from nothing in the history.
+        guard let proxyIndex else { return raw }
+        let proxyIn = raw[proxyIndex].inBytes
+        let proxyOut = raw[proxyIndex].outBytes
 
         let totalIn = snapshot.credits.values.reduce(0) { $0 + $1.inBytes }
         let totalOut = snapshot.credits.values.reduce(0) { $0 + $1.outBytes }
@@ -190,9 +210,11 @@ final class ProxyAttributor: ObservableObject {
         // Direction-level cap: when the proxy entity is visible in the same
         // frame, apps are never credited more than the proxy actually carried
         // (guards against API-payload vs wire-bytes drift). When it is absent
-        // (phase mismatch), credits apply in full and the next frame balances.
-        let scaleIn = proxyIn > 0 && totalIn > proxyIn ? Double(proxyIn) / Double(totalIn) : 1.0
-        let scaleOut = proxyOut > 0 && totalOut > proxyOut ? Double(proxyOut) / Double(totalOut) : 1.0
+        // (phase mismatch), the guard above discards the pending credit.
+        let usableIn = capProxyCredit(requested: totalIn, observedByNettop: proxyIn, proxyVisible: true)
+        let usableOut = capProxyCredit(requested: totalOut, observedByNettop: proxyOut, proxyVisible: true)
+        let scaleIn = totalIn > 0 ? Double(usableIn) / Double(totalIn) : 1.0
+        let scaleOut = totalOut > 0 ? Double(usableOut) / Double(totalOut) : 1.0
 
         var creditedIn: [Int: Int] = [:]
         var creditedOut: [Int: Int] = [:]
@@ -318,6 +340,7 @@ final class ProxyAttributor: ObservableObject {
     private func candidates(for cfg: Config) -> [Candidate] {
         let base = cfg.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !base.isEmpty {
+            guard isAllowedProxyAPIURL(base) else { return [] }
             // Custom base URL overrides the built-in defaults.
             let port = URL(string: base)?.port ?? (cfg.type == .surge ? 6171 : 9090)
             let path = cfg.type == .surge ? "/v1/connections" : "/connections"
