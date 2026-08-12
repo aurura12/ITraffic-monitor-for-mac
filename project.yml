@@ -55,6 +55,23 @@ targets:
           - "-lsqlite3"
         SWIFT_VERSION: 5.0
 
+  ITrafficMonitorForMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: ITrafficMonitorForMacTests
+    dependencies:
+      - target: ITrafficMonitorForMac
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMacTests
+        PRODUCT_NAME: ITrafficMonitorForMacTests
+        SWIFT_MODULE_NAME: ITrafficMonitorForMacTests
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ITraffic.app/Contents/MacOS/ITraffic"
+        SWIFT_VERSION: 5.0
+
 schemes:
   ITrafficMonitorForMac:
     build:
@@ -70,3 +87,5 @@ schemes:
       config: Release
     test:
       config: Debug
+      targets:
+        - ITrafficMonitorForMacTests

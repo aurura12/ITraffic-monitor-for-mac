@@ -37,6 +37,17 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "27107FF2568587E647B589EE"
+               BuildableName = "ITrafficMonitorForMacTests.xctest"
+               BlueprintName = "ITrafficMonitorForMacTests"
+               ReferencedContainer = "container:ITrafficMonitorForMac.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction
