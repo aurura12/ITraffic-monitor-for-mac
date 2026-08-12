@@ -12,6 +12,27 @@
 
 import SwiftUI
 
+func tooltipPosition(for pointer: CGPoint, in size: CGSize) -> CGPoint {
+    let horizontalGap: CGFloat = 16
+    let verticalGap: CGFloat = 10
+    let halfTooltipHeight: CGFloat = 15
+
+    let x = min(max(pointer.x + horizontalGap, 70), max(70, size.width - 70))
+    let above = pointer.y - halfTooltipHeight - verticalGap
+    let y = above >= halfTooltipHeight
+        ? above
+        : pointer.y + halfTooltipHeight + verticalGap
+    return CGPoint(x: x, y: y)
+}
+
+struct BarHoverSelection: Equatable {
+    private(set) var activeBarID: String?
+
+    mutating func update(activeBarID: String?) {
+        self.activeBarID = activeBarID
+    }
+}
+
 struct TrafficBarChartView: View {
     let points: [BarPeriodPoint]
     let scaleMode: BarScaleMode
@@ -26,7 +47,8 @@ struct TrafficBarChartView: View {
     /// Number of X-axis ticks (grid lines + labels).
     private let tickCount = 5
 
-    @State private var hovered: (bar: BarValue, location: CGPoint)?
+    @State private var hoverSelection = BarHoverSelection()
+    @State private var hoveredLocation: CGPoint = .zero
 
     /// Total left inset shared by bar rows and the X axis so the plot area
     /// starts at exactly the same x on every row.
@@ -98,35 +120,29 @@ struct TrafficBarChartView: View {
                     VStack(spacing: 0) {
                         ForEach(barValues) { bar in
                             barRow(bar, plotWidth: plotWidth)
+                                .contentShape(Rectangle())
+                                .onContinuousHover(coordinateSpace: .named("bars")) { phase in
+                                    switch phase {
+                                    case .active(let location):
+                                        hoverSelection.update(activeBarID: bar.id)
+                                        hoveredLocation = location
+                                    case .ended:
+                                        if hoverSelection.activeBarID == bar.id {
+                                            hoverSelection.update(activeBarID: nil)
+                                        }
+                                    }
+                                }
                         }
                         xAxis(plotWidth: plotWidth)
                     }
 
-                    if let hovered {
-                        tooltip(bar: hovered.bar)
-                            .position(x: hovered.location.x, y: hovered.location.y)
+                    if let hoveredBar = barValues.first(where: { $0.id == hoverSelection.activeBarID }) {
+                        tooltip(bar: hoveredBar)
+                            .position(tooltipPosition(for: hoveredLocation, in: geo.size))
+                            .allowsHitTesting(false)
                     }
                 }
                 .coordinateSpace(name: "bars")
-                .background(
-                    GeometryReader { contentGeo in
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onContinuousHover(coordinateSpace: .named("bars")) { phase in
-                                switch phase {
-                                case .active(let location):
-                                    let row = Int(location.y / barPitch)
-                                    if row >= 0, row < barValues.count {
-                                        hovered = (bar: barValues[row], location: location)
-                                    } else {
-                                        hovered = nil
-                                    }
-                                case .ended:
-                                    hovered = nil
-                                }
-                            }
-                    }
-                )
             }
         }
     }
