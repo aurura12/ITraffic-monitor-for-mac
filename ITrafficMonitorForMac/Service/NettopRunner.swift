@@ -67,16 +67,15 @@ final class NettopRunner {
     private func spawn() {
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/script")
+        // `script` also has a `-c` option. Passing nettop's `-c` as a raw
+        // trailing argument makes script consume it, so nettop falls back to
+        // its interactive TUI and the CSV parser receives no usable frames.
+        // Run through sh so every nettop flag, especially `-c`, is passed to
+        // nettop itself.
+        let nettopCommand = "/usr/bin/nettop -P -d -L 0 -J bytes_in,bytes_out -t external -s \(interval) -c"
         task.arguments = [
             "-q", "/dev/null",
-            "/usr/bin/nettop",
-            "-P",                    // per-process
-            "-d",                    // delta mode
-            "-L", "0",               // no log limit
-            "-J", "bytes_in,bytes_out",
-            "-t", "external",        // external interfaces
-            "-s", "\(interval)",     // sample interval (seconds)
-            "-c"                     // CSV / no clear screen
+            "/bin/sh", "-c", "exec \(nettopCommand)"
         ]
 
         let stdin = Pipe()

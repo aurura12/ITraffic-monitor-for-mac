@@ -19,16 +19,18 @@ class ListViewModel: ObservableObject {
         }
         
         for newItem in newItems {
-            let i = pid2IndexForItems["\(newItem.pid)"] ?? -1
+            var normalizedItem = newItem
+            normalizedItem.name = canonicalProcessDisplayName(newItem.name)
+            let i = pid2IndexForItems["\(normalizedItem.pid)"] ?? -1
             if i != -1 {
-                items[i].icon = newItem.icon
-                items[i].name = newItem.name
-                items[i].inBytes = newItem.inBytes
-                items[i].outBytes = newItem.outBytes
+                items[i].icon = normalizedItem.icon
+                items[i].name = normalizedItem.name
+                items[i].inBytes = normalizedItem.inBytes
+                items[i].outBytes = normalizedItem.outBytes
             } else {
-                items.append(newItem)
+                items.append(normalizedItem)
             }
-            pidInNewItems["\(newItem.pid)"] = 1
+            pidInNewItems["\(normalizedItem.pid)"] = 1
         }
         
         items = items.filter(){ pidInNewItems["\($0.pid)"] ?? -1 != -1 }

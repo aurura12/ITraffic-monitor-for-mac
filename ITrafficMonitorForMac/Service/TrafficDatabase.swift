@@ -173,6 +173,37 @@ final class TrafficDatabase {
             print("[TrafficDatabase] migrate failed: \(msg)")
             return
         }
+        migrateClashVergeName()
+    }
+
+    /// Merge rows written by older versions under the raw mihomo process name
+    /// into the stable Clash Verge app key.
+    private func migrateClashVergeName() {
+        guard let db else { return }
+        let sql = """
+        INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
+        SELECT 'Clash Verge', bucket_start, day, hour, SUM(in_bytes), SUM(out_bytes), SUM(sample_count)
+        FROM app_traffic
+        WHERE app_key IN ('verge-mihomo', 'mihomo', 'io.github.clash-verge-rev.clash-verge-rev')
+        GROUP BY bucket_start, day, hour
+        ON CONFLICT(app_key,bucket_start) DO UPDATE SET
+          in_bytes=in_bytes+excluded.in_bytes,
+          out_bytes=out_bytes+excluded.out_bytes,
+          sample_count=sample_count+excluded.sample_count;
+        DELETE FROM app_traffic WHERE app_key IN ('verge-mihomo', 'mihomo', 'io.github.clash-verge-rev.clash-verge-rev');
+        INSERT INTO apps(app_key,display_name,last_seen)
+        SELECT 'Clash Verge', 'Clash Verge', COALESCE(MAX(last_seen), CAST(strftime('%s','now') AS INTEGER))
+        FROM apps
+        WHERE app_key IN ('verge-mihomo', 'mihomo', 'io.github.clash-verge-rev.clash-verge-rev')
+        ON CONFLICT(app_key) DO UPDATE SET
+          display_name='Clash Verge',
+          last_seen=MAX(apps.last_seen, excluded.last_seen);
+        DELETE FROM apps WHERE app_key IN ('verge-mihomo', 'mihomo', 'io.github.clash-verge-rev.clash-verge-rev');
+        """
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] Clash Verge name migration failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
     }
 
     // MARK: - Write

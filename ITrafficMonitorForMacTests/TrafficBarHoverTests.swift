@@ -96,7 +96,7 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertFalse(manager.isEnabled)
     }
 
-    func testProxyCreditsAreDiscardedWhenProxyEntityIsNotVisible() {
+    func testProxyCreditsRemainUsableWhenProxyEntityIsNotVisible() {
         XCTAssertEqual(capProxyCredit(requested: 500, observedByNettop: 0, proxyVisible: false), 0)
     }
 
@@ -109,6 +109,19 @@ final class TrafficBarHoverTests: XCTestCase {
             proxyDisplayName(rawName: "verge-mihomo", isClashVerge: true),
             "Clash Verge"
         )
+    }
+
+    func testMihomoUsesStableClashVergeDatabaseName() {
+        XCTAssertEqual(canonicalProcessDisplayName("verge-mihomo"), "Clash Verge")
+        XCTAssertEqual(canonicalProcessDisplayName("mihomo"), "Clash Verge")
+        XCTAssertEqual(canonicalProcessDisplayName("clash-verge"), "Clash Verge")
+        XCTAssertEqual(canonicalProcessDisplayName("Google Chrome"), "Google Chrome")
+    }
+
+    func testLiveListNormalizesMihomoName() {
+        let viewModel = ListViewModel()
+        viewModel.updateData(newItems: [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 10, outBytes: 2)])
+        XCTAssertEqual(viewModel.items.first?.name, "Clash Verge")
     }
 
     func testExistingConnectionRetainsConfirmedPIDWhenLookupLaterFails() {
@@ -133,11 +146,67 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testProxyDiagnosticsDistinguishAPIFailureFromMissingNetTopProxyRow() {
+        let apiFailure = proxyDiagnosticSummary(.apiUnavailable(endpoint: "unix:/tmp/verge/verge-mihomo.sock"))
+        let missingRow = proxyDiagnosticSummary(.waitingForProxyRow(
+            name: "Clash Verge",
+            endpoint: "unix:/tmp/verge/verge-mihomo.sock",
+            connectionCount: 86,
+            mappedConnectionCount: 73,
+            proxyPID: 91681
+        ))
+
+        XCTAssertTrue(apiFailure.contains("API unavailable"))
+        XCTAssertTrue(missingRow.contains("proxy row missing"))
+        XCTAssertTrue(missingRow.contains("connections=86"))
+        XCTAssertTrue(missingRow.contains("mapped=73"))
+        XCTAssertTrue(missingRow.contains("proxyPID=91681"))
+    }
+
+    func testClashProxyEntityMatchesAnyResolvedPIDOrCanonicalName() {
+        XCTAssertTrue(proxyEntityMatches(
+            pid: 91656,
+            name: "verge-mihomo",
+            proxyPIDs: [91681],
+            isClashVerge: true
+        ))
+        XCTAssertTrue(proxyEntityMatches(
+            pid: 91681,
+            name: "mihomo",
+            proxyPIDs: [91681],
+            isClashVerge: true
+        ))
+        XCTAssertFalse(proxyEntityMatches(
+            pid: 1234,
+            name: "Google Chrome",
+            proxyPIDs: [91681],
+            isClashVerge: true
+        ))
+    }
+
+    func testProxyCreditHelpersClampCountersAndIncludeUploadOnlyPIDs() {
+        XCTAssertEqual(nonNegativeProxyDelta(current: 5, previous: 10), 0)
+        XCTAssertEqual(proxyCreditPIDs(inBytes: [1: 20], outBytes: [2: 30]), [1, 2])
+    }
+
     func testClashConfigLineParsesControllerAndSecret() {
         XCTAssertEqual(parseProxyConfigLine("external-controller: 127.0.0.1:9097"),
                        ProxyConfigEntry(key: "external-controller", value: "127.0.0.1:9097"))
         XCTAssertEqual(parseProxyConfigLine("secret: 'local-secret'"),
                        ProxyConfigEntry(key: "secret", value: "local-secret"))
+    }
+
+    func testProxyCreditsAccumulateAcrossAttributorTicks() {
+        var existing: [Int: (inBytes: Int, outBytes: Int)] = [
+            52391: (inBytes: 100, outBytes: 20)
+        ]
+        accumulateProxyCredits(&existing, [
+            52391: (inBytes: 30, outBytes: 7),
+            52392: (inBytes: 5, outBytes: 2)
+        ])
+        XCTAssertEqual(existing[52391]?.inBytes, 130)
+        XCTAssertEqual(existing[52391]?.outBytes, 27)
+        XCTAssertEqual(existing[52392]?.inBytes, 5)
     }
 
     func testCustomProxyAPIOnlyAllowsLoopbackHosts() {
