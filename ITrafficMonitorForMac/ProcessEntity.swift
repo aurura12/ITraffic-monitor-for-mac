@@ -7,6 +7,15 @@
 import Cocoa
 import Foundation
 
+func canonicalProcessDisplayName(_ name: String) -> String {
+    switch name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+    case "verge-mihomo", "mihomo", "clash-verge", "clash verge", "clash verge.app":
+        return "Clash Verge"
+    default:
+        return name
+    }
+}
+
 struct ProcessEntity: Identifiable {
     var id = UUID()
     
@@ -28,7 +37,13 @@ struct ProcessEntity: Identifiable {
     /// otherwise the display name (e.g. "iTerm2 · node") that the CLI
     /// ancestor walk produced. Falls back to the raw process name.
     public var appKey: String {
+        if canonicalProcessDisplayName(name) == "Clash Verge" {
+            return "Clash Verge"
+        }
         let info = getAppInfo(pid: pid, name: name)
+        if info?.bundleIdentifier == "io.github.clash-verge-rev.clash-verge-rev" {
+            return "Clash Verge"
+        }
         if let bundleId = info?.bundleIdentifier, !bundleId.isEmpty {
             return bundleId
         }
@@ -36,7 +51,13 @@ struct ProcessEntity: Identifiable {
     }
 
     public var displayName: String {
+        if canonicalProcessDisplayName(name) == "Clash Verge" {
+            return "Clash Verge"
+        }
         let info = getAppInfo(pid: pid, name: name)
+        if info?.bundleIdentifier == "io.github.clash-verge-rev.clash-verge-rev" {
+            return "Clash Verge"
+        }
         return info?.name ?? name
     }
 }

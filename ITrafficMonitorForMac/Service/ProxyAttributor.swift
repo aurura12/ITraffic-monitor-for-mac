@@ -33,13 +33,15 @@
 //
 
 import Foundation
+import OSLog
 import Combine
 import AppKit
 
-/// Keep proxy attribution conservative: without a matching nettop proxy row,
-/// API bytes cannot be safely reconciled with interface bytes.
+/// Use the proxy row as a safety cap when it is available. The proxy row is
+/// not a prerequisite: nettop can omit a proxy process for an individual
+/// frame even while the API and the app's local socket prove the traffic.
 func capProxyCredit(requested: Int, observedByNettop: Int, proxyVisible: Bool) -> Int {
-    guard proxyVisible, requested > 0, observedByNettop > 0 else { return 0 }
+    guard requested > 0, proxyVisible else { return 0 }
     return min(requested, observedByNettop)
 }
 
@@ -49,6 +51,31 @@ func proxyDisplayName(rawName: String, isClashVerge: Bool) -> String {
 
 func attributedPID(previousPID: Int, resolvedPID: Int) -> Int {
     previousPID > 0 ? previousPID : resolvedPID
+}
+
+func nonNegativeProxyDelta(current: Int64, previous: Int64) -> Int64 {
+    max(0, current - previous)
+}
+
+func proxyCreditPIDs(inBytes: [Int: Int], outBytes: [Int: Int]) -> Set<Int> {
+    Set(inBytes.keys).union(outBytes.keys)
+}
+
+func proxyEntityMatches(pid: Int, name: String, proxyPIDs: Set<Int>, isClashVerge: Bool) -> Bool {
+    proxyPIDs.contains(pid) ||
+    (isClashVerge && canonicalProcessDisplayName(name) == "Clash Verge")
+}
+
+func accumulateProxyCredits(
+    _ existing: inout [Int: (inBytes: Int, outBytes: Int)],
+    _ additions: [Int: (inBytes: Int, outBytes: Int)]
+) {
+    for (pid, credit) in additions {
+        var current = existing[pid] ?? (inBytes: 0, outBytes: 0)
+        current.inBytes += credit.inBytes
+        current.outBytes += credit.outBytes
+        existing[pid] = current
+    }
 }
 
 /// Custom proxy endpoints are only allowed on the local machine. This keeps
@@ -86,6 +113,34 @@ enum ProxyStatus: Equatable {
     case detected(name: String)
     case notDetected
     case secretRequired
+}
+
+enum ProxyDiagnostic: Equatable {
+    case idle
+    case detected(name: String, endpoint: String, connectionCount: Int, mappedConnectionCount: Int, proxyPID: Int?)
+    case waitingForProxyRow(name: String, endpoint: String, connectionCount: Int, mappedConnectionCount: Int, proxyPID: Int?)
+    case apiUnavailable(endpoint: String)
+    case authRequired(endpoint: String)
+    case notDetected
+}
+
+func proxyDiagnosticSummary(_ diagnostic: ProxyDiagnostic) -> String {
+    switch diagnostic {
+    case .idle:
+        return "idle"
+    case let .detected(name, endpoint, connectionCount, mappedConnectionCount, proxyPID):
+        let pidText = proxyPID.map(String.init) ?? "nil"
+        return "detected \(name) endpoint=\(endpoint) connections=\(connectionCount) mapped=\(mappedConnectionCount) proxyPID=\(pidText)"
+    case let .waitingForProxyRow(name, endpoint, connectionCount, mappedConnectionCount, proxyPID):
+        let pidText = proxyPID.map(String.init) ?? "nil"
+        return "proxy row missing \(name) endpoint=\(endpoint) connections=\(connectionCount) mapped=\(mappedConnectionCount) proxyPID=\(pidText)"
+    case let .apiUnavailable(endpoint):
+        return "API unavailable endpoint=\(endpoint)"
+    case let .authRequired(endpoint):
+        return "API authentication required endpoint=\(endpoint)"
+    case .notDetected:
+        return "proxy not detected"
+    }
 }
 
 enum ProxyFetchOutcome: Equatable {
@@ -149,7 +204,10 @@ private struct TrackedConnection {
 
 final class ProxyAttributor: ObservableObject {
 
+    private let logger = Logger(subsystem: "com.foamzou.ITrafficMonitorForMac", category: "ProxyAttributor")
+
     @Published private(set) var status: ProxyStatus = .disabled
+    @Published private(set) var diagnostic: ProxyDiagnostic = .idle
 
     // MARK: - State shared with the nettop runner queue (locked)
 
@@ -158,10 +216,16 @@ final class ProxyAttributor: ObservableObject {
     private var pendingCredits: [Int: (inBytes: Int, outBytes: Int)] = [:]
     /// The proxy process pid (owns the external-controller listening socket).
     private var proxyPid: Int?
+    private var proxyPIDs: Set<Int> = []
     /// True when proxyPid belongs to Clash Verge's verge-mihomo core.
     private var isClashVergeProxy = false
     /// pid -> process name from lsof, used as a fallback name for new entities.
     private var pidNameCache: [Int: String] = [:]
+    private var lastProxyName = ""
+    private var lastProxyEndpoint = ""
+    private var lastConnectionCount = 0
+    private var lastMappedConnectionCount = 0
+    private var lastProxyRowVisible: Bool?
 
     // MARK: - Attributor-queue state (no lock)
 
@@ -231,39 +295,62 @@ final class ProxyAttributor: ObservableObject {
     /// takes a locked snapshot and transforms the entity array.
     func attributedEntities(_ raw: [ProcessEntity]) -> [ProcessEntity] {
         let snapshot = takeCreditsSnapshot()
-        guard let proxyPid = snapshot.proxyPid else {
+        guard snapshot.proxyPid != nil else {
             return raw
         }
 
-        // Locate the proxy entity in this frame (it may be absent if the
-        // frame window and the attributor tick are out of phase).
+        // Locate the proxy entity in this frame. It may be absent if the
+        // frame window and the attributor tick are out of phase; that must
+        // not hide app traffic already confirmed by the proxy API.
         var proxyIndex: Int?
-        for (i, e) in raw.enumerated() where e.pid == proxyPid {
+        for (i, e) in raw.enumerated()
+        where proxyEntityMatches(pid: e.pid, name: e.name, proxyPIDs: snapshot.proxyPIDs, isClashVerge: snapshot.isClashVergeProxy) {
             proxyIndex = i
             break
         }
-        // Never apply API deltas without a matching nettop proxy entity. A
-        // missing entity means the two samplers are out of phase, and using
-        // the API total would create traffic from nothing in the history.
-        guard let proxyIndex else { return raw }
-        let proxyIn = raw[proxyIndex].inBytes
-        let proxyOut = raw[proxyIndex].outBytes
+        let proxyVisible = proxyIndex != nil
+        let proxyIn = proxyIndex.map { raw[$0].inBytes } ?? 0
+        let proxyOut = proxyIndex.map { raw[$0].outBytes } ?? 0
+
+        if noteProxyRowVisibility(proxyVisible), let detection = detectionSnapshot() {
+            let diagnostic: ProxyDiagnostic = proxyVisible
+                ? .detected(
+                    name: detection.name,
+                    endpoint: detection.endpoint,
+                    connectionCount: detection.connectionCount,
+                    mappedConnectionCount: detection.mappedConnectionCount,
+                    proxyPID: detection.proxyPID
+                )
+                : .waitingForProxyRow(
+                    name: detection.name,
+                    endpoint: detection.endpoint,
+                    connectionCount: detection.connectionCount,
+                    mappedConnectionCount: detection.mappedConnectionCount,
+                    proxyPID: detection.proxyPID
+                )
+            logger.info("proxy row visibility=\(proxyVisible, privacy: .public) \(proxyDiagnosticSummary(diagnostic), privacy: .public)")
+            emitDiagnostic(diagnostic)
+        }
+        guard let proxyIndex else {
+            return raw
+        }
 
         let totalIn = snapshot.credits.values.reduce(0) { $0 + $1.inBytes }
         let totalOut = snapshot.credits.values.reduce(0) { $0 + $1.outBytes }
 
         // Direction-level cap: when the proxy entity is visible in the same
         // frame, apps are never credited more than the proxy actually carried
-        // (guards against API-payload vs wire-bytes drift). When it is absent
-        // (phase mismatch), the guard above discards the pending credit.
-        let usableIn = capProxyCredit(requested: totalIn, observedByNettop: proxyIn, proxyVisible: true)
-        let usableOut = capProxyCredit(requested: totalOut, observedByNettop: proxyOut, proxyVisible: true)
+        // (guards against API-payload vs wire-bytes drift). When it is absent,
+        // use the API delta directly so a nettop phase gap cannot erase app
+        // traffic that has already been identified by source port.
+        let usableIn = capProxyCredit(requested: totalIn, observedByNettop: proxyIn, proxyVisible: proxyVisible)
+        let usableOut = capProxyCredit(requested: totalOut, observedByNettop: proxyOut, proxyVisible: proxyVisible)
         let scaleIn = totalIn > 0 ? Double(usableIn) / Double(totalIn) : 1.0
         let scaleOut = totalOut > 0 ? Double(usableOut) / Double(totalOut) : 1.0
 
         var creditedIn: [Int: Int] = [:]
         var creditedOut: [Int: Int] = [:]
-        for (pid, c) in snapshot.credits where pid != proxyPid {
+        for (pid, c) in snapshot.credits where !snapshot.proxyPIDs.contains(pid) {
             let scaledIn = Int(Double(c.inBytes) * scaleIn)
             let scaledOut = Int(Double(c.outBytes) * scaleOut)
             if scaledIn > 0 || scaledOut > 0 {
@@ -273,19 +360,29 @@ final class ProxyAttributor: ObservableObject {
         }
         let sumIn = creditedIn.values.reduce(0, +)
         let sumOut = creditedOut.values.reduce(0, +)
+        let consumedCredits = proxyCreditPIDs(inBytes: creditedIn, outBytes: creditedOut).reduce(into: [Int: (inBytes: Int, outBytes: Int)]()) { result, pid in
+            result[pid] = (inBytes: creditedIn[pid] ?? 0, outBytes: creditedOut[pid] ?? 0)
+        }
+        consumeProxyCredits(consumedCredits)
         var result: [ProcessEntity] = []
         var existingByPid: [Int: Int] = [:]
 
         for (i, e) in raw.enumerated() {
             var entity = e
-            if i == proxyIndex {
-                // Proxy keeps only its own uncarried bytes.
-                entity.inBytes = e.inBytes - min(e.inBytes, sumIn)
-                entity.outBytes = e.outBytes - min(e.outBytes, sumOut)
+            if proxyEntityMatches(pid: e.pid, name: e.name, proxyPIDs: snapshot.proxyPIDs, isClashVerge: snapshot.isClashVergeProxy) {
+                // Normalize the raw nettop name even when this frame does
+                // not contain a proxy row at proxyIndex. Otherwise the live
+                // list can show both "Clash Verge" and "verge-mihomo" while
+                // the database correctly uses one canonical key.
                 entity.name = proxyDisplayName(
                     rawName: entity.name,
                     isClashVerge: snapshot.isClashVergeProxy
                 )
+            }
+            if i == proxyIndex {
+                // Proxy keeps only its own uncarried bytes.
+                entity.inBytes = e.inBytes - min(e.inBytes, sumIn)
+                entity.outBytes = e.outBytes - min(e.outBytes, sumOut)
             } else if let addIn = creditedIn[e.pid], let addOut = creditedOut[e.pid] {
                 entity.inBytes = e.inBytes + addIn
                 entity.outBytes = e.outBytes + addOut
@@ -325,23 +422,34 @@ final class ProxyAttributor: ObservableObject {
         switch tryDetect(candidates, secret: cfg.secret) {
         case .success(let c, let connections):
             applyDetection(candidate: c, connections: connections)
+            logger.info("proxy detected name=\(c.name, privacy: .public) connections=\(connections.count) proxyPIDs=\(self.proxyPIDs.sorted().map(String.init).joined(separator: ","), privacy: .public)")
             emitStatus(.detected(name: c.name))
         case .secretRequired:
+            logger.error("proxy controller requires secret")
             reset()
             emitStatus(.secretRequired)
+            let endpoint = candidates.map { proxyEndpointLabel($0.unixSocket ?? $0.baseURL) }.joined(separator: ",")
+            logger.error("proxy API authentication required endpoints=\(endpoint, privacy: .public)")
+            emitDiagnostic(.authRequired(endpoint: endpoint))
         case .notFound:
+            logger.debug("proxy controller not found")
             reset()
             emitStatus(.notDetected)
+            let endpoint = candidates.map { proxyEndpointLabel($0.unixSocket ?? $0.baseURL) }.joined(separator: ",")
+            logger.info("proxy API unavailable endpoints=\(endpoint, privacy: .public)")
+            emitDiagnostic(.apiUnavailable(endpoint: endpoint))
         }
     }
 
     private func applyDetection(candidate: Candidate, connections: [ProxyConnection]) {
         let portMap = socketPortMap()
-        let proxyPid = resolveProxyPid(candidate: candidate)
+        let proxyPIDs = resolveProxyPIDs(candidate: candidate)
+        let proxyPid = proxyPIDs.sorted().first
         let prev = previousConnections
 
         var credits: [Int: (inBytes: Int, outBytes: Int)] = [:]
         var newPrevious: [String: TrackedConnection] = [:]
+        var mappedConnectionCount = 0
 
         for conn in connections {
             let resolvedPID = portMap.ports[conn.sourcePort]
@@ -351,6 +459,9 @@ final class ProxyAttributor: ObservableObject {
                 previousPID: prev[conn.id]?.pid ?? 0,
                 resolvedPID: resolvedPID
             )
+            if pid > 0 {
+                mappedConnectionCount += 1
+            }
             newPrevious[conn.id] = TrackedConnection(
                 pid: pid,
                 sourcePort: conn.sourcePort,
@@ -358,9 +469,9 @@ final class ProxyAttributor: ObservableObject {
                 downloadTotal: conn.download
             )
             guard let prevConn = prev[conn.id] else { continue }
-            let dIn = conn.download - prevConn.downloadTotal
-            let dOut = conn.upload - prevConn.uploadTotal
-            if (dIn > 0 || dOut > 0), prevConn.pid > 0, prevConn.pid != proxyPid {
+            let dIn = nonNegativeProxyDelta(current: conn.download, previous: prevConn.downloadTotal)
+            let dOut = nonNegativeProxyDelta(current: conn.upload, previous: prevConn.uploadTotal)
+            if (dIn > 0 || dOut > 0), prevConn.pid > 0, !proxyPIDs.contains(prevConn.pid) {
                 var c = credits[prevConn.pid] ?? (inBytes: 0, outBytes: 0)
                 c.inBytes += Int(dIn)
                 c.outBytes += Int(dOut)
@@ -372,11 +483,29 @@ final class ProxyAttributor: ObservableObject {
 
         previousConnections = newPrevious
         stateLock.lock()
-        pendingCredits = credits
+        accumulateProxyCredits(&pendingCredits, credits)
         self.proxyPid = proxyPid
+        self.proxyPIDs = proxyPIDs
         isClashVergeProxy = candidate.name == "Clash Verge"
         pidNameCache.merge(portMap.names) { _, new in new }
+        lastProxyName = candidate.name
+        lastProxyEndpoint = proxyEndpointLabel(candidate.unixSocket ?? candidate.baseURL)
+        lastConnectionCount = connections.count
+        lastMappedConnectionCount = mappedConnectionCount
+        lastProxyRowVisible = nil
         stateLock.unlock()
+        emitDiagnostic(.detected(
+            name: candidate.name,
+            endpoint: proxyEndpointLabel(candidate.unixSocket ?? candidate.baseURL),
+            connectionCount: connections.count,
+            mappedConnectionCount: mappedConnectionCount,
+            proxyPID: proxyPid
+        ))
+        if !credits.isEmpty {
+            let totalIn = credits.values.reduce(0) { $0 + $1.inBytes }
+            let totalOut = credits.values.reduce(0) { $0 + $1.outBytes }
+            logger.info("proxy credits pids=\(credits.keys.sorted().map(String.init).joined(separator: ","), privacy: .public) in=\(totalIn) out=\(totalOut) proxyPid=\(proxyPid ?? 0)")
+        }
     }
 
     // MARK: - Detection / fetch
@@ -686,11 +815,12 @@ final class ProxyAttributor: ObservableObject {
     }
 
     /// PID of the process serving the proxy controller.
-    private func resolveProxyPid(candidate: Candidate) -> Int? {
+    private func resolveProxyPIDs(candidate: Candidate) -> Set<Int> {
+        var pids = Set<Int>()
         if let unixSocket = candidate.unixSocket {
             if let output = runLsof(["-nP", "-U", unixSocket]),
                let pid = firstPID(in: output) {
-                return pid
+                pids.insert(pid)
             }
 
             // Clash Verge's privileged core keeps its PID next to the socket.
@@ -702,10 +832,13 @@ final class ProxyAttributor: ObservableObject {
             if let data = try? Data(contentsOf: pidURL),
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let pid = object["pid"] as? Int {
-                return pid
+                pids.insert(pid)
             }
         }
-        return resolveProxyPid(port: candidate.port)
+        if let pid = resolveProxyPid(port: candidate.port) {
+            pids.insert(pid)
+        }
+        return pids
     }
 
     private func resolveProxyPid(port: Int) -> Int? {
@@ -752,20 +885,51 @@ final class ProxyAttributor: ObservableObject {
         stateLock.lock()
         pendingCredits = [:]
         proxyPid = nil
+        proxyPIDs = []
         isClashVergeProxy = false
         stateLock.unlock()
+        emitDiagnostic(.notDetected)
     }
 
     private func takeCreditsSnapshot() -> (
         credits: [Int: (inBytes: Int, outBytes: Int)],
         proxyPid: Int?,
+        proxyPIDs: Set<Int>,
         isClashVergeProxy: Bool
     ) {
         stateLock.lock()
         defer { stateLock.unlock() }
-        let credits = pendingCredits
-        pendingCredits = [:]
-        return (credits, proxyPid, isClashVergeProxy)
+        return (pendingCredits, proxyPid, proxyPIDs, isClashVergeProxy)
+    }
+
+    private func detectionSnapshot() -> (name: String, endpoint: String, connectionCount: Int, mappedConnectionCount: Int, proxyPID: Int?)? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard let proxyPID = self.proxyPid else { return nil }
+        return (lastProxyName, lastProxyEndpoint, lastConnectionCount, lastMappedConnectionCount, proxyPID)
+    }
+
+    private func noteProxyRowVisibility(_ visible: Bool) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard lastProxyRowVisible != visible else { return false }
+        lastProxyRowVisible = visible
+        return true
+    }
+
+    private func consumeProxyCredits(_ consumed: [Int: (inBytes: Int, outBytes: Int)]) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        for (pid, credit) in consumed {
+            guard var pending = pendingCredits[pid] else { continue }
+            pending.inBytes = max(0, pending.inBytes - credit.inBytes)
+            pending.outBytes = max(0, pending.outBytes - credit.outBytes)
+            if pending.inBytes == 0 && pending.outBytes == 0 {
+                pendingCredits.removeValue(forKey: pid)
+            } else {
+                pendingCredits[pid] = pending
+            }
+        }
     }
 
     private func pidNamesSnapshot() -> [Int: String] {
@@ -778,6 +942,13 @@ final class ProxyAttributor: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.status != newStatus else { return }
             self.status = newStatus
+        }
+    }
+
+    private func emitDiagnostic(_ newDiagnostic: ProxyDiagnostic) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.diagnostic != newDiagnostic else { return }
+            self.diagnostic = newDiagnostic
         }
     }
 }

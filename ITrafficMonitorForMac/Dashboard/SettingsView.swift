@@ -116,6 +116,10 @@ struct SettingsView: View {
                     }
                     .controlSize(.small)
                 }
+                Text(proxyDiagnosticSummary(proxy.diagnostic))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
             }
         }
         .formStyle(.grouped)
