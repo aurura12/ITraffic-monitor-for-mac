@@ -145,6 +145,10 @@ final class LocalizationManager: ObservableObject {
         "No proxy detected": "未检测到代理",
         "Secret required": "需要密钥",
         "Redetect": "重新检测",
+        "Diagnostic Logs": "诊断日志",
+        "Show in Finder": "在 Finder 中显示",
+        "Clear": "清空",
+        "Proxy attribution diagnostics are retained locally (up to 4 MB).": "代理归属诊断日志仅保存在本机（最多 4 MB）。",
     ]
 
     private init() {

@@ -189,6 +189,37 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(proxyCreditPIDs(inBytes: [1: 20], outBytes: [2: 30]), [1, 2])
     }
 
+    func testProxyCreditConsumptionSummaryIncludesCreditedAndPendingBytes() {
+        let summary = proxyCreditConsumptionSummary(
+            creditedIn: 120,
+            creditedOut: 45,
+            pendingIn: 30,
+            pendingOut: 6,
+            proxyIn: 150,
+            proxyOut: 51
+        )
+
+        XCTAssertEqual(summary, "proxy credits consumed in=120 out=45 pendingIn=30 pendingOut=6 proxyIn=150 proxyOut=51")
+    }
+
+    func testShortLivedSocketUsesFreshCachedOwnerWhenLiveMapMisses() {
+        let key = SocketKey(protocol: .tcp, port: 64068)
+        let cached = [key: CachedSocketOwner(pid: 30944, name: "Code Helper", lastSeen: 100)]
+
+        let merged = mergeSocketOwners(live: [:], cached: cached, now: 104, ttl: 10)
+
+        XCTAssertEqual(merged[key], SocketOwner(pid: 30944, name: "Code Helper"))
+    }
+
+    func testExpiredSocketOwnerIsNotReusedAfterPortMayHaveBeenRecycled() {
+        let key = SocketKey(protocol: .tcp, port: 64068)
+        let cached = [key: CachedSocketOwner(pid: 30944, name: "Code Helper", lastSeen: 100)]
+
+        let merged = mergeSocketOwners(live: [:], cached: cached, now: 111, ttl: 10)
+
+        XCTAssertNil(merged[key])
+    }
+
     func testClashConfigLineParsesControllerAndSecret() {
         XCTAssertEqual(parseProxyConfigLine("external-controller: 127.0.0.1:9097"),
                        ProxyConfigEntry(key: "external-controller", value: "127.0.0.1:9097"))
@@ -207,6 +238,58 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(existing[52391]?.inBytes, 130)
         XCTAssertEqual(existing[52391]?.outBytes, 27)
         XCTAssertEqual(existing[52392]?.inBytes, 5)
+    }
+
+    func testPendingCreditsConsumeOldestBytesFirst() {
+        let pending = [
+            PendingProxyCredit(timestamp: 10, pid: 1, inBytes: 100, outBytes: 0),
+            PendingProxyCredit(timestamp: 11, pid: 2, inBytes: 100, outBytes: 0)
+        ]
+
+        let result = consumePendingProxyCredits(pending, availableIn: 150, availableOut: 0)
+
+        XCTAssertEqual(result.credited[1]?.inBytes, 100)
+        XCTAssertEqual(result.credited[2]?.inBytes, 50)
+        XCTAssertEqual(result.remaining, [
+            PendingProxyCredit(timestamp: 11, pid: 2, inBytes: 50, outBytes: 0)
+        ])
+    }
+
+    func testPendingCreditsRemainWhenNoProxyRowCanCarryThem() {
+        let pending = [PendingProxyCredit(timestamp: 10, pid: 1, inBytes: 100, outBytes: 20)]
+
+        let result = consumePendingProxyCredits(pending, availableIn: 0, availableOut: 0)
+
+        XCTAssertTrue(result.credited.isEmpty)
+        XCTAssertEqual(result.remaining, pending)
+    }
+
+    func testExpiredPendingCreditsAreRemovedBeforeAttribution() {
+        let pending = [
+            PendingProxyCredit(timestamp: 10, pid: 1, inBytes: 100, outBytes: 0),
+            PendingProxyCredit(timestamp: 11, pid: 2, inBytes: 0, outBytes: 50)
+        ]
+
+        let result = expirePendingProxyCredits(pending, now: 21, ttl: 10)
+
+        XCTAssertEqual(result.expired, [PendingProxyCredit(timestamp: 10, pid: 1, inBytes: 100, outBytes: 0)])
+        XCTAssertEqual(result.active, [PendingProxyCredit(timestamp: 11, pid: 2, inBytes: 0, outBytes: 50)])
+    }
+
+    func testSocketKeysKeepTCPAndUDPSamePortSeparate() {
+        let tcp = SocketKey(protocol: .tcp, port: 54000)
+        let udp = SocketKey(protocol: .udp, port: 54000)
+
+        XCTAssertNotEqual(tcp, udp)
+    }
+
+    func testDiagnosticLogRetentionKeepsNewestBytesWithinLimit() {
+        let retained = retainingNewestDiagnosticLogBytes(
+            Data("old\nnewest\n".utf8),
+            maximumBytes: 7
+        )
+
+        XCTAssertEqual(String(decoding: retained, as: UTF8.self), "newest\n")
     }
 
     func testCustomProxyAPIOnlyAllowsLoopbackHosts() {

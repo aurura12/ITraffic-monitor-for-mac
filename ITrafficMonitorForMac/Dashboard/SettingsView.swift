@@ -60,6 +60,7 @@ struct SettingsView: View {
     @AppStorage("proxyAttributionBaseURL") private var proxyBaseURL = ""
     @AppStorage("proxyAttributionSecret") private var proxySecret = ""
     @ObservedObject private var proxy = SharedStore.proxyAttributor
+    private let diagnostics = DiagnosticLogStore.shared
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
 
     private var proxyStatusText: String {
@@ -120,6 +121,31 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .textSelection(.enabled)
+            }
+
+            Section(i18n.text("Diagnostic Logs")) {
+                Text(diagnostics.logURL.path)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
+                HStack {
+                    Button(i18n.text("Show in Finder")) {
+                        diagnostics.revealInFinder()
+                    }
+                    Button(i18n.text("Export") + "…") {
+                        let panel = NSSavePanel()
+                        panel.nameFieldStringValue = "proxy-diagnostics.log"
+                        guard panel.runModal() == .OK, let destination = panel.url else { return }
+                        try? diagnostics.export(to: destination)
+                    }
+                    Button(i18n.text("Clear")) {
+                        diagnostics.clear()
+                    }
+                    .foregroundColor(.red)
+                }
+                Text(i18n.text("Proxy attribution diagnostics are retained locally (up to 4 MB)."))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)
