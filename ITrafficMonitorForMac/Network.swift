@@ -43,14 +43,24 @@ class Network {
         // Re-attribute traffic that nettop credited to a local proxy / VPN
         // back to the real apps. Totals stay the raw interface bytes; only the
         // per-entity distribution changes.
-        let entities = SharedStore.proxyAttributor.attributedEntities(rawEntities)
+        let attributedEntities = SharedStore.proxyAttributor.attributedEntities(rawEntities)
+        let calibration = calibrateFreeAttribution(
+            entities: attributedEntities,
+            reference: SharedStore.utunTrafficSampler.consumeLatestDelta()
+        )
+        let entities = calibration.entities
 
-        // Persist this frame's deltas into the minute-bucket history.
-        SharedStore.recorder.record(entities: entities)
+        // Use the Network Extension as the history source after its first
+        // valid report. Until then, retain the existing nettop fallback.
+        if !SharedStore.trafficFilterManager.usesFilterHistory {
+            SharedStore.recorder.record(entities: entities)
+        }
 
         // parser stores raw delta bytes; convert to bytes/sec for the status bar.
-        let inRate  = totalInBytes  / interval
-        let outRate = totalOutBytes / interval
+        let calibratedInBytes = totalInBytes + calibration.positiveGap.inBytes
+        let calibratedOutBytes = totalOutBytes + calibration.positiveGap.outBytes
+        let inRate  = calibratedInBytes / interval
+        let outRate = calibratedOutBytes / interval
 
         DispatchQueue.main.async {
             self.statusDataModel.update(totalInBytes: inRate, totalOutBytes: outRate)

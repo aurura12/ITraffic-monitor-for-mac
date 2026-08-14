@@ -60,6 +60,8 @@ struct SettingsView: View {
     @AppStorage("proxyAttributionBaseURL") private var proxyBaseURL = ""
     @AppStorage("proxyAttributionSecret") private var proxySecret = ""
     @ObservedObject private var proxy = SharedStore.proxyAttributor
+    @ObservedObject private var trafficFilter = SharedStore.trafficFilterManager
+    @ObservedObject private var utunSampler = SharedStore.utunTrafficSampler
     private let diagnostics = DiagnosticLogStore.shared
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
 
@@ -123,6 +125,42 @@ struct SettingsView: View {
                     .textSelection(.enabled)
             }
 
+            Section("Network Extension") {
+                HStack {
+                    Text("Per-App VPN statistics")
+                    Spacer()
+                    Text(trafficFilterStatusText)
+                        .foregroundColor(.secondary)
+                }
+                if let lastReportDate = trafficFilter.lastReportDate {
+                    Text("Last report: \(lastReportDate.formatted(date: .omitted, time: .standard))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Text("Apps identified in the latest report: \(trafficFilter.identifiedAppCount)")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Button("Reload Network Extension") {
+                    trafficFilter.reloadStatus()
+                }
+                .controlSize(.small)
+                Text("The filter only observes byte counts and allows all traffic.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section("Free VPN calibration") {
+                HStack {
+                    Text("utun total reference")
+                    Spacer()
+                    Text(utunStatusText)
+                        .foregroundColor(.secondary)
+                }
+                Text("Uses nettop, proxy connections, and utun counters. Unmatched bytes remain unattributed.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section(i18n.text("Diagnostic Logs")) {
                 Text(diagnostics.logURL.path)
                     .font(.caption)
@@ -172,6 +210,24 @@ struct SettingsView: View {
             Button(i18n.text("OK")) { launchAtLogin.errorMessage = nil }
         } message: {
             Text(launchAtLogin.errorMessage ?? "")
+        }
+    }
+
+    private var trafficFilterStatusText: String {
+        switch trafficFilter.state {
+        case .disabled: return "Off"
+        case .authorizing: return "Authorizing…"
+        case .enabled: return "Enabled"
+        case .fallback: return "Fallback"
+        case .error: return "Error"
+        }
+    }
+
+    private var utunStatusText: String {
+        switch utunSampler.status {
+        case .waiting: return "Waiting"
+        case .active: return "Active"
+        case .unavailable: return "Unavailable"
         }
     }
 }

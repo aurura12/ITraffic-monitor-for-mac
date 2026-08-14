@@ -14,6 +14,8 @@ enum SharedStore {
     static let realtimeRateStore = RealtimeRateStore()
     static let perAppRateStore = PerAppRateStore()
     static let proxyAttributor = ProxyAttributor()
+    static let utunTrafficSampler = UTunTrafficSampler()
+    static let trafficFilterManager = TrafficFilterManager()
 }
 
 extension View {
