@@ -11,6 +11,7 @@ import SwiftUI
 struct UnifiedDashboardView: View {
     @EnvironmentObject var viewModel: DashboardViewModel
     @EnvironmentObject var i18n: LocalizationManager
+    @EnvironmentObject var realtimeRateStore: RealtimeRateStore
 
     private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
@@ -113,7 +114,21 @@ struct UnifiedDashboardView: View {
                 value: formatBytesTotal(bytes: viewModel.rangeTotal.inBytes + viewModel.rangeTotal.outBytes),
                 accent: Theme.total
             )
+            StatCard(
+                title: i18n.text("Download Speed"),
+                value: formatBytes(bytes: Int(latestRateSample?.inRate ?? 0)),
+                accent: Theme.download
+            )
+            StatCard(
+                title: i18n.text("Upload Speed"),
+                value: formatBytes(bytes: Int(latestRateSample?.outRate ?? 0)),
+                accent: Theme.upload
+            )
         }
+    }
+
+    private var latestRateSample: RateSample? {
+        realtimeRateStore.samples.last
     }
 
     // MARK: - Chart section
