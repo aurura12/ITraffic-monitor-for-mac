@@ -27,14 +27,14 @@ targets:
           - Assets.xcassets
           - "Preview Content"
           - Base.lproj
+          - NetworkFilter
+      - path: ITrafficMonitorForMac/NetworkFilter/Shared
       - path: ITrafficMonitorForMac/Assets.xcassets
         buildPhase: resources
       - path: ITrafficMonitorForMac/Preview Content/Preview Assets.xcassets
         buildPhase: resources
       - path: ITrafficMonitorForMac/Base.lproj/Main.storyboard
         buildPhase: resources
-    entitlements:
-      path: ITrafficMonitorForMac/ITrafficMonitorForMac.entitlements
     settings:
       base:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -55,6 +55,39 @@ targets:
           - "-lsqlite3"
         SWIFT_VERSION: 5.0
 
+  TrafficFilterDataProvider:
+    type: system-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: ITrafficMonitorForMac/NetworkFilter/DataProvider
+      - path: ITrafficMonitorForMac/NetworkFilter/Shared
+    dependencies:
+      - target: TrafficFilterDataProvider
+      - target: TrafficFilterControlProvider
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: ITrafficMonitorForMac/NetworkFilter/DataProvider/TrafficFilterDataProvider.entitlements
+        INFOPLIST_FILE: ITrafficMonitorForMac/NetworkFilter/DataProvider/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMac.TrafficFilterDataProvider
+        SWIFT_VERSION: 5.0
+
+  TrafficFilterControlProvider:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: ITrafficMonitorForMac/NetworkFilter/ControlProvider
+      - path: ITrafficMonitorForMac/NetworkFilter/Shared
+    settings:
+      base:
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: ITrafficMonitorForMac/NetworkFilter/ControlProvider/TrafficFilterControlProvider.entitlements
+        INFOPLIST_FILE: ITrafficMonitorForMac/NetworkFilter/ControlProvider/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMac.TrafficFilterControlProvider
+        SWIFT_VERSION: 5.0
+
   ITrafficMonitorForMacTests:
     type: bundle.unit-test
     platform: macOS
@@ -65,6 +98,7 @@ targets:
       - target: ITrafficMonitorForMac
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMacTests
         PRODUCT_NAME: ITrafficMonitorForMacTests
         SWIFT_MODULE_NAME: ITrafficMonitorForMacTests

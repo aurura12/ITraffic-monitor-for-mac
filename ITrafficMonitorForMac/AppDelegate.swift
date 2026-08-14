@@ -87,8 +87,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             prefs.action = #selector(showSettingsWindow(_:))
         }
 
+        SharedStore.trafficFilterManager.start()
+
         self.network = Network()
         self.network.startListenNetwork()
+        SharedStore.utunTrafficSampler.start()
 
         // Pierce Clash/Surge proxies so proxied traffic is attributed to the
         // real apps. No-ops when no proxy is detected.
@@ -117,6 +120,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         print("applicationWillTerminate")
+        SharedStore.trafficFilterManager.stop()
+        SharedStore.utunTrafficSampler.stop()
         SharedStore.proxyAttributor.stop()
         SharedStore.recorder.flush()
     }

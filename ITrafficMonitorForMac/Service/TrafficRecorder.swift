@@ -65,6 +65,35 @@ final class TrafficRecorder {
         }
     }
 
+    /// Accumulate records produced by the Network Extension. These records
+    /// already use stable App keys, so no PID or process lookup is needed.
+    func record(filterRecords: [TrafficFilterRecord]) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            let now = Date()
+            let bucketStart = Int(now.timeIntervalSince1970 / 60) * 60
+
+            if bucketStart != self.currentBucketStart {
+                self.flushLocked()
+                self.currentBucketStart = bucketStart
+                (self.currentDay, self.currentHour) = Self.dayAndHour(for: now, calendar: self.calendar)
+                self.currentDict.removeAll(keepingCapacity: true)
+            }
+
+            for record in filterRecords where record.inBytes > 0 || record.outBytes > 0 {
+                let inBytes = Int(min(Int64(Int.max), max(0, record.inBytes)))
+                let outBytes = Int(min(Int64(Int.max), max(0, record.outBytes)))
+                if var entry = self.currentDict[record.appKey] {
+                    entry.inBytes += inBytes
+                    entry.outBytes += outBytes
+                    self.currentDict[record.appKey] = entry
+                } else {
+                    self.currentDict[record.appKey] = (record.displayName, inBytes, outBytes)
+                }
+            }
+        }
+    }
+
     /// Flush any pending bucket immediately (e.g. on quit). Blocks until the
     /// in-memory bucket is handed to the database queue.
     func flush() {
