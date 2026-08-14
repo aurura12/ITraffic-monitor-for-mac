@@ -74,6 +74,7 @@ struct TrafficLineChart: View {
                 )
                 .foregroundStyle(Theme.download)
                 .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.stepStart)
 
                 LineMark(
                     x: .value("Time", point.date),
@@ -81,6 +82,7 @@ struct TrafficLineChart: View {
                 )
                 .foregroundStyle(Theme.upload)
                 .lineStyle(StrokeStyle(lineWidth: 2))
+                .interpolationMethod(.stepStart)
             }
 
             if let hoveredPoint {

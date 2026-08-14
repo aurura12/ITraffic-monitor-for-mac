@@ -337,4 +337,29 @@ final class TrafficBarHoverTests: XCTestCase {
 
         XCTAssertEqual(selected?.date, second.date)
     }
+
+    func testHourlySeriesKeepsPerHourIncrementsAndFillsMissingHours() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let start = Date(timeIntervalSince1970: 0)
+        let points = [
+            TrafficSeriesPoint(date: start.addingTimeInterval(3600 + 15 * 60), inBytes: 10, outBytes: 2),
+            TrafficSeriesPoint(date: start.addingTimeInterval(3 * 3600 + 20 * 60), inBytes: 30, outBytes: 4)
+        ]
+
+        let result = hourlySeriesPoints(points: points, start: start, calendar: calendar)
+
+        XCTAssertEqual(result.count, 24)
+        XCTAssertEqual(result[0].inBytes, 0)
+        XCTAssertEqual(result[1].inBytes, 10)
+        XCTAssertEqual(result[2].inBytes, 0)
+        XCTAssertEqual(result[3].inBytes, 30)
+        XCTAssertEqual(result[3].inBytes, 30, "Each hour remains an increment; it must not include hour 1.")
+    }
+
+    func testRateFormatterUsesRateUnits() {
+        XCTAssertEqual(formatBytes(bytes: 0), "0 KB/s")
+        XCTAssertEqual(formatBytes(bytes: 1_024), "1.0 KB/s")
+        XCTAssertEqual(formatBytes(bytes: 1_048_576), "1.0 MB/s")
+    }
 }
