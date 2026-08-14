@@ -61,6 +61,172 @@ func proxyCreditPIDs(inBytes: [Int: Int], outBytes: [Int: Int]) -> Set<Int> {
     Set(inBytes.keys).union(outBytes.keys)
 }
 
+struct PendingProxyCredit: Equatable {
+    let timestamp: Int64
+    let pid: Int
+    var inBytes: Int
+    var outBytes: Int
+}
+
+struct PendingCreditExpiry {
+    let active: [PendingProxyCredit]
+    let expired: [PendingProxyCredit]
+}
+
+func expirePendingProxyCredits(_ credits: [PendingProxyCredit], now: Int64, ttl: Int64) -> PendingCreditExpiry {
+    var active: [PendingProxyCredit] = []
+    var expired: [PendingProxyCredit] = []
+    for credit in credits {
+        if now - credit.timestamp <= ttl {
+            active.append(credit)
+        } else {
+            expired.append(credit)
+        }
+    }
+    return PendingCreditExpiry(active: active, expired: expired)
+}
+
+struct PendingCreditConsumption {
+    let credited: [Int: (inBytes: Int, outBytes: Int)]
+    let remaining: [PendingProxyCredit]
+}
+
+func consumePendingProxyCredits(
+    _ credits: [PendingProxyCredit],
+    availableIn: Int,
+    availableOut: Int
+) -> PendingCreditConsumption {
+    var availableIn = max(0, availableIn)
+    var availableOut = max(0, availableOut)
+    var credited: [Int: (inBytes: Int, outBytes: Int)] = [:]
+    var remaining: [PendingProxyCredit] = []
+
+    for var credit in credits {
+        let inBytes = min(credit.inBytes, availableIn)
+        let outBytes = min(credit.outBytes, availableOut)
+        if inBytes > 0 || outBytes > 0 {
+            var total = credited[credit.pid] ?? (inBytes: 0, outBytes: 0)
+            total.inBytes += inBytes
+            total.outBytes += outBytes
+            credited[credit.pid] = total
+            availableIn -= inBytes
+            availableOut -= outBytes
+            credit.inBytes -= inBytes
+            credit.outBytes -= outBytes
+        }
+        if credit.inBytes > 0 || credit.outBytes > 0 {
+            remaining.append(credit)
+        }
+    }
+    return PendingCreditConsumption(credited: credited, remaining: remaining)
+}
+
+func proxyCreditConsumptionSummary(
+    creditedIn: Int,
+    creditedOut: Int,
+    pendingIn: Int,
+    pendingOut: Int,
+    proxyIn: Int,
+    proxyOut: Int
+) -> String {
+    "proxy credits consumed in=\(creditedIn) out=\(creditedOut) pendingIn=\(pendingIn) pendingOut=\(pendingOut) proxyIn=\(proxyIn) proxyOut=\(proxyOut)"
+}
+
+func retainingNewestDiagnosticLogBytes(_ data: Data, maximumBytes: Int) -> Data {
+    guard data.count > maximumBytes else { return data }
+    return data.suffix(maximumBytes)
+}
+
+final class DiagnosticLogStore: ObservableObject {
+    static let shared = DiagnosticLogStore()
+
+    let logURL: URL
+    private let queue = DispatchQueue(label: "diagnostic-log", qos: .utility)
+    private let maximumBytes = 4 * 1024 * 1024
+
+    private init(fileManager: FileManager = .default) {
+        let directory = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("ITraffic", isDirectory: true)
+        try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        logURL = directory.appendingPathComponent("proxy-diagnostics.log")
+    }
+
+    func append(_ message: String) {
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        queue.async { [logURL, maximumBytes] in
+            guard let data = line.data(using: .utf8) else { return }
+            if FileManager.default.fileExists(atPath: logURL.path) {
+                if let handle = try? FileHandle(forWritingTo: logURL) {
+                    try? handle.seekToEnd()
+                    try? handle.write(contentsOf: data)
+                    try? handle.close()
+                }
+            } else {
+                try? data.write(to: logURL, options: .atomic)
+            }
+            guard let current = try? Data(contentsOf: logURL), current.count > maximumBytes else { return }
+            try? retainingNewestDiagnosticLogBytes(current, maximumBytes: maximumBytes).write(to: logURL, options: .atomic)
+        }
+    }
+
+    func clear() {
+        queue.async { [logURL] in try? FileManager.default.removeItem(at: logURL) }
+    }
+
+    func revealInFinder() {
+        NSWorkspace.shared.activateFileViewerSelecting([logURL])
+    }
+
+    func export(to destination: URL) throws {
+        try queue.sync {
+            let data = (try? Data(contentsOf: logURL)) ?? Data()
+            try data.write(to: destination, options: .atomic)
+        }
+    }
+}
+
+enum SocketProtocol: Hashable {
+    case tcp
+    case udp
+
+    init?(rawValue: String?) {
+        switch rawValue?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "tcp": self = .tcp
+        case "udp": self = .udp
+        default: return nil
+        }
+    }
+}
+
+struct SocketKey: Hashable {
+    let `protocol`: SocketProtocol
+    let port: Int
+}
+
+struct SocketOwner: Equatable {
+    let pid: Int
+    let name: String
+}
+
+struct CachedSocketOwner: Equatable {
+    let pid: Int
+    let name: String
+    let lastSeen: Int64
+}
+
+func mergeSocketOwners(
+    live: [SocketKey: SocketOwner],
+    cached: [SocketKey: CachedSocketOwner],
+    now: Int64,
+    ttl: Int64
+) -> [SocketKey: SocketOwner] {
+    var result = live
+    for (port, entry) in cached where result[port] == nil && now - entry.lastSeen <= ttl {
+        result[port] = SocketOwner(pid: entry.pid, name: entry.name)
+    }
+    return result
+}
+
 func proxyEntityMatches(pid: Int, name: String, proxyPIDs: Set<Int>, isClashVerge: Bool) -> Bool {
     proxyPIDs.contains(pid) ||
     (isClashVerge && canonicalProcessDisplayName(name) == "Clash Verge")
@@ -186,6 +352,7 @@ func parseProxyConfigLine(_ line: String) -> ProxyConfigEntry? {
 private struct ProxyConnection {
     let id: String
     let sourcePort: Int
+    let transport: SocketProtocol?
     let upload: Int64
     let download: Int64
     let process: String?
@@ -213,10 +380,13 @@ final class ProxyAttributor: ObservableObject {
 
     private let stateLock = NSLock()
     /// Bytes to credit back to apps (keyed by pid) from the most recent tick.
-    private var pendingCredits: [Int: (inBytes: Int, outBytes: Int)] = [:]
+    private var pendingCredits: [PendingProxyCredit] = []
     /// The proxy process pid (owns the external-controller listening socket).
     private var proxyPid: Int?
     private var proxyPIDs: Set<Int> = []
+    private var sourcePortCache: [SocketKey: CachedSocketOwner] = [:]
+    private let sourcePortCacheTTL: Int64 = 10
+    private let pendingCreditTTL: Int64 = 10
     /// True when proxyPid belongs to Clash Verge's verge-mihomo core.
     private var isClashVergeProxy = false
     /// pid -> process name from lsof, used as a fallback name for new entities.
@@ -312,7 +482,8 @@ final class ProxyAttributor: ObservableObject {
         let proxyIn = proxyIndex.map { raw[$0].inBytes } ?? 0
         let proxyOut = proxyIndex.map { raw[$0].outBytes } ?? 0
 
-        if noteProxyRowVisibility(proxyVisible), let detection = detectionSnapshot() {
+        let visibilityChanged = noteProxyRowVisibility(proxyVisible)
+        if visibilityChanged, let detection = detectionSnapshot() {
             let diagnostic: ProxyDiagnostic = proxyVisible
                 ? .detected(
                     name: detection.name,
@@ -329,41 +500,43 @@ final class ProxyAttributor: ObservableObject {
                     proxyPID: detection.proxyPID
                 )
             logger.info("proxy row visibility=\(proxyVisible, privacy: .public) \(proxyDiagnosticSummary(diagnostic), privacy: .public)")
+            DiagnosticLogStore.shared.append("proxy row visibility=\(proxyVisible) \(proxyDiagnosticSummary(diagnostic))")
             emitDiagnostic(diagnostic)
         }
         guard let proxyIndex else {
+            if visibilityChanged, !snapshot.credits.isEmpty {
+                let pendingIn = snapshot.credits.reduce(0) { $0 + $1.inBytes }
+                let pendingOut = snapshot.credits.reduce(0) { $0 + $1.outBytes }
+                logger.info("proxy credits deferred pendingIn=\(pendingIn, privacy: .public) pendingOut=\(pendingOut, privacy: .public)")
+                DiagnosticLogStore.shared.append("proxy credits deferred pendingIn=\(pendingIn) pendingOut=\(pendingOut)")
+            }
             return raw
         }
 
-        let totalIn = snapshot.credits.values.reduce(0) { $0 + $1.inBytes }
-        let totalOut = snapshot.credits.values.reduce(0) { $0 + $1.outBytes }
+        let totalIn = snapshot.credits.reduce(0) { $0 + $1.inBytes }
+        let totalOut = snapshot.credits.reduce(0) { $0 + $1.outBytes }
 
-        // Direction-level cap: when the proxy entity is visible in the same
-        // frame, apps are never credited more than the proxy actually carried
-        // (guards against API-payload vs wire-bytes drift). When it is absent,
-        // use the API delta directly so a nettop phase gap cannot erase app
-        // traffic that has already been identified by source port.
+        // Direction-level cap: apps are never credited more than the proxy
+        // carried in this frame. When the proxy row is absent, this method
+        // returns before consuming credits so they can align with a later row.
         let usableIn = capProxyCredit(requested: totalIn, observedByNettop: proxyIn, proxyVisible: proxyVisible)
         let usableOut = capProxyCredit(requested: totalOut, observedByNettop: proxyOut, proxyVisible: proxyVisible)
-        let scaleIn = totalIn > 0 ? Double(usableIn) / Double(totalIn) : 1.0
-        let scaleOut = totalOut > 0 ? Double(usableOut) / Double(totalOut) : 1.0
-
-        var creditedIn: [Int: Int] = [:]
-        var creditedOut: [Int: Int] = [:]
-        for (pid, c) in snapshot.credits where !snapshot.proxyPIDs.contains(pid) {
-            let scaledIn = Int(Double(c.inBytes) * scaleIn)
-            let scaledOut = Int(Double(c.outBytes) * scaleOut)
-            if scaledIn > 0 || scaledOut > 0 {
-                creditedIn[pid] = scaledIn
-                creditedOut[pid] = scaledOut
-            }
-        }
+        let consumed = consumePendingProxyCredits(
+            snapshot.credits.filter { !snapshot.proxyPIDs.contains($0.pid) },
+            availableIn: usableIn,
+            availableOut: usableOut
+        )
+        replacePendingProxyCredits(consumed.remaining, replacing: snapshot.credits)
+        let creditedIn = consumed.credited.mapValues(\.inBytes)
+        let creditedOut = consumed.credited.mapValues(\.outBytes)
         let sumIn = creditedIn.values.reduce(0, +)
         let sumOut = creditedOut.values.reduce(0, +)
-        let consumedCredits = proxyCreditPIDs(inBytes: creditedIn, outBytes: creditedOut).reduce(into: [Int: (inBytes: Int, outBytes: Int)]()) { result, pid in
-            result[pid] = (inBytes: creditedIn[pid] ?? 0, outBytes: creditedOut[pid] ?? 0)
+        if sumIn > 0 || sumOut > 0 {
+            let pendingIn = consumed.remaining.reduce(0) { $0 + $1.inBytes }
+            let pendingOut = consumed.remaining.reduce(0) { $0 + $1.outBytes }
+            logger.info("\(proxyCreditConsumptionSummary(creditedIn: sumIn, creditedOut: sumOut, pendingIn: pendingIn, pendingOut: pendingOut, proxyIn: proxyIn, proxyOut: proxyOut), privacy: .public)")
+            DiagnosticLogStore.shared.append(proxyCreditConsumptionSummary(creditedIn: sumIn, creditedOut: sumOut, pendingIn: pendingIn, pendingOut: pendingOut, proxyIn: proxyIn, proxyOut: proxyOut))
         }
-        consumeProxyCredits(consumedCredits)
         var result: [ProcessEntity] = []
         var existingByPid: [Int: Int] = [:]
 
@@ -422,7 +595,6 @@ final class ProxyAttributor: ObservableObject {
         switch tryDetect(candidates, secret: cfg.secret) {
         case .success(let c, let connections):
             applyDetection(candidate: c, connections: connections)
-            logger.info("proxy detected name=\(c.name, privacy: .public) connections=\(connections.count) proxyPIDs=\(self.proxyPIDs.sorted().map(String.init).joined(separator: ","), privacy: .public)")
             emitStatus(.detected(name: c.name))
         case .secretRequired:
             logger.error("proxy controller requires secret")
@@ -442,7 +614,28 @@ final class ProxyAttributor: ObservableObject {
     }
 
     private func applyDetection(candidate: Candidate, connections: [ProxyConnection]) {
-        let portMap = socketPortMap()
+        let socketSnapshot = socketPortMap()
+        let now = Int64(Date().timeIntervalSince1970)
+        let owners = mergeSocketOwners(
+            live: socketSnapshot.owners,
+            cached: sourcePortCache,
+            now: now,
+            ttl: sourcePortCacheTTL
+        )
+        let liveCache = socketSnapshot.owners.mapValues {
+            CachedSocketOwner(pid: $0.pid, name: $0.name, lastSeen: now)
+        }
+        sourcePortCache = sourcePortCache.filter {
+            socketSnapshot.owners[$0.key] == nil && now - $0.value.lastSeen <= sourcePortCacheTTL
+        }
+        sourcePortCache.merge(liveCache) { _, new in new }
+        let ownerNames = owners.values.reduce(into: [Int: String]()) { result, owner in
+            result[owner.pid] = owner.name
+        }
+        let portMap = (
+            ports: owners.mapValues(\.pid),
+            names: socketSnapshot.names.merging(ownerNames) { _, new in new }
+        )
         let proxyPIDs = resolveProxyPIDs(candidate: candidate)
         let proxyPid = proxyPIDs.sorted().first
         let prev = previousConnections
@@ -450,9 +643,11 @@ final class ProxyAttributor: ObservableObject {
         var credits: [Int: (inBytes: Int, outBytes: Int)] = [:]
         var newPrevious: [String: TrackedConnection] = [:]
         var mappedConnectionCount = 0
+        var unmappedIn = 0
+        var unmappedOut = 0
 
         for conn in connections {
-            let resolvedPID = portMap.ports[conn.sourcePort]
+            let resolvedPID = conn.transport.flatMap { portMap.ports[SocketKey(protocol: $0, port: conn.sourcePort)] }
                 ?? resolveProcessPID(name: conn.process, path: conn.processPath)
                 ?? 0
             let pid = attributedPID(
@@ -461,6 +656,9 @@ final class ProxyAttributor: ObservableObject {
             )
             if pid > 0 {
                 mappedConnectionCount += 1
+            } else if prev[conn.id] == nil {
+                unmappedIn += Int(conn.download)
+                unmappedOut += Int(conn.upload)
             }
             newPrevious[conn.id] = TrackedConnection(
                 pid: pid,
@@ -483,7 +681,14 @@ final class ProxyAttributor: ObservableObject {
 
         previousConnections = newPrevious
         stateLock.lock()
-        accumulateProxyCredits(&pendingCredits, credits)
+        for (pid, credit) in credits where credit.inBytes > 0 || credit.outBytes > 0 {
+            pendingCredits.append(PendingProxyCredit(
+                timestamp: now,
+                pid: pid,
+                inBytes: credit.inBytes,
+                outBytes: credit.outBytes
+            ))
+        }
         self.proxyPid = proxyPid
         self.proxyPIDs = proxyPIDs
         isClashVergeProxy = candidate.name == "Clash Verge"
@@ -492,7 +697,6 @@ final class ProxyAttributor: ObservableObject {
         lastProxyEndpoint = proxyEndpointLabel(candidate.unixSocket ?? candidate.baseURL)
         lastConnectionCount = connections.count
         lastMappedConnectionCount = mappedConnectionCount
-        lastProxyRowVisible = nil
         stateLock.unlock()
         emitDiagnostic(.detected(
             name: candidate.name,
@@ -505,6 +709,10 @@ final class ProxyAttributor: ObservableObject {
             let totalIn = credits.values.reduce(0) { $0 + $1.inBytes }
             let totalOut = credits.values.reduce(0) { $0 + $1.outBytes }
             logger.info("proxy credits pids=\(credits.keys.sorted().map(String.init).joined(separator: ","), privacy: .public) in=\(totalIn) out=\(totalOut) proxyPid=\(proxyPid ?? 0)")
+        }
+        if unmappedIn > 0 || unmappedOut > 0 {
+            logger.info("proxy unmapped connections=\(connections.count - mappedConnectionCount, privacy: .public) in=\(unmappedIn, privacy: .public) out=\(unmappedOut, privacy: .public)")
+            DiagnosticLogStore.shared.append("proxy unmapped connections=\(connections.count - mappedConnectionCount) in=\(unmappedIn) out=\(unmappedOut)")
         }
     }
 
@@ -690,10 +898,11 @@ final class ProxyAttributor: ObservableObject {
             struct C: Decodable {
                 struct Metadata: Decodable {
                     let sourcePort: String?
+                    let network: String?
                     let process: String?
                     let processPath: String?
                 }
-                struct Source: Decodable { let port: Int? }
+                struct Source: Decodable { let port: Int?; let network: String? }
                 struct Bytes: Decodable { let up: Int?; let down: Int? }
                 let id: String?
                 let metadata: Metadata?
@@ -714,6 +923,7 @@ final class ProxyAttributor: ObservableObject {
             out.append(ProxyConnection(
                 id: id,
                 sourcePort: port,
+                transport: SocketProtocol(rawValue: c.metadata?.network ?? c.source?.network),
                 upload: Int64(c.upload ?? c.bytes?.up ?? 0),
                 download: Int64(c.download ?? c.bytes?.down ?? 0),
                 process: c.metadata?.process,
@@ -768,19 +978,27 @@ final class ProxyAttributor: ObservableObject {
         return String(data: output, encoding: .utf8)
     }
 
-    private func socketPortMap() -> (ports: [Int: Int], names: [Int: String]) {
-        var ports: [Int: Int] = [:]
+    private func socketPortMap() -> (ports: [SocketKey: Int], names: [Int: String], owners: [SocketKey: SocketOwner]) {
+        var ports: [SocketKey: Int] = [:]
         var names: [Int: String] = [:]
-        if let tcp = runLsof(["-nP", "-iTCP", "-sTCP:ESTABLISHED"]) {
-            collectSocketLines(tcp, into: &ports, names: &names)
+        if let tcp = runLsof(["-nP", "-iTCP"]) {
+            collectSocketLines(tcp, transport: .tcp, into: &ports, names: &names)
         }
         if let udp = runLsof(["-nP", "-iUDP"]) {
-            collectSocketLines(udp, into: &ports, names: &names)
+            collectSocketLines(udp, transport: .udp, into: &ports, names: &names)
         }
-        return (ports, names)
+        let owners = ports.reduce(into: [SocketKey: SocketOwner]()) { result, entry in
+            result[entry.key] = SocketOwner(pid: entry.value, name: names[entry.value] ?? "")
+        }
+        return (ports, names, owners)
     }
 
-    private func collectSocketLines(_ output: String, into ports: inout [Int: Int], names: inout [Int: String]) {
+    private func collectSocketLines(
+        _ output: String,
+        transport: SocketProtocol,
+        into ports: inout [SocketKey: Int],
+        names: inout [Int: String]
+    ) {
         for line in output.split(separator: "\n").dropFirst() {
             let fields = line.split(separator: " ", omittingEmptySubsequences: true)
             guard fields.count >= 2, let pid = Int(fields[1]) else { continue }
@@ -789,8 +1007,14 @@ final class ProxyAttributor: ObservableObject {
             }
             guard fields.count >= 9 else { continue }
             let name = fields[8...].joined(separator: " ")
-            if let port = localPort(from: name), ports[port] == nil {
-                ports[port] = pid
+            if name.hasPrefix("TCP ") && !name.contains("->") {
+                continue
+            }
+            if let port = localPort(from: name) {
+                let key = SocketKey(protocol: transport, port: port)
+                if ports[key] == nil {
+                    ports[key] = pid
+                }
             }
         }
     }
@@ -883,22 +1107,32 @@ final class ProxyAttributor: ObservableObject {
     private func reset() {
         previousConnections.removeAll(keepingCapacity: true)
         stateLock.lock()
-        pendingCredits = [:]
+        pendingCredits = []
         proxyPid = nil
         proxyPIDs = []
+        sourcePortCache = [:]
         isClashVergeProxy = false
         stateLock.unlock()
         emitDiagnostic(.notDetected)
     }
 
     private func takeCreditsSnapshot() -> (
-        credits: [Int: (inBytes: Int, outBytes: Int)],
+        credits: [PendingProxyCredit],
         proxyPid: Int?,
         proxyPIDs: Set<Int>,
         isClashVergeProxy: Bool
     ) {
         stateLock.lock()
         defer { stateLock.unlock() }
+        let now = Int64(Date().timeIntervalSince1970)
+        let expiry = expirePendingProxyCredits(pendingCredits, now: now, ttl: pendingCreditTTL)
+        pendingCredits = expiry.active
+        if !expiry.expired.isEmpty {
+            let droppedIn = expiry.expired.reduce(0) { $0 + $1.inBytes }
+            let droppedOut = expiry.expired.reduce(0) { $0 + $1.outBytes }
+            logger.info("expired proxy credits count=\(expiry.expired.count, privacy: .public) in=\(droppedIn, privacy: .public) out=\(droppedOut, privacy: .public)")
+            DiagnosticLogStore.shared.append("expired proxy credits count=\(expiry.expired.count) in=\(droppedIn) out=\(droppedOut)")
+        }
         return (pendingCredits, proxyPid, proxyPIDs, isClashVergeProxy)
     }
 
@@ -917,19 +1151,14 @@ final class ProxyAttributor: ObservableObject {
         return true
     }
 
-    private func consumeProxyCredits(_ consumed: [Int: (inBytes: Int, outBytes: Int)]) {
+    private func replacePendingProxyCredits(
+        _ credits: [PendingProxyCredit],
+        replacing snapshot: [PendingProxyCredit]
+    ) {
         stateLock.lock()
         defer { stateLock.unlock() }
-        for (pid, credit) in consumed {
-            guard var pending = pendingCredits[pid] else { continue }
-            pending.inBytes = max(0, pending.inBytes - credit.inBytes)
-            pending.outBytes = max(0, pending.outBytes - credit.outBytes)
-            if pending.inBytes == 0 && pending.outBytes == 0 {
-                pendingCredits.removeValue(forKey: pid)
-            } else {
-                pendingCredits[pid] = pending
-            }
-        }
+        guard pendingCredits.starts(with: snapshot) else { return }
+        pendingCredits = credits + Array(pendingCredits.dropFirst(snapshot.count))
     }
 
     private func pidNamesSnapshot() -> [Int: String] {
