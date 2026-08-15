@@ -556,4 +556,56 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(chrome?.name, "Google Chrome H")
         XCTAssertEqual(outcome.entities.count, 2)
     }
+
+    // MARK: - Proxy row visibility diagnostic
+
+    func testVisibilityTransitionIsNotConsumedWhileDetectionUnavailable() {
+        // Regression: a frame racing a transient reset() (proxyDetected
+        // momentarily false) must not consume the only visibility change. The
+        // previous visibility stays nil so the next frame retries.
+        let diagnostic = (name: "Clash Verge", endpoint: "unix:/tmp/verge/verge-mihomo.sock",
+                          connectionCount: 10, mappedConnectionCount: 8, proxyPID: Int?(91681))
+
+        let update = recordingProxyRowVisibility(
+            visible: true,
+            proxyDetected: false,
+            lastProxyRowVisible: nil,
+            diagnostic: diagnostic
+        )
+
+        XCTAssertFalse(update.changed)
+        XCTAssertNil(update.newLastVisible, "Detection unavailable: keep nil so a later frame can fire")
+        XCTAssertNil(update.diagnostic)
+    }
+
+    func testVisibilityTransitionEmitsDiagnosticOnFirstObservation() {
+        let diagnostic = (name: "Clash Verge", endpoint: "unix:/tmp/verge/verge-mihomo.sock",
+                          connectionCount: 10, mappedConnectionCount: 8, proxyPID: Int?(91681))
+
+        let update = recordingProxyRowVisibility(
+            visible: true,
+            proxyDetected: true,
+            lastProxyRowVisible: nil,
+            diagnostic: diagnostic
+        )
+
+        XCTAssertTrue(update.changed)
+        XCTAssertEqual(update.newLastVisible, true)
+        XCTAssertEqual(update.diagnostic?.proxyPID, 91681)
+    }
+
+    func testVisibilityTransitionIsIdempotentForSameVisibility() {
+        let diagnostic = (name: "Clash Verge", endpoint: "unix:/tmp/verge/verge-mihomo.sock",
+                          connectionCount: 10, mappedConnectionCount: 8, proxyPID: Int?(91681))
+
+        let update = recordingProxyRowVisibility(
+            visible: true,
+            proxyDetected: true,
+            lastProxyRowVisible: true,
+            diagnostic: diagnostic
+        )
+
+        XCTAssertFalse(update.changed)
+        XCTAssertNil(update.diagnostic)
+    }
 }

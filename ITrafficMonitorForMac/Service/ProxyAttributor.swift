@@ -201,6 +201,38 @@ func consumePendingProxyCredits(
     return consumePendingProxyCredits(credits, availableIn: budget.inBytes, availableOut: budget.outBytes)
 }
 
+/// Result of observing one frame's proxy-row visibility.
+struct ProxyRowVisibilityUpdate {
+    /// True when a genuine transition was recorded and `diagnostic` carries
+    /// the data needed to emit the visibility-change diagnostic.
+    let changed: Bool
+    /// The visibility value to persist when `changed` is true.
+    let newLastVisible: Bool?
+    let diagnostic: (name: String, endpoint: String, connectionCount: Int, mappedConnectionCount: Int, proxyPID: Int?)?
+}
+
+/// Pure state transition for the proxy-row visibility diagnostic.
+///
+/// When detection is inactive, the transition is NOT recorded (returns
+/// `changed == false` and keeps `lastProxyRowVisible`), so the caller retries
+/// on the next frame. Without this, a frame that races a transient `reset()`
+/// would consume the only visibility change while `detectionSnapshot` is
+/// momentarily unavailable, and the diagnostic would never be emitted again.
+func recordingProxyRowVisibility(
+    visible: Bool,
+    proxyDetected: Bool,
+    lastProxyRowVisible: Bool?,
+    diagnostic: (name: String, endpoint: String, connectionCount: Int, mappedConnectionCount: Int, proxyPID: Int?)?
+) -> ProxyRowVisibilityUpdate {
+    guard proxyDetected else {
+        return ProxyRowVisibilityUpdate(changed: false, newLastVisible: lastProxyRowVisible, diagnostic: nil)
+    }
+    guard lastProxyRowVisible != visible else {
+        return ProxyRowVisibilityUpdate(changed: false, newLastVisible: lastProxyRowVisible, diagnostic: nil)
+    }
+    return ProxyRowVisibilityUpdate(changed: true, newLastVisible: visible, diagnostic: diagnostic)
+}
+
 func proxyCreditConsumptionSummary(
     creditedIn: Int,
     creditedOut: Int,
@@ -666,8 +698,8 @@ final class ProxyAttributor: ObservableObject {
         let proxyIn = proxyIndex.map { raw[$0].inBytes } ?? 0
         let proxyOut = proxyIndex.map { raw[$0].outBytes } ?? 0
 
-        let visibilityChanged = noteProxyRowVisibility(proxyVisible)
-        if visibilityChanged, let detection = detectionSnapshot() {
+        let visibility = noteProxyRowVisibility(proxyVisible)
+        if visibility.changed, let detection = visibility.diagnostic {
             let diagnostic: ProxyDiagnostic = proxyVisible
                 ? .detected(
                     name: detection.name,
@@ -688,7 +720,7 @@ final class ProxyAttributor: ObservableObject {
             emitDiagnostic(diagnostic)
         }
         guard let proxyIndex else {
-            if visibilityChanged, !snapshot.credits.isEmpty {
+            if visibility.changed, !snapshot.credits.isEmpty {
                 let pendingIn = snapshot.credits.reduce(0) { $0 + $1.inBytes }
                 let pendingOut = snapshot.credits.reduce(0) { $0 + $1.outBytes }
                 logger.info("proxy credits deferred pendingIn=\(pendingIn, privacy: .public) pendingOut=\(pendingOut, privacy: .public)")
@@ -1325,25 +1357,30 @@ final class ProxyAttributor: ObservableObject {
         return (pendingCredits, proxyDetected, proxyPIDs, isClashVergeProxy)
     }
 
-    private func detectionSnapshot() -> (name: String, endpoint: String, connectionCount: Int, mappedConnectionCount: Int, proxyPID: Int?)? {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        guard proxyDetected else { return nil }
-        return (lastProxyName, lastProxyEndpoint, lastConnectionCount, lastMappedConnectionCount, proxyPid)
-    }
-
     private func proxyCumulativeHistorySnapshot() -> [ProxyCumulativePoint] {
         stateLock.lock()
         defer { stateLock.unlock() }
         return apiCumulativeHistory
     }
 
-    private func noteProxyRowVisibility(_ visible: Bool) -> Bool {
+    /// Records this frame's proxy-row visibility and, on a genuine transition,
+    /// returns the diagnostic payload. Atomic under the lock so the transition
+    /// cannot be consumed while detection is momentarily unavailable (a frame
+    /// that races a transient `reset()` would otherwise lose the only
+    /// visibility change and never emit the diagnostic again).
+    private func noteProxyRowVisibility(_ visible: Bool) -> ProxyRowVisibilityUpdate {
         stateLock.lock()
         defer { stateLock.unlock() }
-        guard lastProxyRowVisible != visible else { return false }
-        lastProxyRowVisible = visible
-        return true
+        let update = recordingProxyRowVisibility(
+            visible: visible,
+            proxyDetected: proxyDetected,
+            lastProxyRowVisible: lastProxyRowVisible,
+            diagnostic: (lastProxyName, lastProxyEndpoint, lastConnectionCount, lastMappedConnectionCount, proxyPid)
+        )
+        if update.changed {
+            lastProxyRowVisible = update.newLastVisible
+        }
+        return update
     }
 
     private func replacePendingProxyCredits(
