@@ -212,8 +212,7 @@ struct UnifiedDashboardView: View {
 
     private var legend: some View {
         HStack(spacing: 12) {
-            legendItem(color: Theme.download, label: i18n.text("Download"))
-            legendItem(color: Theme.upload, label: i18n.text("Upload"))
+            legendItem(color: Theme.download, label: i18n.text("Total Traffic"))
         }
     }
 

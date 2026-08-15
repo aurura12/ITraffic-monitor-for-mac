@@ -84,6 +84,7 @@ final class LocalizationManager: ObservableObject {
         "Upload": "上传",
         "Download Speed": "下载速度",
         "Upload Speed": "上传速度",
+        "Total Traffic": "总流量",
         "Traffic Timeline": "流量时间轴",
         "Drag to zoom any range": "拖拽可缩放任意区间",
         "Daily traffic per day": "按天呈现每日流量",
