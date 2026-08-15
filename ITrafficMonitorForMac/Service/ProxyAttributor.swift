@@ -505,12 +505,22 @@ struct ProxyAttributionSnapshot {
     /// in this set — i.e. it is actually using the proxy.
     var activeProxyPIDs: Set<Int> = []
     var foregroundAttributionEnabled: Bool = false
+    /// Bytes already credited to apps but not yet subtracted from the proxy
+    /// row. nettop reports the proxy process in bursts that lag the credit
+    /// window, so a frame-local subtraction under-drains; the remainder is
+    /// carried forward and applied to later proxy rows.
+    var proxyDebtIn: Int = 0
+    var proxyDebtOut: Int = 0
 }
 
 struct ProxyAttributionOutcome {
     let entities: [ProcessEntity]
     let consumed: [Int: (inBytes: Int, outBytes: Int)]
     let remaining: [PendingProxyCredit]
+    /// Proxy bytes still awaiting subtraction from the proxy row after this
+    /// frame's reduction — the debt not yet drained by visible proxy bytes.
+    let remainingDebtIn: Int
+    let remainingDebtOut: Int
 }
 
 /// Pure re-distribution core used by `ProxyAttributor.attributedEntities(_:)`.
@@ -526,17 +536,41 @@ func redistributeProxyTraffic(
     pidNames: [Int: String]
 ) -> ProxyAttributionOutcome {
     guard snapshot.proxyDetected else {
-        return ProxyAttributionOutcome(entities: raw, consumed: [:], remaining: snapshot.credits)
+        return ProxyAttributionOutcome(
+            entities: raw,
+            consumed: [:],
+            remaining: snapshot.credits,
+            remainingDebtIn: snapshot.proxyDebtIn,
+            remainingDebtOut: snapshot.proxyDebtOut
+        )
     }
 
     var proxyIndex: Int?
+    var proxyBytes = -1
     for (i, e) in raw.enumerated()
     where proxyEntityMatches(pid: e.pid, name: e.name, proxyPIDs: snapshot.proxyPIDs, isClashVerge: snapshot.isClashVergeProxy) {
-        proxyIndex = i
-        break
+        // proxyPIDs can contain pids that are not the traffic carrier: a
+        // root-owned core (e.g. Clash Verge's verge-mihomo) is invisible to
+        // user-level lsof, which leaves garbage client pids (loginwindow,
+        // distnoted, ...) in the set. Pick the matching row that actually
+        // carries the proxy bytes instead of the first match, so the real
+        // proxy row is the one drained during redistribution.
+        let bytes = e.inBytes + e.outBytes
+        if bytes > proxyBytes {
+            proxyBytes = bytes
+            proxyIndex = i
+        }
     }
     guard let proxyIndex else {
-        return ProxyAttributionOutcome(entities: raw, consumed: [:], remaining: snapshot.credits)
+        // Credits stay pending and the debt carries forward untouched so they
+        // can align with a later frame within the credit TTL.
+        return ProxyAttributionOutcome(
+            entities: raw,
+            consumed: [:],
+            remaining: snapshot.credits,
+            remainingDebtIn: snapshot.proxyDebtIn,
+            remainingDebtOut: snapshot.proxyDebtOut
+        )
     }
 
     let consumed = consumePendingProxyCredits(
@@ -549,8 +583,16 @@ func redistributeProxyTraffic(
     let sumIn = creditedIn.values.reduce(0, +)
     let sumOut = creditedOut.values.reduce(0, +)
 
+    // Bytes this frame will owe the proxy row: the carried-over debt plus what
+    // was just credited to apps. nettop reports the proxy in bursts, so the
+    // part not visible in this frame's proxy row is returned as new debt.
+    let debtIn = snapshot.proxyDebtIn + sumIn
+    let debtOut = snapshot.proxyDebtOut + sumOut
+
     var result: [ProcessEntity] = []
     var existingByPid: [Int: Int] = [:]
+    var reductionIn = 0
+    var reductionOut = 0
     for (i, e) in raw.enumerated() {
         var entity = e
         if proxyEntityMatches(pid: e.pid, name: e.name, proxyPIDs: snapshot.proxyPIDs, isClashVerge: snapshot.isClashVergeProxy) {
@@ -559,9 +601,15 @@ func redistributeProxyTraffic(
             entity.name = proxyDisplayName(rawName: entity.name, isClashVerge: snapshot.isClashVergeProxy)
         }
         if i == proxyIndex {
-            // Proxy keeps only its own uncarried bytes.
-            entity.inBytes = e.inBytes - min(e.inBytes, sumIn)
-            entity.outBytes = e.outBytes - min(e.outBytes, sumOut)
+            // Proxy keeps only its own uncarried bytes. Drains this frame's
+            // proxy bytes against the accumulated debt (carried + consumed
+            // this frame) so late-reported proxy bytes are still attributed.
+            let rIn = min(e.inBytes, debtIn)
+            let rOut = min(e.outBytes, debtOut)
+            reductionIn = rIn
+            reductionOut = rOut
+            entity.inBytes = e.inBytes - rIn
+            entity.outBytes = e.outBytes - rOut
         } else if let addIn = creditedIn[e.pid], let addOut = creditedOut[e.pid] {
             entity.inBytes = e.inBytes + addIn
             entity.outBytes = e.outBytes + addOut
@@ -574,7 +622,11 @@ func redistributeProxyTraffic(
     // system-proxy that never touch the external interface directly).
     for (pid, addIn) in creditedIn where existingByPid[pid] == nil {
         let addOut = creditedOut[pid] ?? 0
-        result.append(ProcessEntity(pid: pid, name: pidNames[pid] ?? "\(pid)", inBytes: addIn, outBytes: addOut))
+        let fallback = pidNames[pid] ?? "\(pid)"
+        // Resolve the display name through the GUI app (terminal / IDE) so a
+        // freshly credited helper / CLI process is not shown as a bare pid.
+        let name = getAppInfo(pid: pid, name: fallback)?.name ?? fallback
+        result.append(ProcessEntity(pid: pid, name: name, inBytes: addIn, outBytes: addOut))
     }
 
     // Foreground fallback: proxy bytes that could not be mapped to a specific
@@ -595,16 +647,23 @@ func redistributeProxyTraffic(
                 result[i].inBytes += residualIn
                 result[i].outBytes += residualOut
             } else {
+                let fallback = pidNames[fg] ?? "\(fg)"
                 result.append(ProcessEntity(
                     pid: fg,
-                    name: pidNames[fg] ?? "\(fg)",
+                    name: getAppInfo(pid: fg, name: fallback)?.name ?? fallback,
                     inBytes: residualIn,
                     outBytes: residualOut
                 ))
             }
         }
     }
-    return ProxyAttributionOutcome(entities: result, consumed: consumed.credited, remaining: consumed.remaining)
+    return ProxyAttributionOutcome(
+        entities: result,
+        consumed: consumed.credited,
+        remaining: consumed.remaining,
+        remainingDebtIn: debtIn - reductionIn,
+        remainingDebtOut: debtOut - reductionOut
+    )
 }
 
 final class ProxyAttributor: ObservableObject {
@@ -639,6 +698,17 @@ final class ProxyAttributor: ObservableObject {
     private var isClashVergeProxy = false
     /// pid -> process name from lsof, used as a fallback name for new entities.
     private var pidNameCache: [Int: String] = [:]
+    /// Maps short-lived CLI process pids (node, npm, …) to the regular GUI
+    /// application that hosts them (the terminal / IDE), so proxy traffic
+    /// from terminal commands is shown under the app the user actually sees.
+    private var guiAncestorCache: [Int: Int] = [:]
+    /// Proxy bytes credited to apps but not yet subtracted from the proxy row
+    /// (nettop reports the proxy in bursts that lag the credit window).
+    private var proxyDebtIn: Int = 0
+    private var proxyDebtOut: Int = 0
+    /// Last time the debt changed; stale debt is dropped after the credit TTL
+    /// so it cannot over-reduce unrelated future proxy traffic.
+    private var proxyDebtUpdatedAt: Int64 = 0
     private var lastProxyName = ""
     private var lastProxyEndpoint = ""
     private var lastConnectionCount = 0
@@ -781,11 +851,18 @@ final class ProxyAttributor: ObservableObject {
         // Locate the proxy entity in this frame. It may be absent if the
         // frame window and the attributor tick are out of phase; that must
         // not hide app traffic already confirmed by the proxy API.
+        // Pick the matching row carrying the most bytes: proxyPIDs can contain
+        // garbage pids (see redistributeProxyTraffic), and the first match is
+        // not necessarily the traffic carrier.
         var proxyIndex: Int?
+        var proxyBytes = -1
         for (i, e) in raw.enumerated()
         where proxyEntityMatches(pid: e.pid, name: e.name, proxyPIDs: snapshot.proxyPIDs, isClashVerge: snapshot.isClashVergeProxy) {
-            proxyIndex = i
-            break
+            let bytes = e.inBytes + e.outBytes
+            if bytes > proxyBytes {
+                proxyBytes = bytes
+                proxyIndex = i
+            }
         }
         let proxyVisible = proxyIndex != nil
         let proxyIn = proxyIndex.map { raw[$0].inBytes } ?? 0
@@ -812,7 +889,7 @@ final class ProxyAttributor: ObservableObject {
             DiagnosticLogStore.shared.append("proxy row visibility=\(proxyVisible) \(proxyDiagnosticSummary(diagnostic))")
             emitDiagnostic(diagnostic)
         }
-        guard let proxyIndex else {
+        guard proxyIndex != nil else {
             if visibility.changed, !snapshot.credits.isEmpty {
                 let pendingIn = snapshot.credits.reduce(0) { $0 + $1.inBytes }
                 let pendingOut = snapshot.credits.reduce(0) { $0 + $1.outBytes }
@@ -822,6 +899,7 @@ final class ProxyAttributor: ObservableObject {
             return raw
         }
 
+        let now = Int64(Date().timeIntervalSince1970)
         let outcome = redistributeProxyTraffic(
             raw: raw,
             snapshot: ProxyAttributionSnapshot(
@@ -830,14 +908,21 @@ final class ProxyAttributor: ObservableObject {
                 proxyPIDs: snapshot.proxyPIDs,
                 isClashVergeProxy: snapshot.isClashVergeProxy,
                 cumulativeProxy: proxyCumulativeHistorySnapshot(),
-                now: Int64(Date().timeIntervalSince1970),
+                now: now,
                 foregroundPID: foregroundPIDSnapshot(),
                 activeProxyPIDs: activeProxyPIDsSnapshot(),
-                foregroundAttributionEnabled: foregroundAttributionEnabledSnapshot()
+                foregroundAttributionEnabled: foregroundAttributionEnabledSnapshot(),
+                proxyDebtIn: proxyDebtSnapshot().inBytes,
+                proxyDebtOut: proxyDebtSnapshot().outBytes
             ),
             pidNames: pidNamesSnapshot()
         )
         replacePendingProxyCredits(outcome.remaining, replacing: snapshot.credits)
+        setProxyDebt(outcome.remainingDebtIn, outcome.remainingDebtOut, now: now)
+        if outcome.remainingDebtIn > 0 || outcome.remainingDebtOut > 0 {
+            logger.info("proxy debt carried in=\(outcome.remainingDebtIn, privacy: .public) out=\(outcome.remainingDebtOut, privacy: .public)")
+            DiagnosticLogStore.shared.append("proxy debt carried in=\(outcome.remainingDebtIn) out=\(outcome.remainingDebtOut)")
+        }
 
         let sumIn = outcome.consumed.values.reduce(0) { $0 + $1.inBytes }
         let sumOut = outcome.consumed.values.reduce(0) { $0 + $1.outBytes }
@@ -943,15 +1028,20 @@ final class ProxyAttributor: ObservableObject {
                 previousPID: prev[conn.id]?.pid ?? 0,
                 resolvedPID: resolvedPID
             )
-            if pid > 0 {
+            // Terminal commands (node, npm, curl, …) are short-lived CLI
+            // processes; merge their proxy bytes into the terminal / IDE that
+            // hosts them so the traffic shows under the app the user sees.
+            // The proxy's own pids are never remapped.
+            let attributed = proxyPIDs.contains(pid) ? pid : effectiveAttributionPID(pid)
+            if attributed > 0 {
                 mappedConnectionCount += 1
-                mappedPids.insert(pid)
+                mappedPids.insert(attributed)
             } else if prev[conn.id] == nil {
                 unmappedIn += Int(conn.download)
                 unmappedOut += Int(conn.upload)
             }
             newPrevious[conn.id] = TrackedConnection(
-                pid: pid,
+                pid: attributed,
                 sourcePort: conn.sourcePort,
                 uploadTotal: conn.upload,
                 downloadTotal: conn.download
@@ -1348,8 +1438,14 @@ final class ProxyAttributor: ObservableObject {
     private func resolveProxyPIDs(candidate: Candidate) -> Set<Int> {
         var pids = Set<Int>()
         if let unixSocket = candidate.unixSocket {
+            // A privileged core (e.g. Clash Verge's root-owned verge-mihomo)
+            // is invisible to user-level lsof; the lookup instead returns the
+            // client processes connected to the socket (loginwindow,
+            // distnoted, ...). Validate the pid so those garbage pids never
+            // enter proxyPIDs and shadow the real proxy row.
             if let output = runLsof(["-nP", "-U", unixSocket]),
-               let pid = firstPID(in: output) {
+               let pid = firstPID(in: output),
+               isLikelyProxyProcess(pid, candidate: candidate) {
                 pids.insert(pid)
             }
 
@@ -1389,6 +1485,64 @@ final class ProxyAttributor: ObservableObject {
         for line in output.split(separator: "\n") {
             if let pid = Int(line.trimmingCharacters(in: .whitespacesAndNewlines)) {
                 return pid
+            }
+        }
+        return nil
+    }
+
+    /// True when `pid` belongs to a process plausibly part of the proxy
+    /// family (Clash / Mihomo / Surge). Used to reject garbage pids that
+    /// user-level `lsof -U` returns for a root-owned unix socket.
+    private func isLikelyProxyProcess(_ pid: Int, candidate: Candidate) -> Bool {
+        guard let output = runProcess("/bin/ps", ["-p", String(pid), "-o", "comm="]) else { return false }
+        let comm = output.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !comm.isEmpty else { return false }
+        let keywords: [String]
+        switch candidate.name {
+        case "Clash Verge", "Clash":
+            keywords = ["clash", "mihomo", "verge"]
+        case "Surge":
+            keywords = ["surge"]
+        default:
+            keywords = ["clash", "mihomo", "verge", "surge"]
+        }
+        return keywords.contains { comm.contains($0) }
+    }
+
+    /// Maps a CLI process pid (e.g. node/npm spawned by a terminal) to the
+    /// regular GUI application that hosts it, so terminal traffic shows under
+    /// the terminal / IDE instead of a short-lived CLI process. GUI pids are
+    /// returned unchanged; results are cached for the process's lifetime.
+    /// Only called on the attributor queue, so no lock is needed.
+    private func effectiveAttributionPID(_ pid: Int) -> Int {
+        guard pid > 0 else { return 0 }
+        if let cached = guiAncestorCache[pid] { return cached }
+        let resolved = guiAncestorPID(of: pid) ?? pid
+        guiAncestorCache[pid] = resolved
+        return resolved
+    }
+
+    /// Walks up to 6 parent levels looking for the regular GUI application
+    /// (activationPolicy == .regular) hosting `pid`. Falls back to the nearest
+    /// registered application (e.g. an Electron helper) if none is regular.
+    private func guiAncestorPID(of pid: Int) -> Int? {
+        if let app = NSRunningApplication(processIdentifier: pid_t(pid)), app.activationPolicy == .regular {
+            return pid
+        }
+        var current = pid
+        for _ in 0..<6 {
+            guard let pp = parentPid(of: current), pp > 1 else { break }
+            current = pp
+            if let app = NSRunningApplication(processIdentifier: pid_t(pp)), app.activationPolicy == .regular {
+                return pp
+            }
+        }
+        current = pid
+        for _ in 0..<6 {
+            guard let pp = parentPid(of: current), pp > 1 else { break }
+            current = pp
+            if NSRunningApplication(processIdentifier: pid_t(pp)) != nil {
+                return pp
             }
         }
         return nil
@@ -1445,6 +1599,10 @@ final class ProxyAttributor: ObservableObject {
         apiCumulativeHistory = []
         activeProxyPIDs = []
         isClashVergeProxy = false
+        guiAncestorCache = [:]
+        proxyDebtIn = 0
+        proxyDebtOut = 0
+        proxyDebtUpdatedAt = 0
         stateLock.unlock()
         emitDiagnostic(.notDetected)
     }
@@ -1466,7 +1624,32 @@ final class ProxyAttributor: ObservableObject {
             logger.info("expired proxy credits count=\(expiry.expired.count, privacy: .public) in=\(droppedIn, privacy: .public) out=\(droppedOut, privacy: .public)")
             DiagnosticLogStore.shared.append("expired proxy credits count=\(expiry.expired.count) in=\(droppedIn) out=\(droppedOut)")
         }
+        // Drop stale debt that was never drained by visible proxy bytes so it
+        // cannot over-reduce unrelated future proxy traffic.
+        if (proxyDebtIn > 0 || proxyDebtOut > 0), now - proxyDebtUpdatedAt > pendingCreditTTL {
+            proxyDebtIn = 0
+            proxyDebtOut = 0
+        }
         return (pendingCredits, proxyDetected, proxyPIDs, isClashVergeProxy)
+    }
+
+    private func proxyDebtSnapshot() -> (inBytes: Int, outBytes: Int) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return (proxyDebtIn, proxyDebtOut)
+    }
+
+    /// Persists the debt after a redistribution frame, refreshing its expiry
+    /// timestamp whenever it changed (grew via consumption or drained via
+    /// visible proxy bytes).
+    private func setProxyDebt(_ inBytes: Int, _ outBytes: Int, now: Int64) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        if inBytes != proxyDebtIn || outBytes != proxyDebtOut {
+            proxyDebtIn = inBytes
+            proxyDebtOut = outBytes
+            proxyDebtUpdatedAt = now
+        }
     }
 
     private func proxyCumulativeHistorySnapshot() -> [ProxyCumulativePoint] {

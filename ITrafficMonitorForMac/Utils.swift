@@ -193,7 +193,7 @@ func getAppInfo(pid: Int, name: String) -> AppInfo? {
 }
 
 /// Look up a process's parent PID via sysctl.
-private func parentPid(of pid: Int) -> Int? {
+func parentPid(of pid: Int) -> Int? {
     var info = kinfo_proc()
     var size = MemoryLayout<kinfo_proc>.stride
     var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, Int32(pid)]
