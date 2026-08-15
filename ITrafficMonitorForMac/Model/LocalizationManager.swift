@@ -153,7 +153,29 @@ final class LocalizationManager: ObservableObject {
         "Diagnostic Logs": "诊断日志",
         "Show in Finder": "在 Finder 中显示",
         "Clear": "清空",
-        "Proxy attribution diagnostics are retained locally (up to 4 MB).": "代理归属诊断日志仅保存在本机（最多 4 MB）。",
+        "Proxy attribution diagnostics are retained locally (up to 16 MB).": "代理归属诊断日志仅保存在本机（最多 16 MB）。",
+
+        // Network Extension section
+        "Network Extension": "网络扩展",
+        "Per-App VPN statistics": "按 App 的 VPN 统计",
+        "Last report": "最近报告",
+        "Apps identified in the latest report": "最近报告识别到的应用",
+        "Reload Network Extension": "重新加载网络扩展",
+        "The filter only observes byte counts and allows all traffic.": "该过滤器仅统计字节数，放行所有流量",
+
+        // Free VPN calibration section
+        "Free VPN calibration": "免费 VPN 校准",
+        "utun total reference": "utun 总量参考",
+        "Uses nettop, proxy connections, and utun counters. Unmatched bytes remain unattributed.": "基于 nettop、代理连接表和 utun 计数器；无法匹配的字节保持未归属",
+
+        // Network Extension / calibration status
+        "Authorizing…": "授权中…",
+        "Enabled": "已启用",
+        "Fallback": "回退模式",
+        "Error": "错误",
+        "Waiting": "等待中",
+        "Active": "已激活",
+        "Unavailable": "不可用",
     ]
 
     private init() {

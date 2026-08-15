@@ -134,38 +134,38 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             }
 
-            Section("Network Extension") {
+            Section(i18n.text("Network Extension")) {
                 HStack {
-                    Text("Per-App VPN statistics")
+                    Text(i18n.text("Per-App VPN statistics"))
                     Spacer()
                     Text(trafficFilterStatusText)
                         .foregroundColor(.secondary)
                 }
                 if let lastReportDate = trafficFilter.lastReportDate {
-                    Text("Last report: \(lastReportDate.formatted(date: .omitted, time: .standard))")
+                    Text(i18n.text("Last report") + ": \(lastReportDate.formatted(date: .omitted, time: .standard))")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                Text("Apps identified in the latest report: \(trafficFilter.identifiedAppCount)")
+                Text(i18n.text("Apps identified in the latest report") + ": \(trafficFilter.identifiedAppCount)")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Button("Reload Network Extension") {
+                Button(i18n.text("Reload Network Extension")) {
                     trafficFilter.reloadStatus()
                 }
                 .controlSize(.small)
-                Text("The filter only observes byte counts and allows all traffic.")
+                Text(i18n.text("The filter only observes byte counts and allows all traffic."))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
 
-            Section("Free VPN calibration") {
+            Section(i18n.text("Free VPN calibration")) {
                 HStack {
-                    Text("utun total reference")
+                    Text(i18n.text("utun total reference"))
                     Spacer()
                     Text(utunStatusText)
                         .foregroundColor(.secondary)
                 }
-                Text("Uses nettop, proxy connections, and utun counters. Unmatched bytes remain unattributed.")
+                Text(i18n.text("Uses nettop, proxy connections, and utun counters. Unmatched bytes remain unattributed."))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -190,7 +190,7 @@ struct SettingsView: View {
                     }
                     .foregroundColor(.red)
                 }
-                Text(i18n.text("Proxy attribution diagnostics are retained locally (up to 4 MB)."))
+                Text(i18n.text("Proxy attribution diagnostics are retained locally (up to 16 MB)."))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -224,19 +224,19 @@ struct SettingsView: View {
 
     private var trafficFilterStatusText: String {
         switch trafficFilter.state {
-        case .disabled: return "Off"
-        case .authorizing: return "Authorizing…"
-        case .enabled: return "Enabled"
-        case .fallback: return "Fallback"
-        case .error: return "Error"
+        case .disabled: return L("Off")
+        case .authorizing: return L("Authorizing…")
+        case .enabled: return L("Enabled")
+        case .fallback: return L("Fallback")
+        case .error: return L("Error")
         }
     }
 
     private var utunStatusText: String {
         switch utunSampler.status {
-        case .waiting: return "Waiting"
-        case .active: return "Active"
-        case .unavailable: return "Unavailable"
+        case .waiting: return L("Waiting")
+        case .active: return L("Active")
+        case .unavailable: return L("Unavailable")
         }
     }
 }
