@@ -535,12 +535,40 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(outcome.remaining, snapshot.credits)
     }
 
-    func testRedistributionCreatesNewEntityForCreditedAppWithNoDirectTraffic() {
-        // Chrome sits behind a system proxy and never touches the external
-        // interface, so it has no nettop row; the credited bytes become a new
-        // entity.
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 0)]
+    func testProxyRowSelectionPrefersMatchingRowCarryingBytes() {
+        // Regression: user-level lsof can leave a garbage pid (e.g.
+        // loginwindow) in proxyPIDs when the core runs as root. When that
+        // process appears in a frame before the real proxy row, first-match
+        // logic picked it (0 bytes) and the real Clash row was never drained —
+        // the same bytes then counted on both Clash and the credited app.
+        let raw = [
+            ProcessEntity(pid: 166, name: "loginwindow", inBytes: 0, outBytes: 0),
+            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)
+        ]
         let snapshot = ProxyAttributionSnapshot(
+            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900_000, outBytes: 0)],
+            proxyDetected: true,
+            proxyPIDs: [166, 91681],
+            isClashVergeProxy: true,
+            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000_000, outBytes: 0)],
+            now: 101
+        )
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+
+        let proxy = outcome.entities.first { $0.pid == 91681 }
+        XCTAssertEqual(proxy?.inBytes, 100_000, "Real proxy row must be drained by the credited bytes")
+        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 900_000)
+        // loginwindow must keep its (empty) row untouched.
+        XCTAssertEqual(outcome.entities.first { $0.pid == 166 }?.inBytes, 0)
+    }
+
+    func testProxyDebtCarriesForwardSoLateProxyBytesStillDrained() {
+        // Regression: nettop reports the proxy row in bursts that lag the
+        // credit window. Frame 1 consumes credits while the proxy row shows no
+        // bytes — the app is credited and the undrained amount becomes debt.
+        let raw1 = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 0, outBytes: 0)]
+        let snap1 = ProxyAttributionSnapshot(
             credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900, outBytes: 0)],
             proxyDetected: true,
             proxyPIDs: [91681],
@@ -548,10 +576,46 @@ final class TrafficBarHoverTests: XCTestCase {
             cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
             now: 101
         )
+        let out1 = redistributeProxyTraffic(raw: raw1, snapshot: snap1, pidNames: [61013: "Google Chrome H"])
+        XCTAssertEqual(out1.consumed[61013]?.inBytes, 900)
+        XCTAssertEqual(out1.remainingDebtIn, 900, "Undrained credit must carry forward as debt")
 
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+        // Frame 2: the proxy row finally reports the bytes with no new
+        // credits. The carried debt must drain the row — otherwise the same
+        // bytes count on both the proxy and the credited app.
+        let raw2 = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 0)]
+        let snap2 = ProxyAttributionSnapshot(
+            credits: [],
+            proxyDetected: true,
+            proxyPIDs: [91681],
+            isClashVergeProxy: true,
+            cumulativeProxy: [ProxyCumulativePoint(timestamp: 102, inBytes: 1_000, outBytes: 0)],
+            now: 102,
+            proxyDebtIn: out1.remainingDebtIn,
+            proxyDebtOut: out1.remainingDebtOut
+        )
+        let out2 = redistributeProxyTraffic(raw: raw2, snapshot: snap2, pidNames: [:])
+        XCTAssertEqual(out2.entities.first { $0.pid == 91681 }?.inBytes, 100, "Carried debt must drain the late proxy bytes")
+        XCTAssertEqual(out2.remainingDebtIn, 0, "Debt is exhausted once the proxy bytes are drained")
+    }
 
-        let chrome = outcome.entities.first { $0.pid == 61013 }
+    func testRedistributionCreatesNewEntityForCreditedAppWithNoDirectTraffic() {
+        // Chrome sits behind a system proxy and never touches the external
+        // interface, so it has no nettop row; the credited bytes become a new
+        // entity. A fake high pid keeps name resolution deterministic.
+        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 0)]
+        let snapshot = ProxyAttributionSnapshot(
+            credits: [PendingProxyCredit(timestamp: 100, pid: 429_001, inBytes: 900, outBytes: 0)],
+            proxyDetected: true,
+            proxyPIDs: [91681],
+            isClashVergeProxy: true,
+            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
+            now: 101
+        )
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [429_001: "Google Chrome H"])
+
+        let chrome = outcome.entities.first { $0.pid == 429_001 }
         XCTAssertEqual(chrome?.inBytes, 900)
         XCTAssertEqual(chrome?.name, "Google Chrome H")
         XCTAssertEqual(outcome.entities.count, 2)
@@ -633,16 +697,16 @@ final class TrafficBarHoverTests: XCTestCase {
     func testForegroundFallbackMovesResidualFromProxyToForegroundApp() {
         let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)]
         let snapshot = foregroundSnapshot(
-            foregroundPID: 61013,
-            activeProxyPIDs: [61013],
+            foregroundPID: 429_002,
+            activeProxyPIDs: [429_002],
             enabled: true,
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 400_000, outBytes: 0)]
+            credits: [PendingProxyCredit(timestamp: 100, pid: 429_002, inBytes: 400_000, outBytes: 0)]
         )
 
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [429_002: "Google Chrome H"])
 
         let proxy = outcome.entities.first { $0.pid == 91681 }
-        let chrome = outcome.entities.first { $0.pid == 61013 }
+        let chrome = outcome.entities.first { $0.pid == 429_002 }
         XCTAssertEqual(proxy?.inBytes, 0, "Residual must be drained from the proxy row")
         XCTAssertEqual(chrome?.inBytes, 1_000_000, "Consumed credit plus drained residual")
         XCTAssertEqual(chrome?.name, "Google Chrome H")
@@ -665,13 +729,13 @@ final class TrafficBarHoverTests: XCTestCase {
 
     func testForegroundFallbackCreatesNewEntityForFrontmostAppWithNoRow() {
         let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
-        let snapshot = foregroundSnapshot(foregroundPID: 61013, activeProxyPIDs: [61013], enabled: true)
+        let snapshot = foregroundSnapshot(foregroundPID: 429_003, activeProxyPIDs: [429_003], enabled: true)
 
         let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [:])
 
-        let chrome = outcome.entities.first { $0.pid == 61013 }
+        let chrome = outcome.entities.first { $0.pid == 429_003 }
         XCTAssertEqual(chrome?.inBytes, 500_000)
-        XCTAssertEqual(chrome?.name, "61013", "pidNames fallback is the numeric pid")
+        XCTAssertEqual(chrome?.name, "429003", "pidNames fallback is the numeric pid")
         XCTAssertEqual(outcome.entities.count, 2)
     }
 
