@@ -362,4 +362,32 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(formatBytes(bytes: 1_024), "1.0 KB/s")
         XCTAssertEqual(formatBytes(bytes: 1_048_576), "1.0 MB/s")
     }
+
+    func testTrafficBucketRangeLabelShowsStartAndEndTime() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: 2026, month: 8, day: 14, hour: 14))!
+
+        XCTAssertEqual(
+            trafficBucketRangeLabel(for: date, timeRange: .today, calendar: calendar),
+            "14:00–15:00"
+        )
+    }
+
+    func testTrafficBarValueCombinesDownloadAndUpload() {
+        let point = TrafficSeriesPoint(date: Date(timeIntervalSince1970: 0), inBytes: 120, outBytes: 30)
+
+        XCTAssertEqual(trafficBarValue(for: point), 150)
+    }
+
+    func testTrafficBucketRangeRoundsRawSampleToWholeHour() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let rawDate = calendar.date(from: DateComponents(year: 2026, month: 8, day: 14, hour: 19, minute: 5))!
+
+        XCTAssertEqual(
+            trafficBucketRangeLabel(for: rawDate, timeRange: .today, calendar: calendar),
+            "19:00–20:00"
+        )
+    }
 }

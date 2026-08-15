@@ -12,6 +12,40 @@ func nearestTrafficSeriesPoint(to date: Date, points: [TrafficSeriesPoint]) -> T
     }
 }
 
+func trafficBucketEnd(for date: Date, timeRange: TimeRange, calendar: Calendar) -> Date {
+    let start = trafficBucketStart(for: date, timeRange: timeRange, calendar: calendar)
+    switch timeRange {
+    case .today:
+        return calendar.date(byAdding: .hour, value: 1, to: start) ?? start
+    case .sevenDays, .thirtyDays:
+        return calendar.date(byAdding: .day, value: 1, to: start) ?? start
+    }
+}
+
+func trafficBucketStart(for date: Date, timeRange: TimeRange, calendar: Calendar) -> Date {
+    switch timeRange {
+    case .today:
+        return calendar.dateInterval(of: .hour, for: date)?.start ?? date
+    case .sevenDays, .thirtyDays:
+        return calendar.startOfDay(for: date)
+    }
+}
+
+func trafficBucketRangeLabel(for date: Date, timeRange: TimeRange, calendar: Calendar) -> String {
+    let formatter = DateFormatter()
+    formatter.calendar = calendar
+    formatter.timeZone = calendar.timeZone
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = timeRange == .today ? "HH:mm" : "yyyy-MM-dd"
+    let start = trafficBucketStart(for: date, timeRange: timeRange, calendar: calendar)
+    let end = trafficBucketEnd(for: start, timeRange: timeRange, calendar: calendar)
+    return "\(formatter.string(from: start))–\(formatter.string(from: end))"
+}
+
+func trafficBarValue(for point: TrafficSeriesPoint) -> Int {
+    point.inBytes + point.outBytes
+}
+
 struct TrafficLineChart: View {
     let points: [TrafficSeriesPoint]
     let timeRange: TimeRange
@@ -37,8 +71,26 @@ struct TrafficLineChart: View {
     }
 
     private var yUnit: YUnit {
-        let maxBytes = points.map { max($0.inBytes, $0.outBytes) }.max() ?? 0
+        let maxBytes = points.map(trafficBarValue).max() ?? 0
         return maxBytes > 1_073_741_824 ? .gb : .mb
+    }
+
+    private struct PlottedBar: Identifiable {
+        let start: Date
+        let end: Date
+        let value: Double
+
+        var id: Date { start }
+    }
+
+    private var plottedBars: [PlottedBar] {
+        points.map { point in
+            PlottedBar(
+                start: trafficBucketStart(for: point.date, timeRange: timeRange, calendar: .current),
+                end: trafficBucketEnd(for: point.date, timeRange: timeRange, calendar: .current),
+                value: yUnit.value(trafficBarValue(for: point))
+            )
+        }
     }
 
     private var xAxisStride: Calendar.Component {
@@ -67,22 +119,8 @@ struct TrafficLineChart: View {
 
     private var chart: some View {
         Chart {
-            ForEach(points) { point in
-                LineMark(
-                    x: .value("Time", point.date),
-                    y: .value(yUnit.label, yUnit.value(point.inBytes))
-                )
-                .foregroundStyle(Theme.download)
-                .lineStyle(StrokeStyle(lineWidth: 2))
-                .interpolationMethod(.stepStart)
-
-                LineMark(
-                    x: .value("Time", point.date),
-                    y: .value(yUnit.label, yUnit.value(point.outBytes))
-                )
-                .foregroundStyle(Theme.upload)
-                .lineStyle(StrokeStyle(lineWidth: 2))
-                .interpolationMethod(.stepStart)
+            ForEach(plottedBars) { bar in
+                trafficBarMark(bar)
             }
 
             if let hoveredPoint {
@@ -125,7 +163,18 @@ struct TrafficLineChart: View {
                                 plotFrame.width
                             )
                             if let date: Date = proxy.value(atX: plotX),
-                               let point = nearestTrafficSeriesPoint(to: date, points: points) {
+                               let point = points.first(where: { point in
+                                   let start = trafficBucketStart(
+                                       for: point.date,
+                                       timeRange: timeRange,
+                                       calendar: .current
+                                   )
+                                   return date >= start && date < trafficBucketEnd(
+                                       for: start,
+                                       timeRange: timeRange,
+                                       calendar: .current
+                                   )
+                               }) ?? nearestTrafficSeriesPoint(to: date, points: points) {
                                 hoveredDate = point.date
                                 hoveredLocation = location
                             }
@@ -159,17 +208,22 @@ struct TrafficLineChart: View {
         return points.first { $0.date == hoveredDate }
     }
 
+    @ChartContentBuilder
+    private func trafficBarMark(_ bar: PlottedBar) -> some ChartContent {
+        BarMark(
+            x: .value("Time", bar.start),
+            yStart: .value(yUnit.label, 0),
+            yEnd: .value(yUnit.label, bar.value),
+            width: MarkDimension.fixed(18)
+        )
+        .foregroundStyle(Theme.download)
+    }
+
     private func tooltip(point: TrafficSeriesPoint) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(point.date.formatted(.dateTime.hour().minute()))
+            Text(trafficBucketRangeLabel(for: point.date, timeRange: timeRange, calendar: .current))
                 .font(.system(size: 11, weight: .semibold))
-            HStack(spacing: 10) {
-                Text("↓ \(formatBytesTotal(bytes: point.inBytes))")
-                    .foregroundStyle(Theme.download)
-                Text("↑ \(formatBytesTotal(bytes: point.outBytes))")
-                    .foregroundStyle(Theme.upload)
-            }
-            Text("总量 \(formatBytesTotal(bytes: point.inBytes + point.outBytes))")
+            Text("流量 \(formatBytesTotal(bytes: trafficBarValue(for: point)))")
                 .foregroundStyle(.secondary)
         }
         .font(.system(size: 11))
@@ -187,8 +241,12 @@ struct TrafficLineChart: View {
             let end = calendar.date(byAdding: .day, value: 1, to: start) ?? first
             return start...end
         }
-        let start = points.first?.date ?? Date()
-        let end = points.last?.date ?? start
+        let start = points.first.map {
+            trafficBucketStart(for: $0.date, timeRange: timeRange, calendar: .current)
+        } ?? Date()
+        let end = points.last.map {
+            trafficBucketEnd(for: $0.date, timeRange: timeRange, calendar: .current)
+        } ?? start
         return start...end
     }
 
