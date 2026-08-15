@@ -608,4 +608,100 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertFalse(update.changed)
         XCTAssertNil(update.diagnostic)
     }
+
+    // MARK: - Proxy foreground fallback
+
+    private func foregroundSnapshot(
+        foregroundPID: Int?,
+        activeProxyPIDs: Set<Int>,
+        enabled: Bool,
+        credits: [PendingProxyCredit] = []
+    ) -> ProxyAttributionSnapshot {
+        ProxyAttributionSnapshot(
+            credits: credits,
+            proxyDetected: true,
+            proxyPIDs: [91681],
+            isClashVergeProxy: true,
+            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000_000, outBytes: 0)],
+            now: 101,
+            foregroundPID: foregroundPID,
+            activeProxyPIDs: activeProxyPIDs,
+            foregroundAttributionEnabled: enabled
+        )
+    }
+
+    func testForegroundFallbackMovesResidualFromProxyToForegroundApp() {
+        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)]
+        let snapshot = foregroundSnapshot(
+            foregroundPID: 61013,
+            activeProxyPIDs: [61013],
+            enabled: true,
+            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 400_000, outBytes: 0)]
+        )
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+
+        let proxy = outcome.entities.first { $0.pid == 91681 }
+        let chrome = outcome.entities.first { $0.pid == 61013 }
+        XCTAssertEqual(proxy?.inBytes, 0, "Residual must be drained from the proxy row")
+        XCTAssertEqual(chrome?.inBytes, 1_000_000, "Consumed credit plus drained residual")
+        XCTAssertEqual(chrome?.name, "Google Chrome H")
+    }
+
+    func testForegroundFallbackAddsToExistingForegroundEntity() {
+        let raw = [
+            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0),
+            ProcessEntity(pid: 61013, name: "Google Chrome H", inBytes: 100, outBytes: 0)
+        ]
+        let snapshot = foregroundSnapshot(foregroundPID: 61013, activeProxyPIDs: [61013], enabled: true)
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+
+        let chrome = outcome.entities.first { $0.pid == 61013 }
+        let proxy = outcome.entities.first { $0.pid == 91681 }
+        XCTAssertEqual(chrome?.inBytes, 500_100)
+        XCTAssertEqual(proxy?.inBytes, 0)
+    }
+
+    func testForegroundFallbackCreatesNewEntityForFrontmostAppWithNoRow() {
+        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
+        let snapshot = foregroundSnapshot(foregroundPID: 61013, activeProxyPIDs: [61013], enabled: true)
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [:])
+
+        let chrome = outcome.entities.first { $0.pid == 61013 }
+        XCTAssertEqual(chrome?.inBytes, 500_000)
+        XCTAssertEqual(chrome?.name, "61013", "pidNames fallback is the numeric pid")
+        XCTAssertEqual(outcome.entities.count, 2)
+    }
+
+    func testForegroundFallbackSkipsWhenForegroundIsProxyPID() {
+        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
+        let snapshot = foregroundSnapshot(foregroundPID: 91681, activeProxyPIDs: [91681], enabled: true)
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [:])
+
+        XCTAssertEqual(outcome.entities.first?.inBytes, 500_000, "Residual stays on the proxy")
+        XCTAssertEqual(outcome.entities.count, 1)
+    }
+
+    func testForegroundFallbackSkipsWhenForegroundNotUsingProxy() {
+        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
+        let snapshot = foregroundSnapshot(foregroundPID: 61013, activeProxyPIDs: [], enabled: true)
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+
+        XCTAssertEqual(outcome.entities.first?.inBytes, 500_000, "Guardrail: foreground app must actually use the proxy")
+        XCTAssertEqual(outcome.entities.count, 1)
+    }
+
+    func testForegroundFallbackSkipsWhenDisabled() {
+        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
+        let snapshot = foregroundSnapshot(foregroundPID: 61013, activeProxyPIDs: [61013], enabled: false)
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+
+        XCTAssertEqual(outcome.entities.first?.inBytes, 500_000)
+        XCTAssertEqual(outcome.entities.count, 1)
+    }
 }

@@ -137,6 +137,8 @@ final class LocalizationManager: ObservableObject {
         // Proxy attribution
         "Proxy attribution": "代理归属",
         "Enable proxy attribution": "启用代理归属",
+        "Foreground App Fallback": "前台应用兜底",
+        "Attribute residual proxied traffic to the frontmost app": "把无法归属的代理流量兜底给当前前台应用",
         "Proxy type": "代理类型",
         "Auto detect": "自动检测",
         "Clash": "Clash",

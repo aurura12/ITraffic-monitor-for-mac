@@ -497,6 +497,14 @@ struct ProxyAttributionSnapshot {
     /// API), used as the consumption budget over each credit's lifetime.
     let cumulativeProxy: [ProxyCumulativePoint]
     let now: Int64
+    /// Frontmost (regular) application, used as a fallback target for proxy
+    /// bytes that could not be mapped to a specific app.
+    var foregroundPID: Int? = nil
+    /// Pids that owned at least one mapped proxy connection in the latest
+    /// tick. The foreground fallback only applies when the foreground app is
+    /// in this set — i.e. it is actually using the proxy.
+    var activeProxyPIDs: Set<Int> = []
+    var foregroundAttributionEnabled: Bool = false
 }
 
 struct ProxyAttributionOutcome {
@@ -568,6 +576,34 @@ func redistributeProxyTraffic(
         let addOut = creditedOut[pid] ?? 0
         result.append(ProcessEntity(pid: pid, name: pidNames[pid] ?? "\(pid)", inBytes: addIn, outBytes: addOut))
     }
+
+    // Foreground fallback: proxy bytes that could not be mapped to a specific
+    // app (short-lived connections) are attributed to the frontmost app, but
+    // only when that app is actually using the proxy. This keeps the fallback
+    // conservative — an idle editor with a background download does not get
+    // credit for the download.
+    if snapshot.foregroundAttributionEnabled,
+       let fg = snapshot.foregroundPID,
+       !snapshot.proxyPIDs.contains(fg),
+       snapshot.activeProxyPIDs.contains(fg) {
+        let residualIn = result[proxyIndex].inBytes
+        let residualOut = result[proxyIndex].outBytes
+        if residualIn > 0 || residualOut > 0 {
+            result[proxyIndex].inBytes = 0
+            result[proxyIndex].outBytes = 0
+            if let i = result.firstIndex(where: { $0.pid == fg }) {
+                result[i].inBytes += residualIn
+                result[i].outBytes += residualOut
+            } else {
+                result.append(ProcessEntity(
+                    pid: fg,
+                    name: pidNames[fg] ?? "\(fg)",
+                    inBytes: residualIn,
+                    outBytes: residualOut
+                ))
+            }
+        }
+    }
     return ProxyAttributionOutcome(entities: result, consumed: consumed.credited, remaining: consumed.remaining)
 }
 
@@ -608,6 +644,19 @@ final class ProxyAttributor: ObservableObject {
     private var lastConnectionCount = 0
     private var lastMappedConnectionCount = 0
     private var lastProxyRowVisible: Bool?
+    /// Frontmost regular application pid (written on the main thread from the
+    /// activation notification, read under stateLock). Fallback target for
+    /// proxy bytes that could not be mapped to a specific app.
+    private var foregroundPID: Int?
+    /// Pids that owned at least one mapped proxy connection in the latest
+    /// tick; the foreground fallback only applies when the foreground app is
+    /// in this set (it is actually using the proxy).
+    private var activeProxyPIDs: Set<Int> = []
+    private var foregroundAttributionEnabled = false
+
+    // MARK: - Main-thread foreground-app observer (no lock)
+
+    private var foregroundObserver: NSObjectProtocol?
 
     // MARK: - Attributor-queue state (no lock)
 
@@ -627,6 +676,7 @@ final class ProxyAttributor: ObservableObject {
         let type: ProxyType
         let baseURL: String
         let secret: String
+        let foregroundAttributionEnabled: Bool
     }
 
     private struct Candidate {
@@ -653,6 +703,7 @@ final class ProxyAttributor: ObservableObject {
             t.setEventHandler { [weak self] in self?.tick() }
             self.timer = t
             t.resume()
+            self.trackForegroundApp()
         }
     }
 
@@ -661,6 +712,7 @@ final class ProxyAttributor: ObservableObject {
             guard let self else { return }
             self.timer?.cancel()
             self.timer = nil
+            self.untrackForegroundApp()
             self.reset()
         }
     }
@@ -670,6 +722,47 @@ final class ProxyAttributor: ObservableObject {
         queue.async { [weak self] in
             self?.tick()
         }
+    }
+
+    // MARK: - Foreground app tracking (main thread)
+
+    /// Subscribe to app-activation changes so the residual proxy traffic can
+    /// be attributed to the app the user is actually using. NSWorkspace is
+    /// main-thread only, so both the subscription and the callback hop to main.
+    private func trackForegroundApp() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            guard self.foregroundObserver == nil else { return }
+            self.foregroundObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didActivateApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] note in
+                guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                      app.activationPolicy == .regular else { return }
+                self?.setForegroundPID(Int(app.processIdentifier))
+            }
+            if let front = NSWorkspace.shared.frontmostApplication,
+               front.activationPolicy == .regular {
+                self.setForegroundPID(Int(front.processIdentifier))
+            }
+        }
+    }
+
+    private func untrackForegroundApp() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            if let observer = self.foregroundObserver {
+                NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            }
+            self.foregroundObserver = nil
+        }
+    }
+
+    private func setForegroundPID(_ pid: Int) {
+        stateLock.lock()
+        foregroundPID = pid
+        stateLock.unlock()
     }
 
     /// Called on the nettop runner queue. Re-distributes the proxy process's
@@ -737,7 +830,10 @@ final class ProxyAttributor: ObservableObject {
                 proxyPIDs: snapshot.proxyPIDs,
                 isClashVergeProxy: snapshot.isClashVergeProxy,
                 cumulativeProxy: proxyCumulativeHistorySnapshot(),
-                now: Int64(Date().timeIntervalSince1970)
+                now: Int64(Date().timeIntervalSince1970),
+                foregroundPID: foregroundPIDSnapshot(),
+                activeProxyPIDs: activeProxyPIDsSnapshot(),
+                foregroundAttributionEnabled: foregroundAttributionEnabledSnapshot()
             ),
             pidNames: pidNamesSnapshot()
         )
@@ -772,7 +868,11 @@ final class ProxyAttributor: ObservableObject {
 
         switch tryDetect(candidates, secret: cfg.secret) {
         case .success(let c, let connections):
-            applyDetection(candidate: c, connections: connections)
+            applyDetection(
+                candidate: c,
+                connections: connections,
+                foregroundAttributionEnabled: cfg.foregroundAttributionEnabled
+            )
             emitStatus(.detected(name: c.name))
         case .secretRequired:
             logger.error("proxy controller requires secret")
@@ -791,7 +891,11 @@ final class ProxyAttributor: ObservableObject {
         }
     }
 
-    private func applyDetection(candidate: Candidate, connections: [ProxyConnection]) {
+    private func applyDetection(
+        candidate: Candidate,
+        connections: [ProxyConnection],
+        foregroundAttributionEnabled: Bool
+    ) {
         let socketSnapshot = socketPortMap()
         let now = Int64(Date().timeIntervalSince1970)
         let owners = mergeSocketOwners(
@@ -823,6 +927,9 @@ final class ProxyAttributor: ObservableObject {
         var mappedConnectionCount = 0
         var unmappedIn = 0
         var unmappedOut = 0
+        // Pids that owned a mapped connection this tick; drives the foreground
+        // fallback guardrail ("frontmost app is actually using the proxy").
+        var mappedPids: Set<Int> = []
         // Total proxy traffic this tick (all connections, including unmapped
         // and the proxy's own), used as the window budget for consumption.
         var apiIn: Int64 = 0
@@ -838,6 +945,7 @@ final class ProxyAttributor: ObservableObject {
             )
             if pid > 0 {
                 mappedConnectionCount += 1
+                mappedPids.insert(pid)
             } else if prev[conn.id] == nil {
                 unmappedIn += Int(conn.download)
                 unmappedOut += Int(conn.upload)
@@ -881,6 +989,8 @@ final class ProxyAttributor: ObservableObject {
             deltaOut: Int(apiOut),
             ttl: cumulativeHistoryTTL
         )
+        self.activeProxyPIDs = mappedPids
+        self.foregroundAttributionEnabled = foregroundAttributionEnabled
         self.proxyPid = proxyPid
         self.proxyPIDs = proxyPIDs
         isClashVergeProxy = candidate.name == "Clash Verge"
@@ -1319,7 +1429,8 @@ final class ProxyAttributor: ObservableObject {
             enabled: enabled,
             type: type,
             baseURL: d.string(forKey: "proxyAttributionBaseURL") ?? "",
-            secret: configSecret.isEmpty ? (autoSecret ?? "") : configSecret
+            secret: configSecret.isEmpty ? (autoSecret ?? "") : configSecret,
+            foregroundAttributionEnabled: d.object(forKey: "proxyForegroundAttributionEnabled") as? Bool ?? true
         )
     }
 
@@ -1332,6 +1443,7 @@ final class ProxyAttributor: ObservableObject {
         proxyPIDs = []
         sourcePortCache = [:]
         apiCumulativeHistory = []
+        activeProxyPIDs = []
         isClashVergeProxy = false
         stateLock.unlock()
         emitDiagnostic(.notDetected)
@@ -1361,6 +1473,24 @@ final class ProxyAttributor: ObservableObject {
         stateLock.lock()
         defer { stateLock.unlock() }
         return apiCumulativeHistory
+    }
+
+    private func foregroundPIDSnapshot() -> Int? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return foregroundPID
+    }
+
+    private func activeProxyPIDsSnapshot() -> Set<Int> {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return activeProxyPIDs
+    }
+
+    private func foregroundAttributionEnabledSnapshot() -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return foregroundAttributionEnabled
     }
 
     /// Records this frame's proxy-row visibility and, on a genuine transition,
