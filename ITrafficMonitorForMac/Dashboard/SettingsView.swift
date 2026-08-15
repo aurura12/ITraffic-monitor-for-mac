@@ -59,6 +59,7 @@ struct SettingsView: View {
     @AppStorage("proxyAttributionType") private var proxyTypeRaw = "auto"
     @AppStorage("proxyAttributionBaseURL") private var proxyBaseURL = ""
     @AppStorage("proxyAttributionSecret") private var proxySecret = ""
+    @AppStorage("proxyForegroundAttributionEnabled") private var proxyForegroundEnabled = true
     @ObservedObject private var proxy = SharedStore.proxyAttributor
     @ObservedObject private var trafficFilter = SharedStore.trafficFilterManager
     @ObservedObject private var utunSampler = SharedStore.utunTrafficSampler
@@ -96,9 +97,11 @@ struct SettingsView: View {
                 set: { launchAtLogin.setEnabled($0) }
             ))
 
-            Section(i18n.text("Proxy attribution")) {
+            Section {
                 Toggle(i18n.text("Enable proxy attribution"), isOn: $proxyEnabled)
                     .onChange(of: proxyEnabled) { proxy.reconfigure() }
+                Toggle(i18n.text("Foreground App Fallback"), isOn: $proxyForegroundEnabled)
+                    .onChange(of: proxyForegroundEnabled) { proxy.reconfigure() }
                 Picker(i18n.text("Proxy type"), selection: $proxyTypeRaw) {
                     Text(i18n.text("Auto detect")).tag("auto")
                     Text(i18n.text("Clash")).tag("clash")
@@ -123,6 +126,12 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .textSelection(.enabled)
+            } header: {
+                Text(i18n.text("Proxy attribution"))
+            } footer: {
+                Text(i18n.text("Attribute residual proxied traffic to the frontmost app"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             Section("Network Extension") {
