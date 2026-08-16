@@ -621,6 +621,79 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(outcome.entities.count, 2)
     }
 
+    // MARK: - Nettop proxy window budget (prevents API over-credit)
+
+    func testConsumptionIsCappedByNettopProxyWindow() {
+        // TUN-mode double-count regression: nettop puts tunneled bytes on the
+        // app's own socket, so the proxy row carries far fewer bytes than the
+        // API reports. Capping consumption by the nettop window must prevent
+        // the full API credit from being added to the app on top of its own
+        // nettop bytes.
+        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500, outBytes: 0)]
+        let snapshot = ProxyAttributionSnapshot(
+            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 1_000, outBytes: 0)],
+            proxyDetected: true,
+            proxyPIDs: [91681],
+            isClashVergeProxy: true,
+            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
+            nettopProxyCumulative: [ProxyCumulativePoint(timestamp: 101, inBytes: 500, outBytes: 0)],
+            now: 101
+        )
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+
+        // Only the 500 bytes the proxy row can actually pay are consumed; the
+        // other 500 must stay pending instead of being invented onto the app.
+        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 500)
+        XCTAssertEqual(outcome.entities.first { $0.pid == 91681 }?.inBytes, 0, "Proxy row is fully drained by what it carried")
+        XCTAssertEqual(outcome.remaining, [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 500, outBytes: 0)])
+    }
+
+    func testConsumptionFallsBackToAPIWindowWhenNettopUnavailable() {
+        // When the nettop proxy window is empty (no proxy row in the frame),
+        // the historical API-window behavior must be preserved so credits are
+        // not silently stranded.
+        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 0)]
+        let snapshot = ProxyAttributionSnapshot(
+            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900, outBytes: 0)],
+            proxyDetected: true,
+            proxyPIDs: [91681],
+            isClashVergeProxy: true,
+            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
+            now: 101
+        )
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+
+        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 900, "API window budget is used when nettop window is absent")
+    }
+
+    func testConsumptionNettopWindowUsesMaxOfBothDirections() {
+        // Each direction is capped independently by its own nettop window; a
+        // mismatch in one direction must not leak into the other.
+        let raw = [
+            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500, outBytes: 100),
+            ProcessEntity(pid: 61013, name: "Google Chrome H", inBytes: 0, outBytes: 0)
+        ]
+        let snapshot = ProxyAttributionSnapshot(
+            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 1_000, outBytes: 500)],
+            proxyDetected: true,
+            proxyPIDs: [91681],
+            isClashVergeProxy: true,
+            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 500)],
+            nettopProxyCumulative: [ProxyCumulativePoint(timestamp: 101, inBytes: 500, outBytes: 100)],
+            now: 101
+        )
+
+        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+
+        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 500, "Download capped by nettop in-window")
+        XCTAssertEqual(outcome.consumed[61013]?.outBytes, 100, "Upload capped by nettop out-window")
+        let chrome = outcome.entities.first { $0.pid == 61013 }
+        XCTAssertEqual(chrome?.inBytes, 500)
+        XCTAssertEqual(chrome?.outBytes, 100)
+    }
+
     // MARK: - Recovery credits (expired credits whose process is still alive)
 
     func testRecoveryCreditsAreConsumedAndDrainProxyRow() {
