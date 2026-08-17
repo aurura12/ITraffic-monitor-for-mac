@@ -29,6 +29,9 @@ struct UnifiedDashboardView: View {
             .navigationDestination(for: AppNavTarget.self) { target in
                 AppDetailView(target: target)
             }
+            // Give the root its own title so popping back from an app's detail
+            // view restores the window title instead of leaving the app's name.
+            .navigationTitle(AppDelegate.appDisplayName)
             .onAppear { viewModel.refreshDashboard() }
             .onReceive(refreshTimer) { _ in viewModel.refreshDashboard() }
             .onChange(of: viewModel.timeRange) { viewModel.refreshDashboard() }
