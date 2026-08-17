@@ -61,7 +61,6 @@ struct SettingsView: View {
     @AppStorage("proxyAttributionSecret") private var proxySecret = ""
     @AppStorage("proxyForegroundAttributionEnabled") private var proxyForegroundEnabled = true
     @ObservedObject private var proxy = SharedStore.proxyAttributor
-    @ObservedObject private var trafficFilter = SharedStore.trafficFilterManager
     @ObservedObject private var utunSampler = SharedStore.utunTrafficSampler
     private let diagnostics = DiagnosticLogStore.shared
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
@@ -81,6 +80,16 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section(i18n.text("Version")) {
+                HStack {
+                    Text(i18n.text("Version"))
+                    Spacer()
+                    Text(buildVersionString)
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
             Picker(i18n.text("Language"), selection: $languageRaw) {
                 Text(i18n.text("Follow System")).tag(AppLanguage.system.rawValue)
                 Text("English").tag(AppLanguage.en.rawValue)
@@ -130,30 +139,6 @@ struct SettingsView: View {
                 Text(i18n.text("Proxy attribution"))
             } footer: {
                 Text(i18n.text("Attribute residual proxied traffic to the frontmost app"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section(i18n.text("Network Extension")) {
-                HStack {
-                    Text(i18n.text("Per-App VPN statistics"))
-                    Spacer()
-                    Text(trafficFilterStatusText)
-                        .foregroundColor(.secondary)
-                }
-                if let lastReportDate = trafficFilter.lastReportDate {
-                    Text(i18n.text("Last report") + ": \(lastReportDate.formatted(date: .omitted, time: .standard))")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                Text(i18n.text("Apps identified in the latest report") + ": \(trafficFilter.identifiedAppCount)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                Button(i18n.text("Reload Network Extension")) {
-                    trafficFilter.reloadStatus()
-                }
-                .controlSize(.small)
-                Text(i18n.text("The filter only observes byte counts and allows all traffic."))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -222,14 +207,9 @@ struct SettingsView: View {
         }
     }
 
-    private var trafficFilterStatusText: String {
-        switch trafficFilter.state {
-        case .disabled: return L("Off")
-        case .authorizing: return L("Authorizing…")
-        case .enabled: return L("Enabled")
-        case .fallback: return L("Fallback")
-        case .error: return L("Error")
-        }
+    private var buildVersionString: String {
+        let marketing = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        return "\(marketing) · build \(GeneratedBuildInfo.buildNumber) · \(GeneratedBuildInfo.buildDate)"
     }
 
     private var utunStatusText: String {

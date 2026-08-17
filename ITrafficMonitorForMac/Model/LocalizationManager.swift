@@ -133,6 +133,7 @@ final class LocalizationManager: ObservableObject {
         "Dark": "深色",
         "Launch at login": "开机自动启动",
         "Launch at login failed": "开机自动启动设置失败",
+        "Version": "版本",
 
         // Proxy attribution
         "Proxy attribution": "代理归属",
@@ -154,14 +155,6 @@ final class LocalizationManager: ObservableObject {
         "Show in Finder": "在 Finder 中显示",
         "Clear": "清空",
         "Proxy attribution diagnostics are retained locally (up to 16 MB).": "代理归属诊断日志仅保存在本机（最多 16 MB）。",
-
-        // Network Extension section
-        "Network Extension": "网络扩展",
-        "Per-App VPN statistics": "按 App 的 VPN 统计",
-        "Last report": "最近报告",
-        "Apps identified in the latest report": "最近报告识别到的应用",
-        "Reload Network Extension": "重新加载网络扩展",
-        "The filter only observes byte counts and allows all traffic.": "该过滤器仅统计字节数，放行所有流量",
 
         // Free VPN calibration section
         "Free VPN calibration": "免费 VPN 校准",

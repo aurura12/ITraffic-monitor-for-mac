@@ -6,6 +6,11 @@ traffic-before-*.sqlite3
 traffic-before-*.sqlite3-shm
 traffic-before-*.sqlite3-wal
 
+# Generated at build time by the "Generate Build Info" script phase
+ITrafficMonitorForMac/GeneratedBuildInfo.swift
+
+# Local tool state (assistant memory, etc.)
+.workbuddy/
 
 # Xcode
 #
