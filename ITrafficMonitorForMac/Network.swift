@@ -52,8 +52,18 @@ class Network {
 
         // Use the Network Extension as the history source after its first
         // valid report. Until then, retain the existing nettop fallback.
+        // The filter cannot attribute helper processes (it only sees the
+        // helper's own bundle id), so helper entities are always recorded
+        // from nettop — merged into their owning app — and the filter
+        // consumer skips them.
+        HelperAttributionRegistry.shared.register(entities: entities)
         if !SharedStore.trafficFilterManager.usesFilterHistory {
             SharedStore.recorder.record(entities: entities)
+        } else {
+            let helperEntities = entities.filter { $0.isFilterUnattributableHelper }
+            if !helperEntities.isEmpty {
+                SharedStore.recorder.record(entities: helperEntities)
+            }
         }
 
         // parser stores raw delta bytes; convert to bytes/sec for the status bar.

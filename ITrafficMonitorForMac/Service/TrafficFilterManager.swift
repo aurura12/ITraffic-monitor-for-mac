@@ -95,7 +95,12 @@ final class TrafficFilterManager: ObservableObject {
         do {
             let records = try statsStore.readNewRecords()
             guard !records.isEmpty else { return }
-            SharedStore.recorder.record(filterRecords: records)
+            // Helper processes (WebKit daemon, app services, bundled helpers)
+            // are attributed to their owning app through the nettop path
+            // (Network.handleFrame records helper entities unconditionally),
+            // so skip their records here to avoid double counting.
+            let mergeable = records.filter { !HelperAttributionRegistry.shared.isKnownHelper($0.appKey) }
+            SharedStore.recorder.record(filterRecords: mergeable)
             try statsStore.markConsumedThrough(sequence: records.last?.sequence ?? consumedSequence)
             consumedSequence = records.last?.sequence ?? consumedSequence
             usesFilterHistory = true

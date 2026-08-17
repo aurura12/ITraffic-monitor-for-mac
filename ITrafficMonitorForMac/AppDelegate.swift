@@ -87,8 +87,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             prefs.action = #selector(showSettingsWindow(_:))
         }
 
-        SharedStore.trafficFilterManager.start()
-
         self.network = Network()
         self.network.startListenNetwork()
         SharedStore.utunTrafficSampler.start()
@@ -120,7 +118,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         print("applicationWillTerminate")
-        SharedStore.trafficFilterManager.stop()
         SharedStore.utunTrafficSampler.stop()
         SharedStore.proxyAttributor.stop()
         SharedStore.recorder.flush()
