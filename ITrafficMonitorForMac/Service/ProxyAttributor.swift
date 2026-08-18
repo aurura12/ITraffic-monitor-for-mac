@@ -1035,6 +1035,13 @@ final class ProxyAttributor: ObservableObject {
             let pendingOut = outcome.remaining.reduce(0) { $0 + $1.outBytes }
             logger.info("\(proxyCreditConsumptionSummary(creditedIn: sumIn, creditedOut: sumOut, pendingIn: pendingIn, pendingOut: pendingOut, proxyIn: proxyIn, proxyOut: proxyOut), privacy: .public)")
             DiagnosticLogStore.shared.append(proxyCreditConsumptionSummary(creditedIn: sumIn, creditedOut: sumOut, pendingIn: pendingIn, pendingOut: pendingOut, proxyIn: proxyIn, proxyOut: proxyOut))
+        } else if proxyIn > 0 || proxyOut > 0 {
+            // Attribution produced no credits at all (process metadata
+            // unavailable and socket mapping failed). The bytes stay on the
+            // proxy row — the proxy is the "no source found" bucket — but the
+            // failure must remain visible in the diagnostic log.
+            logger.info("proxy attribution produced no credits; bytes stay on proxy in=\(proxyIn, privacy: .public) out=\(proxyOut, privacy: .public)")
+            DiagnosticLogStore.shared.append("proxy attribution produced no credits; in=\(proxyIn) out=\(proxyOut) remain on proxy")
         }
 
         // When the proxy API produced no credits (process metadata
