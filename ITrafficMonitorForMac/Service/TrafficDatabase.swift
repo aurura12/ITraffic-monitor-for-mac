@@ -174,6 +174,7 @@ final class TrafficDatabase {
             return
         }
         migrateClashVergeName()
+        migrateUnattributedVPNName()
     }
 
     /// Merge rows written by older versions under the raw mihomo process name
@@ -202,6 +203,31 @@ final class TrafficDatabase {
         """
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
             print("[TrafficDatabase] Clash Verge name migration failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+    }
+
+    /// Merge rows written by older versions under the synthetic
+    /// "Unattributed VPN" key into the Clash Verge app key. There is no
+    /// unattributed-VPN category: traffic that cannot be mapped to an app is
+    /// credited to the proxy process.
+    private func migrateUnattributedVPNName() {
+        guard let db else { return }
+        let sql = """
+        INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
+        SELECT 'Clash Verge', bucket_start, day, hour, SUM(in_bytes), SUM(out_bytes), SUM(sample_count)
+        FROM app_traffic
+        WHERE app_key = 'Unattributed VPN'
+        GROUP BY bucket_start, day, hour
+        ON CONFLICT(app_key,bucket_start) DO UPDATE SET
+          in_bytes=in_bytes+excluded.in_bytes,
+          out_bytes=out_bytes+excluded.out_bytes,
+          sample_count=sample_count+excluded.sample_count;
+        DELETE FROM app_traffic WHERE app_key = 'Unattributed VPN';
+        DELETE FROM apps WHERE app_key = 'Unattributed VPN';
+        """
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] Unattributed VPN merge migration failed: \(String(cString: sqlite3_errmsg(db)))")
             return
         }
     }

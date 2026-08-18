@@ -65,8 +65,8 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertTrue(consumer.consume(records).isEmpty)
     }
 
-    func testMissingSourceAppUsesUnattributedKey() {
-        XCTAssertEqual(normalizedTrafficAppKey(sourceAppIdentifier: nil), "Unattributed VPN")
+    func testMissingSourceAppFallsBackToClash() {
+        XCTAssertEqual(normalizedTrafficAppKey(sourceAppIdentifier: nil), "Clash Verge")
     }
 
     func testBundleIDIsUsedAsStableAppKey() {
@@ -98,18 +98,18 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertEqual(records[0].flowCount, 2)
     }
 
-    func testReportAccumulatorKeepsMissingAppUnattributed() {
+    func testReportAccumulatorFallsBackToClashForMissingApp() {
         var accumulator = TrafficFilterReportAccumulator()
         accumulator.consume(ReportInput(
-            appKey: "Unattributed VPN",
-            displayName: "Unattributed VPN",
+            appKey: "Clash Verge",
+            displayName: "Clash Verge",
             inBytes: 8,
             outBytes: 3
         ))
 
         XCTAssertEqual(
             accumulator.flush(timestamp: 200, startingSequence: 1).first?.appKey,
-            "Unattributed VPN"
+            "Clash Verge"
         )
     }
 
@@ -167,7 +167,7 @@ final class TrafficFilterTests: XCTestCase {
         ))
     }
 
-    func testFreeCalibrationPutsPositiveGapIntoUnattributed() {
+    func testFreeCalibrationPutsPositiveGapIntoClash() {
         let entities = [
             ProcessEntity(pid: 10, name: "Safari", inBytes: 600, outBytes: 200)
         ]
@@ -177,10 +177,10 @@ final class TrafficFilterTests: XCTestCase {
             reference: UTunTrafficCounters(inBytes: 1_000, outBytes: 300)
         )
 
-        XCTAssertEqual(result.confidence, .calibratedWithUnattributed)
+        XCTAssertEqual(result.confidence, .calibratedWithProxyFallback)
         XCTAssertEqual(result.entities.map(\.inBytes).reduce(0, +), 1_000)
         XCTAssertEqual(result.entities.map(\.outBytes).reduce(0, +), 300)
-        XCTAssertEqual(result.entities.last?.name, "Unattributed VPN")
+        XCTAssertEqual(result.entities.last?.name, "Clash Verge")
     }
 
     func testFreeCalibrationDoesNotInventBytesWhenReferenceIsLower() {
@@ -196,7 +196,7 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertEqual(result.confidence, .referenceMismatch)
         XCTAssertEqual(result.entities.map(\.inBytes).reduce(0, +), 600)
         XCTAssertEqual(result.entities.map(\.outBytes).reduce(0, +), 200)
-        XCTAssertTrue(result.entities.allSatisfy { $0.name != "Unattributed VPN" })
+        XCTAssertTrue(result.entities.allSatisfy { $0.name != "Clash Verge" })
     }
 
     private func sampleRecord(sequence: Int64) -> TrafficFilterRecord {

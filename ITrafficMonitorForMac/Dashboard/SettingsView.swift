@@ -150,7 +150,7 @@ struct SettingsView: View {
                     Text(utunStatusText)
                         .foregroundColor(.secondary)
                 }
-                Text(i18n.text("Uses nettop, proxy connections, and utun counters. Unmatched bytes remain unattributed."))
+                Text(i18n.text("Uses nettop, proxy connections, and utun counters. Unmatched bytes are credited to Clash Verge."))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

@@ -159,7 +159,7 @@ final class LocalizationManager: ObservableObject {
         // Free VPN calibration section
         "Free VPN calibration": "免费 VPN 校准",
         "utun total reference": "utun 总量参考",
-        "Uses nettop, proxy connections, and utun counters. Unmatched bytes remain unattributed.": "基于 nettop、代理连接表和 utun 计数器；无法匹配的字节保持未归属",
+        "Uses nettop, proxy connections, and utun counters. Unmatched bytes are credited to Clash Verge.": "基于 nettop、代理连接表和 utun 计数器；无法匹配的字节计入 Clash Verge",
 
         // Network Extension / calibration status
         "Authorizing…": "授权中…",

@@ -8,7 +8,7 @@ import Foundation
 enum FreeAttributionConfidence: Equatable {
     case noReference
     case matched
-    case calibratedWithUnattributed
+    case calibratedWithProxyFallback
     case referenceMismatch
 }
 
@@ -49,20 +49,20 @@ func calibrateFreeAttribution(
     }
 
     var result = entities
-    if let index = result.firstIndex(where: { $0.name == "Unattributed VPN" }) {
+    if let index = result.firstIndex(where: { $0.name == "Clash Verge" }) {
         result[index].inBytes += gap.inBytes
         result[index].outBytes += gap.outBytes
     } else {
         result.append(ProcessEntity(
             pid: 0,
-            name: "Unattributed VPN",
+            name: "Clash Verge",
             inBytes: gap.inBytes,
             outBytes: gap.outBytes
         ))
     }
     return FreeAttributionCalibration(
         entities: result,
-        confidence: .calibratedWithUnattributed,
+        confidence: .calibratedWithProxyFallback,
         positiveGap: gap
     )
 }

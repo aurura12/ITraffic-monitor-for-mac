@@ -1037,33 +1037,12 @@ final class ProxyAttributor: ObservableObject {
             DiagnosticLogStore.shared.append(proxyCreditConsumptionSummary(creditedIn: sumIn, creditedOut: sumOut, pendingIn: pendingIn, pendingOut: pendingOut, proxyIn: proxyIn, proxyOut: proxyOut))
         }
 
-        // Attribution fallback: when the proxy row is visible but the API
-        // produced no credits at all (process metadata unavailable and socket
-        // mapping failed), the proxy row's bytes are almost certainly traffic
-        // that belonged to real apps. Leaving them on the proxy process makes
-        // Clash look like a consumer. Re-label them "Unattributed VPN" so the
-        // total stays intact and the user can see the bytes exist but were not
-        // mapped — instead of wrongly crediting the proxy.
-        var entities = outcome.entities
-        if sumIn == 0, sumOut == 0,
-           let proxyIdx = entities.firstIndex(where: {
-               proxyEntityMatches(pid: $0.pid, name: $0.name, proxyPIDs: snapshot.proxyPIDs, isClashVerge: snapshot.isClashVergeProxy)
-           }),
-           entities[proxyIdx].inBytes > 0 || entities[proxyIdx].outBytes > 0 {
-            let residualIn = entities[proxyIdx].inBytes
-            let residualOut = entities[proxyIdx].outBytes
-            entities[proxyIdx].inBytes = 0
-            entities[proxyIdx].outBytes = 0
-            if let unattributedIdx = entities.firstIndex(where: { $0.name == "Unattributed VPN" }) {
-                entities[unattributedIdx].inBytes += residualIn
-                entities[unattributedIdx].outBytes += residualOut
-            } else {
-                entities.append(ProcessEntity(pid: 0, name: "Unattributed VPN", inBytes: residualIn, outBytes: residualOut))
-            }
-            logger.info("proxy attribution failed; residual moved to Unattributed VPN in=\(residualIn, privacy: .public) out=\(residualOut, privacy: .public)")
-            DiagnosticLogStore.shared.append("proxy attribution failed; residual moved to Unattributed VPN in=\(residualIn) out=\(residualOut)")
-        }
-        return entities
+        // When the proxy API produced no credits (process metadata
+        // unavailable and socket mapping failed), the proxy row's bytes stay
+        // on the proxy process. The proxy is the "no source found" bucket:
+        // traffic that cannot be attributed to a real app is left with Clash
+        // rather than hidden in a synthetic category.
+        return outcome.entities
     }
 
     // MARK: - Tick pipeline (attributor queue)

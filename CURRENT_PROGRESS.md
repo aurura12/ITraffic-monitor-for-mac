@@ -23,7 +23,7 @@
 - 添加 Data Provider 和 Control Provider 两个扩展。
 - 通过 App Group 在主 App 与扩展之间共享统计结果。
 - 记录连接所属 App、上传字节数、下载字节数和连接数。
-- 对无法识别的连接归入 `Unattributed VPN`。
+- 对无法识别的连接归入 `Clash Verge`（没有独立的未归属 VPN 桶）。
 - 主 App 增加 `TrafficFilterManager`，负责加载、保存、启用过滤器配置和读取统计结果。
 - 增加统计游标、JSONL 共享输出和聚合逻辑，避免重复记录。
 - Network Extension 未产出数据时继续使用 `nettop`，避免界面完全没有数据。
@@ -33,7 +33,7 @@
 
 - 添加 `UTunTrafficSampler`，在独立后台队列读取 `netstat -ib` 中的 `utun*` 接口累计字节。
 - 添加 `FreeAttributionCalibrator`，将能解释的流量保留给对应 App。
-- 只有当 `utun` 参考总量高于当前已归属总量时，才把差额放入 `Unattributed VPN`。
+- 只有当 `utun` 参考总量高于当前已归属总量时，才把差额计入 `Clash Verge`。
 - 当计数器回退、采样不可用或参考总量较低时，不扣减已有 App 数据，继续使用原有 `nettop` 结果。
 - 设置页面增加免费校准状态，显示 `utun` 参考是否可用。
 - `Network` 使用校准后的实体和总量更新实时显示，同时保留旧的无校准回退路径。
