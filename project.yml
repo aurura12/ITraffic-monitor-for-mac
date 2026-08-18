@@ -69,7 +69,7 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
         COMBINE_HIDPI_IMAGES: YES
-        CURRENT_PROJECT_VERSION: 8
+        CURRENT_PROJECT_VERSION: 9
         DEVELOPMENT_ASSET_PATHS: "\"ITrafficMonitorForMac/Preview Content\""
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_PREVIEWS: YES
@@ -77,7 +77,7 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
-        MARKETING_VERSION: 0.3.0
+        MARKETING_VERSION: 0.3.1
         PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMac
         OTHER_LDFLAGS:
           - "-lsqlite3"
