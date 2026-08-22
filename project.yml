@@ -42,9 +42,12 @@ targets:
         script: |
           #!/bin/bash
           set -e
-          # Monotonic per-machine build counter. Stored outside the repo so
-          # clean checkouts do not reset it; each build increments by one.
-          COUNTER_FILE="$HOME/Library/Caches/com.foamzou.ITrafficMonitorForMac/buildcounter"
+          # Build counter. Keep it in Xcode's derived data by default so
+          # sandboxed and CI builds do not need home-directory access.
+          # Set ITRAFFIC_BUILD_COUNTER_DIR to preserve it across clean builds.
+          COUNTER_DIR="${ITRAFFIC_BUILD_COUNTER_DIR:-${DERIVED_FILE_DIR:-${TMPDIR:-/tmp}/com.foamzou.ITrafficMonitorForMac}}"
+          mkdir -p "$COUNTER_DIR"
+          COUNTER_FILE="$COUNTER_DIR/buildcounter"
           N=1
           if [ -f "$COUNTER_FILE" ]; then
             PREV=$(cat "$COUNTER_FILE" 2>/dev/null | tr -d '[:space:]')
@@ -69,7 +72,7 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
         COMBINE_HIDPI_IMAGES: YES
-        CURRENT_PROJECT_VERSION: 9
+        CURRENT_PROJECT_VERSION: 10
         DEVELOPMENT_ASSET_PATHS: "\"ITrafficMonitorForMac/Preview Content\""
         ENABLE_HARDENED_RUNTIME: YES
         ENABLE_PREVIEWS: YES
@@ -77,44 +80,16 @@ targets:
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
-        MARKETING_VERSION: 0.3.1
+        MARKETING_VERSION: 0.3.2
         PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMac
         OTHER_LDFLAGS:
           - "-lsqlite3"
         SWIFT_VERSION: 5.0
 
-  TrafficFilterDataProvider:
-    type: system-extension
-    platform: macOS
-    deploymentTarget: "14.0"
-    sources:
-      - path: ITrafficMonitorForMac/NetworkFilter/DataProvider
-      - path: ITrafficMonitorForMac/NetworkFilter/Shared
-    dependencies:
-      - target: TrafficFilterDataProvider
-      - target: TrafficFilterControlProvider
-    settings:
-      base:
-        CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_ENTITLEMENTS: ITrafficMonitorForMac/NetworkFilter/DataProvider/TrafficFilterDataProvider.entitlements
-        INFOPLIST_FILE: ITrafficMonitorForMac/NetworkFilter/DataProvider/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMac.TrafficFilterDataProvider
-        SWIFT_VERSION: 5.0
-
-  TrafficFilterControlProvider:
-    type: app-extension
-    platform: macOS
-    deploymentTarget: "14.0"
-    sources:
-      - path: ITrafficMonitorForMac/NetworkFilter/ControlProvider
-      - path: ITrafficMonitorForMac/NetworkFilter/Shared
-    settings:
-      base:
-        CODE_SIGN_STYLE: Automatic
-        CODE_SIGN_ENTITLEMENTS: ITrafficMonitorForMac/NetworkFilter/ControlProvider/TrafficFilterControlProvider.entitlements
-        INFOPLIST_FILE: ITrafficMonitorForMac/NetworkFilter/ControlProvider/Info.plist
-        PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMac.TrafficFilterControlProvider
-        SWIFT_VERSION: 5.0
+  # The Network Extension implementation is intentionally kept under
+  # ITrafficMonitorForMac/NetworkFilter, but is not part of the default free
+  # project. It requires a signed Apple Developer Team and a real install /
+  # enablement flow before it can be shipped safely.
 
   ITrafficMonitorForMacTests:
     type: bundle.unit-test

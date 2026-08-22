@@ -34,28 +34,50 @@ final class NettopRunner {
     private var lineBuffer = Data()
     private var frameLines: [String] = []
     private var debounceWork: DispatchWorkItem?
+    private var restartWork: DispatchWorkItem?
     private var droppedFirstFrame = false
     private var shouldRestart = false
+    private let processConfigurator: (Process, Int) -> Void
 
-    init(interval: Int, debounceInterval: TimeInterval = 0.1) {
+    init(
+        interval: Int,
+        debounceInterval: TimeInterval = 0.1,
+        processConfigurator: @escaping (Process, Int) -> Void = { task, interval in
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/script")
+            let nettopCommand = "/usr/bin/nettop -P -d -L 0 -J bytes_in,bytes_out -t external -s \(interval) -c"
+            task.arguments = [
+                "-q", "/dev/null",
+                "/bin/sh", "-c", "exec \(nettopCommand)"
+            ]
+        }
+    ) {
         self.interval = interval
         self.debounceInterval = debounceInterval
+        self.processConfigurator = processConfigurator
     }
 
     func start() {
         queue.async { [weak self] in
             guard let self else { return }
+            self.restartWork?.cancel()
+            self.restartWork = nil
             self.shouldRestart = true
+            guard self.process == nil || self.process?.isRunning == false else { return }
             self.spawn()
         }
     }
 
     func stop() {
-        queue.async { [weak self] in
+        queue.sync { [weak self] in
             guard let self else { return }
             self.shouldRestart = false
+            self.restartWork?.cancel()
+            self.restartWork = nil
             self.process?.terminationHandler = nil
-            self.process?.terminate()
+            if let process = self.process, process.isRunning {
+                process.terminate()
+                process.waitUntilExit()
+            }
             self.cleanupHandles()
             self.stdinPipe = nil
             self.stdoutPipe = nil
@@ -66,17 +88,7 @@ final class NettopRunner {
 
     private func spawn() {
         let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/script")
-        // `script` also has a `-c` option. Passing nettop's `-c` as a raw
-        // trailing argument makes script consume it, so nettop falls back to
-        // its interactive TUI and the CSV parser receives no usable frames.
-        // Run through sh so every nettop flag, especially `-c`, is passed to
-        // nettop itself.
-        let nettopCommand = "/usr/bin/nettop -P -d -L 0 -J bytes_in,bytes_out -t external -s \(interval) -c"
-        task.arguments = [
-            "-q", "/dev/null",
-            "/bin/sh", "-c", "exec \(nettopCommand)"
-        ]
+        processConfigurator(task, interval)
 
         let stdin = Pipe()
         let stdout = Pipe()
@@ -105,10 +117,9 @@ final class NettopRunner {
             guard let self else { return }
             self.queue.async {
                 self.cleanupHandles()
+                self.process = nil
                 guard self.shouldRestart else { return }
-                self.queue.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-                    self?.spawn()
-                }
+                self.scheduleRestart(after: 0.5)
             }
         }
 
@@ -118,11 +129,20 @@ final class NettopRunner {
         } catch {
             print("[NettopRunner] failed to spawn: \(error)")
             if shouldRestart {
-                queue.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                    self?.spawn()
-                }
+                scheduleRestart(after: 1.0)
             }
         }
+    }
+
+    private func scheduleRestart(after delay: TimeInterval) {
+        restartWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.shouldRestart else { return }
+            self.restartWork = nil
+            self.spawn()
+        }
+        restartWork = work
+        queue.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private func consume(_ data: Data) {

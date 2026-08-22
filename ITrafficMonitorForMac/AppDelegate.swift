@@ -118,6 +118,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         print("applicationWillTerminate")
+        network?.stopListenNetwork()
         SharedStore.utunTrafficSampler.stop()
         SharedStore.proxyAttributor.stop()
         SharedStore.recorder.flush()

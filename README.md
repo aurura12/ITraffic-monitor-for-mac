@@ -2,7 +2,7 @@
 
 # iTraffic for macOS
 
-A lightweight, open-source per-process network speed monitor for your Mac menu bar.
+A lightweight, open-source per-process network speed monitor for your Mac.
 
 [Download iTraffic](https://github.com/foamzou/ITraffic-monitor-for-mac/releases/latest)
 · [Install with Homebrew](#install--update)
@@ -29,10 +29,9 @@ Bytetally Free goes far beyond iTraffic's real-time list. It adds a native dashb
 | Capability | iTraffic OSS | Bytetally Free | Bytetally Pro |
 |---|:---:|:---:|:---:|
 | Source available to inspect and modify | ✅ | — | — |
-| Minimum macOS version | 10.15 | 14 Sonoma | 14 Sonoma |
+| Minimum macOS version | 14 Sonoma | 14 Sonoma | 14 Sonoma |
 | Live upload/download by process or app | ✅ | ✅ | ✅ |
-| Live rate in the menu bar | ✅ | ✅ | ✅ |
-| Native dashboard and per-app live charts | — | ✅ | ✅ |
+| Native dashboard and per-app live charts | ✅ | ✅ | ✅ |
 | Month overview, 7-day device trend, and monthly top apps | — | ✅ | ✅ |
 | Attribution through VPNs and local proxies | — | ✅ | ✅ |
 | Mac App Store install and full sandboxing | — | ✅ | ✅ |
@@ -98,12 +97,6 @@ Choose **iTraffic** if you want a small, hackable open-source utility or need to
   </tr>
 </table>
 
-<p align="center">
-  <a href="https://bytetally.app/"><img src="./docs/images/bytetally-menubar.png" width="380" alt="Bytetally menu-bar popover showing live upload and download rates with per-app totals for the week" /></a>
-  <br />
-  <sub><strong>Menu bar · Free</strong> — the surface iTraffic users already know: live ↑↓ rates and who is responsible, without opening a window.</sub>
-</p>
-
 Bytetally Pro features include a free trial and can then be unlocked with a subscription or one-time lifetime purchase. [See current details on the Bytetally website.](https://bytetally.app/#pricing)
 
 ## About iTraffic
@@ -111,14 +104,16 @@ Bytetally Pro features include a free trial and can then be unlocked with a subs
 iTraffic keeps one job simple: show which processes are using your network right now.
 
 - Per-process upload and download speeds
-- Native macOS menu-bar interface
+- Native macOS dashboard interface
 - Light and dark mode
 - Direct Swift driver for macOS `nettop`
 - Delta-mode sampling for more accurate live rates
+- Best-effort VPN / proxy attribution; exact per-app VPN bytes require a signed Network Extension and are not included in the default free build
+- Dashboard history currently aggregates traffic across all networks; per-Wi-Fi network filtering is not included
 
 ## Requirements
 
-macOS 10.15 Catalina or later.
+macOS 14.0 Sonoma or later.
 
 ## Install & update
 
@@ -148,7 +143,7 @@ This project is generated from `project.yml` with [XcodeGen](https://github.com/
 
 ## iTraffic screenshot
 
-<img src="./snapshot.png" width="760" alt="iTraffic open-source menu-bar network monitor in light and dark mode" />
+<img src="./snapshot.png" width="760" alt="iTraffic open-source dashboard network monitor in light and dark mode" />
 
 ## Thanks
 

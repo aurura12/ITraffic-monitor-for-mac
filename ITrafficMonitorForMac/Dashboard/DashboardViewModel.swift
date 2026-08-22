@@ -174,8 +174,16 @@ class DashboardViewModel: ObservableObject {
     @Published var barPoints: [BarPeriodPoint] = []
 
     private let recorder = SharedStore.recorder
+    private let dailyTrafficLoader: (Int, Int, @escaping ([DayTrafficRow]) -> Void) -> Void
     private let calendar = Calendar.current
     private var allDayRows: [DayTrafficRow] = []
+    private var hasLoadedBarHistory = false
+
+    init(_ dailyTrafficLoader: @escaping (Int, Int, @escaping ([DayTrafficRow]) -> Void) -> Void = { start, end, completion in
+        SharedStore.recorder.dailyTraffic(start: start, end: end, completion: completion)
+    }) {
+        self.dailyTrafficLoader = dailyTrafficLoader
+    }
 
     // MARK: - Refresh
 
@@ -216,19 +224,38 @@ class DashboardViewModel: ObservableObject {
         }
     }
 
-    /// Load all per-day rows (permanent retention) and aggregate them into
-    /// bars for the current granularity. `allDayRows` is cached so switching
-    /// granularity only re-aggregates in memory.
+    /// Load all per-day rows once, then refresh only today's aggregate. This
+    /// keeps permanent history cheap to display while allowing the current
+    /// period's bar to reflect newly committed traffic.
     func refreshBarChart() {
-        if allDayRows.isEmpty {
+        if !hasLoadedBarHistory {
             let end = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: Date()))!
-            recorder.dailyTraffic(start: 0, end: Int(end.timeIntervalSince1970)) { [weak self] rows in
+            dailyTrafficLoader(0, Int(end.timeIntervalSince1970)) { [weak self] rows in
                 guard let self else { return }
                 self.allDayRows = rows
+                self.hasLoadedBarHistory = true
                 self.barPoints = self.barGranularity.aggregate(dayRows: rows, calendar: self.calendar)
             }
         } else {
-            barPoints = barGranularity.aggregate(dayRows: allDayRows, calendar: calendar)
+            refreshCurrentDayBarRow()
+        }
+    }
+
+    private func refreshCurrentDayBarRow() {
+        let todayStart = calendar.startOfDay(for: Date())
+        let end = calendar.date(byAdding: .day, value: 1, to: todayStart)!
+        let today = dayIndex(for: todayStart, calendar: calendar)
+
+        dailyTrafficLoader(Int(todayStart.timeIntervalSince1970), Int(end.timeIntervalSince1970)) { [weak self] rows in
+            guard let self else { return }
+            if let row = rows.first(where: { $0.day == today }) {
+                if let index = self.allDayRows.firstIndex(where: { $0.day == today }) {
+                    self.allDayRows[index] = row
+                } else {
+                    self.allDayRows.append(row)
+                }
+            }
+            self.barPoints = self.barGranularity.aggregate(dayRows: self.allDayRows, calendar: self.calendar)
         }
     }
 

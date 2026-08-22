@@ -80,22 +80,12 @@ struct UnifiedDashboardView: View {
     }
 
     private var toolbarActions: some View {
-        HStack(spacing: 8) {
-            Menu {
-                Button(i18n.text("All Networks")) {}
-            } label: {
-                Label(i18n.text("All Networks"), systemImage: "wifi")
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-
-            Button {
-                viewModel.refreshDashboard()
-            } label: {
-                Label(i18n.text("Refresh"), systemImage: "arrow.clockwise")
-            }
-            .buttonStyle(.borderless)
+        Button {
+            viewModel.refreshDashboard()
+        } label: {
+            Label(i18n.text("Refresh"), systemImage: "arrow.clockwise")
         }
+        .buttonStyle(.borderless)
     }
 
     // MARK: - Stat cards

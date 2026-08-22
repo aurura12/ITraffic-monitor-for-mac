@@ -94,7 +94,6 @@ final class LocalizationManager: ObservableObject {
         "Peak": "峰值",
         "No apps match the current filter.": "没有匹配当前筛选的应用",
         "Refresh": "手动",
-        "All Networks": "全部网络",
 
         // Usage bar chart
         "Traffic Usage": "流量使用",
@@ -159,7 +158,7 @@ final class LocalizationManager: ObservableObject {
         // Free VPN calibration section
         "Free VPN calibration": "免费 VPN 校准",
         "utun total reference": "utun 总量参考",
-        "Uses nettop, proxy connections, and utun counters. Unmatched bytes are credited to Clash Verge.": "基于 nettop、代理连接表和 utun 计数器；无法匹配的字节计入 Clash Verge",
+        "Uses nettop, proxy connections, and utun counters. Unmatched bytes are distributed proportionally to active apps.": "基于 nettop、代理连接表和 utun 计数器；无法匹配的字节按比例分摊到活跃应用",
 
         // Network Extension / calibration status
         "Authorizing…": "授权中…",

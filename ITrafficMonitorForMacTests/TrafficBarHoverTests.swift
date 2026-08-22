@@ -7,6 +7,44 @@ final class TrafficBarHoverTests: XCTestCase {
         case registrationFailed
     }
 
+    func testUsageBarRefreshReplacesCachedTodayWithCommittedTotal() {
+        let today = dayIndex(for: Date(), calendar: .current)
+        var responses = [
+            [DayTrafficRow(day: today, inBytes: 100, outBytes: 0)],
+            [DayTrafficRow(day: today, inBytes: 250, outBytes: 0)]
+        ]
+        let viewModel = DashboardViewModel { _, _, completion in
+            completion(responses.removeFirst())
+        }
+        viewModel.barGranularity = .day
+
+        viewModel.refreshBarChart()
+        XCTAssertEqual(viewModel.barPoints.last?.totalBytes, 100)
+
+        viewModel.refreshBarChart()
+        XCTAssertEqual(viewModel.barPoints.last?.totalBytes, 250)
+    }
+
+    func testStoppingNettopCancelsPendingRestart() {
+        let firstSpawned = expectation(description: "initial nettop process spawned")
+        firstSpawned.assertForOverFulfill = false
+        var spawnCount = 0
+        let runner = NettopRunner(interval: 1, processConfigurator: { task, _ in
+            spawnCount += 1
+            task.executableURL = URL(fileURLWithPath: "/usr/bin/true")
+            task.arguments = []
+            firstSpawned.fulfill()
+        })
+
+        runner.start()
+        wait(for: [firstSpawned], timeout: 1)
+        Thread.sleep(forTimeInterval: 0.2)
+        runner.stop()
+        Thread.sleep(forTimeInterval: 0.8)
+
+        XCTAssertEqual(spawnCount, 1)
+    }
+
     func testHoveringAnotherRowReplacesThePreviouslyHoveredBar() {
         var selection = BarHoverSelection()
 
