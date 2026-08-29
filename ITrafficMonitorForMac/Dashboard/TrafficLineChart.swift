@@ -157,7 +157,8 @@ struct TrafficLineChart: View {
                     .onContinuousHover { phase in
                         switch phase {
                         case .active(let location):
-                            let plotFrame = geometry[proxy.plotAreaFrame]
+                            guard let plotFrameAnchor = proxy.plotFrame else { return }
+                            let plotFrame = geometry[plotFrameAnchor]
                             let plotX = min(
                                 max(location.x - plotFrame.origin.x, 0),
                                 plotFrame.width

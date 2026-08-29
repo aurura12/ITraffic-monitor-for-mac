@@ -89,6 +89,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         self.network = Network()
         self.network.startListenNetwork()
+        SharedStore.utunTrafficSampler.onReferenceSample = { sample in
+            SharedStore.trafficSamplingDiagnostics.recordReferenceSample(sample)
+        }
         SharedStore.utunTrafficSampler.start()
 
         // Pierce Clash/Surge proxies so proxied traffic is attributed to the

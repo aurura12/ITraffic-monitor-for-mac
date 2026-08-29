@@ -59,9 +59,8 @@ struct SettingsView: View {
     @AppStorage("proxyAttributionType") private var proxyTypeRaw = "auto"
     @AppStorage("proxyAttributionBaseURL") private var proxyBaseURL = ""
     @AppStorage("proxyAttributionSecret") private var proxySecret = ""
-    @AppStorage("proxyForegroundAttributionEnabled") private var proxyForegroundEnabled = true
     @ObservedObject private var proxy = SharedStore.proxyAttributor
-    @ObservedObject private var utunSampler = SharedStore.utunTrafficSampler
+    @ObservedObject private var sampling = SharedStore.trafficSamplingDiagnostics
     private let diagnostics = DiagnosticLogStore.shared
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
 
@@ -109,8 +108,6 @@ struct SettingsView: View {
             Section {
                 Toggle(i18n.text("Enable proxy attribution"), isOn: $proxyEnabled)
                     .onChange(of: proxyEnabled) { proxy.reconfigure() }
-                Toggle(i18n.text("Foreground App Fallback"), isOn: $proxyForegroundEnabled)
-                    .onChange(of: proxyForegroundEnabled) { proxy.reconfigure() }
                 Picker(i18n.text("Proxy type"), selection: $proxyTypeRaw) {
                     Text(i18n.text("Auto detect")).tag("auto")
                     Text(i18n.text("Clash")).tag("clash")
@@ -138,19 +135,38 @@ struct SettingsView: View {
             } header: {
                 Text(i18n.text("Proxy attribution"))
             } footer: {
-                Text(i18n.text("Attribute residual proxied traffic to the frontmost app"))
+                Text(i18n.text("Only same-frame confirmed proxy bytes are reassigned; unmatched bytes stay with Clash."))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
 
-            Section(i18n.text("Free VPN calibration")) {
-                HStack {
-                    Text(i18n.text("utun total reference"))
-                    Spacer()
-                    Text(utunStatusText)
+            Section(i18n.text("Traffic metric")) {
+                Text(i18n.text("Totals use nettop non-loopback interface socket traffic; this is not a physical Wi-Fi/Ethernet counter."))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section(i18n.text("Sampling diagnostics")) {
+                Text(samplingStatusText)
+                    .foregroundColor(.secondary)
+                if let last = sampling.snapshot.lastNettopSampleAt {
+                    Text(i18n.text("Last nettop sample") + ": " + last.formatted(date: .omitted, time: .standard))
+                        .font(.caption)
                         .foregroundColor(.secondary)
                 }
-                Text(i18n.text("Uses nettop, proxy connections, and utun counters. Unmatched bytes are distributed proportionally to active apps."))
+                diagnosticCounterRow(
+                    title: i18n.text("nettop delta"),
+                    value: sampling.snapshot.latestNettopDelta
+                )
+                diagnosticCounterRow(
+                    title: i18n.text("Physical interface delta"),
+                    value: sampling.snapshot.latestExternalDelta
+                )
+                diagnosticCounterRow(
+                    title: i18n.text("VPN utun delta"),
+                    value: sampling.snapshot.latestUTunDelta
+                )
+                Text(i18n.text("Reference counters are for comparison only and are not added to historical totals."))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -212,11 +228,30 @@ struct SettingsView: View {
         return "\(marketing) · build \(GeneratedBuildInfo.buildNumber) · \(GeneratedBuildInfo.buildDate)"
     }
 
-    private var utunStatusText: String {
-        switch utunSampler.status {
-        case .waiting: return L("Waiting")
-        case .active: return L("Active")
-        case .unavailable: return L("Unavailable")
+    private var samplingStatusText: String {
+        switch sampling.snapshot.nettopStatus {
+        case .waiting: return i18n.text("Waiting for nettop sample")
+        case .active: return i18n.text("nettop sampling active")
+        case .restarting: return i18n.text("nettop sampling restarting")
         }
     }
+
+    @ViewBuilder
+    private func diagnosticCounterRow(title: String, value: UTunTrafficCounters?) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption)
+            Spacer()
+            if let value {
+                Text("↓ \(formatBytesTotal(bytes: value.inBytes))  ↑ \(formatBytesTotal(bytes: value.outBytes))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                Text(i18n.text("Unavailable"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
 }

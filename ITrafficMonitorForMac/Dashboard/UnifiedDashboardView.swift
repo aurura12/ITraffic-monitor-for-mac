@@ -54,7 +54,6 @@ struct UnifiedDashboardView: View {
                     timeRangePicker
                 }
                 Spacer()
-                toolbarActions
             }
             chartModePicker
         }
@@ -77,15 +76,6 @@ struct UnifiedDashboardView: View {
             }
         }
         .pickerStyle(.segmented)
-    }
-
-    private var toolbarActions: some View {
-        Button {
-            viewModel.refreshDashboard()
-        } label: {
-            Label(i18n.text("Refresh"), systemImage: "arrow.clockwise")
-        }
-        .buttonStyle(.borderless)
     }
 
     // MARK: - Stat cards

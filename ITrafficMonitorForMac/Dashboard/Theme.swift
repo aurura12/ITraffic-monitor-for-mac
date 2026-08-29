@@ -20,8 +20,8 @@ enum Theme {
     /// Upload accent.
     static let upload = Color(red: 1.0, green: 0.58, blue: 0.0)
 
-    /// Neutral total accent.
-    static let total = Color(red: 0.9, green: 0.9, blue: 0.9)
+    /// Blue-purple total accent, kept distinct from download and upload.
+    static let total = Color(red: 0.486, green: 0.514, blue: 0.961)
 
     /// Heatmap cell color (blue-purple; intensity is controlled via opacity).
     static let heatmap = Color(red: 0.45, green: 0.52, blue: 0.95)

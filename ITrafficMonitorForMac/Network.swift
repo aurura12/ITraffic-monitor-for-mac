@@ -19,6 +19,9 @@ class Network {
         r.onFrame = { [weak self] lines in
             self?.handleFrame(lines)
         }
+        r.onRestart = {
+            SharedStore.trafficSamplingDiagnostics.markNettopRestart()
+        }
         return r
     }()
 
@@ -31,6 +34,8 @@ class Network {
     }
 
     private func handleFrame(_ lines: [String]) {
+        let capturedAt = Date()
+        let sampleID = UUID().uuidString
         var totalInBytes = 0
         var totalOutBytes = 0
         let rawEntities: [ProcessEntity] = lines.compactMap { line -> ProcessEntity? in
@@ -40,37 +45,32 @@ class Network {
             return entity
         }
 
-        // Re-attribute traffic that nettop credited to a local proxy / VPN
-        // back to the real apps. Totals stay the raw interface bytes; only the
-        // per-entity distribution changes.
-        let attributedEntities = SharedStore.proxyAttributor.attributedEntities(rawEntities)
-        let calibration = calibrateFreeAttribution(
-            entities: attributedEntities,
-            reference: SharedStore.utunTrafficSampler.consumeLatestDelta()
+        SharedStore.trafficSamplingDiagnostics.recordNettopFrame(
+            inBytes: totalInBytes,
+            outBytes: totalOutBytes,
+            capturedAt: capturedAt
         )
-        let entities = calibration.entities
 
-        // Use the Network Extension as the history source after its first
-        // valid report. Until then, retain the existing nettop fallback.
-        // The filter cannot attribute helper processes (it only sees the
-        // helper's own bundle id), so helper entities are always recorded
-        // from nettop — merged into their owning app — and the filter
-        // consumer skips them.
+        // Re-attribute only bytes already present in this raw nettop frame.
+        // The proxy attributor is a bounded allocator: it cannot add bytes or
+        // carry an unpaid declaration into a later frame.
+        let entities = SharedStore.proxyAttributor.attributedEntities(rawEntities)
+
+        // nettop is the sole historical byte source. The Network Extension may
+        // report app identities for diagnostics, but its records are not a
+        // second accounting stream and can never replace this raw frame.
         HelperAttributionRegistry.shared.register(entities: entities)
-        if !SharedStore.trafficFilterManager.usesFilterHistory {
-            SharedStore.recorder.record(entities: entities)
-        } else {
-            let helperEntities = entities.filter { $0.isFilterUnattributableHelper }
-            if !helperEntities.isEmpty {
-                SharedStore.recorder.record(entities: helperEntities)
-            }
-        }
+        SharedStore.recorder.record(
+            entities: entities,
+            sampleID: sampleID,
+            capturedAt: capturedAt,
+            rawInBytes: totalInBytes,
+            rawOutBytes: totalOutBytes
+        )
 
         // parser stores raw delta bytes; convert to bytes/sec for the status bar.
-        let calibratedInBytes = totalInBytes + calibration.positiveGap.inBytes
-        let calibratedOutBytes = totalOutBytes + calibration.positiveGap.outBytes
-        let inRate  = calibratedInBytes / interval
-        let outRate = calibratedOutBytes / interval
+        let inRate  = totalInBytes / interval
+        let outRate = totalOutBytes / interval
 
         DispatchQueue.main.async {
             self.statusDataModel.update(totalInBytes: inRate, totalOutBytes: outRate)
@@ -81,13 +81,13 @@ class Network {
     }
 
     func parser(text: String) -> ProcessEntity? {
-        let item = text.split(separator: ",")
+        guard let item = parseNettopCSVFields(text) else { return nil }
         if item.count < 3 {
             return nil
         }
         // Store raw delta bytes; rate is computed once at the aggregation point.
-        let inBytes  = Int(item[1]) ?? 0
-        let outBytes = Int(item[2]) ?? 0
+        let inBytes  = max(0, Int(item[1].trimmingCharacters(in: .whitespaces)) ?? 0)
+        let outBytes = max(0, Int(item[2].trimmingCharacters(in: .whitespaces)) ?? 0)
 
         let nameAndPid = item[0].split(separator: ".")
         guard nameAndPid.count >= 2 else {
@@ -104,4 +104,36 @@ class Network {
             outBytes: outBytes
         )
     }
+}
+
+/// Parse the small CSV subset emitted by nettop. Process names can be quoted
+/// and contain commas, so splitting on every comma is not safe.
+func parseNettopCSVFields(_ text: String) -> [String]? {
+    var fields: [String] = []
+    var field = ""
+    var quoted = false
+    let characters = Array(text)
+    var index = 0
+
+    while index < characters.count {
+        let character = characters[index]
+        if character == "\"" {
+            if quoted, index + 1 < characters.count, characters[index + 1] == "\"" {
+                field.append("\"")
+                index += 2
+                continue
+            }
+            quoted.toggle()
+        } else if character == "," && !quoted {
+            fields.append(field)
+            field = ""
+        } else {
+            field.append(character)
+        }
+        index += 1
+    }
+
+    guard !quoted else { return nil }
+    fields.append(field)
+    return fields
 }

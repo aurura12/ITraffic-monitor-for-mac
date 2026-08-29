@@ -15,6 +15,7 @@ enum SharedStore {
     static let perAppRateStore = PerAppRateStore()
     static let proxyAttributor = ProxyAttributor()
     static let utunTrafficSampler = UTunTrafficSampler()
+    static let trafficSamplingDiagnostics = TrafficSamplingDiagnostics()
     static let trafficFilterManager = TrafficFilterManager()
 }
 

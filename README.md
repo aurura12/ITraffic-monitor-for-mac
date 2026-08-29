@@ -141,6 +141,24 @@ This project is generated from `project.yml` with [XcodeGen](https://github.com/
 2. Generate the project: `xcodegen generate`
 3. Open `ITrafficMonitorForMac.xcodeproj`
 
+### One-command update
+
+After generating the project once, you can build and launch the app without opening Xcode:
+
+```bash
+./scripts/update.sh
+```
+
+The script writes the app to `dist/ITraffic.app`. Other useful modes are:
+
+```bash
+./scripts/update.sh --verify      # build, launch, and verify
+./scripts/update.sh --debug       # build Debug and attach LLDB
+./scripts/update.sh --logs        # launch and stream app logs
+./scripts/update.sh --telemetry   # launch and stream iTraffic logs
+./scripts/update.sh --clean       # clear this script's output and rebuild
+```
+
 ## iTraffic screenshot
 
 <img src="./snapshot.png" width="760" alt="iTraffic open-source dashboard network monitor in light and dark mode" />

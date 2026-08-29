@@ -54,7 +54,8 @@ iTraffic 只专注做好一件事：实时显示当前是哪些进程在占用�
 
 ## 当前免费版限制
 
-- 默认工程使用 `nettop`、代理连接信息和 `utun` 总量参考进行保守归属。
+- 默认工程以 `nettop -t external` 为唯一总量来源；代理 API 只对同一采样帧内已有的 Clash 字节做有界归属。
+- 无法确认来源的 VPN/代理字节保留在 Clash，不使用 `utun` 补差、比例分摊或前台应用兜底。
 - Network Extension 的 Data Provider、Control Provider 和共享统计源码仍保留在仓库中，但不会被默认免费工程编译或安装。
 - 没有 Apple Developer Team 和对应签名时，不能把 VPN 隧道中的每个 App 字节数承诺为 100% 精确。
 - 当前仪表盘历史数据汇总所有网络，暂不支持按 Wi-Fi 网络筛选。

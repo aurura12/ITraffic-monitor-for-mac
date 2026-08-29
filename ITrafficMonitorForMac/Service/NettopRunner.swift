@@ -21,6 +21,8 @@ import Foundation
 final class NettopRunner {
     /// Called once per nettop refresh with one frame's CSV lines (header dropped).
     var onFrame: (([String]) -> Void)?
+    /// Called when a running nettop process terminates and sampling may have a gap.
+    var onRestart: (() -> Void)?
 
     private let interval: Int
     private let debounceInterval: TimeInterval
@@ -118,6 +120,7 @@ final class NettopRunner {
             self.queue.async {
                 self.cleanupHandles()
                 self.process = nil
+                self.onRestart?()
                 guard self.shouldRestart else { return }
                 self.scheduleRestart(after: 0.5)
             }

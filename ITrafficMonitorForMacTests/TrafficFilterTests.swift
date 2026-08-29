@@ -167,7 +167,40 @@ final class TrafficFilterTests: XCTestCase {
         ))
     }
 
-    func testFreeCalibrationDistributesPositiveGapToActiveApp() {
+    func testParsesExternalInterfaceCountersOnlyOncePerLinkInterface() {
+        let output = """
+        Name       Mtu   Network            Address            Ipkts Ierrs    Ibytes    Opkts Oerrs    Obytes Coll
+        en0        1500  <Link#...>         xx:xx             100   0        8000      90   0        7000   0
+        en0        1500  192.168.1         192.168.1.20       100   0           0      90   0           0   0
+        en1        1500  <Link#...>         yy:yy              10   0        1200      12   0        2400   0
+        utun2      1380  <Link#...>         zz:zz              10   0        9000      12   0        9000   0
+        """
+
+        XCTAssertEqual(
+            parseExternalInterfaceCounters(output),
+            UTunInterfaceCounters(inBytes: 9200, outBytes: 9400)
+        )
+    }
+
+    func testExternalCounterRollbackProducesNoDelta() {
+        XCTAssertNil(interfaceCounterDelta(
+            previous: UTunInterfaceCounters(inBytes: 100, outBytes: 200),
+            current: UTunInterfaceCounters(inBytes: 90, outBytes: 250)
+        ))
+    }
+
+    func testNettopSamplingStatusMarksRestartAndRecoversOnFrame() {
+        XCTAssertEqual(
+            nextNettopSamplingStatus(.active, event: .restart),
+            .restarting
+        )
+        XCTAssertEqual(
+            nextNettopSamplingStatus(.restarting, event: .frame),
+            .active
+        )
+    }
+
+    func testFreeAttributionCompatibilityPathNeverChangesRawEntities() {
         let entities = [
             ProcessEntity(pid: 10, name: "Safari", inBytes: 600, outBytes: 200)
         ]
@@ -177,88 +210,13 @@ final class TrafficFilterTests: XCTestCase {
             reference: UTunTrafficCounters(inBytes: 1_000, outBytes: 300)
         )
 
-        XCTAssertEqual(result.confidence, .calibratedWithProxyFallback)
-        XCTAssertEqual(result.entities.map(\.inBytes).reduce(0, +), 1_000)
-        XCTAssertEqual(result.entities.map(\.outBytes).reduce(0, +), 300)
-        XCTAssertEqual(result.entities.last?.name, "Safari")
-        XCTAssertEqual(result.entities.last?.inBytes, 1_000)
-        XCTAssertEqual(result.entities.last?.outBytes, 300)
-        XCTAssertTrue(result.entities.allSatisfy { $0.name != "Clash Verge" })
-    }
-
-    func testFreeCalibrationDistributesGapProportionallyAcrossApps() {
-        let entities = [
-            ProcessEntity(pid: 11, name: "Safari", inBytes: 600, outBytes: 0),
-            ProcessEntity(pid: 12, name: "Chrome", inBytes: 200, outBytes: 0),
-            ProcessEntity(pid: 13, name: "Clash Verge", inBytes: 0, outBytes: 0)
-        ]
-
-        let result = calibrateFreeAttribution(
-            entities: entities,
-            reference: UTunTrafficCounters(inBytes: 1_000, outBytes: 0)
-        )
-
-        // Gap is 200 (1_000 - 800). Safari gets 3/4 (150), Chrome 1/4 (50).
-        XCTAssertEqual(result.confidence, .calibratedWithProxyFallback)
-        XCTAssertEqual(result.entities.map(\.inBytes).reduce(0, +), 1_000)
-        XCTAssertEqual(result.entities.first { $0.name == "Safari" }?.inBytes, 750)
-        XCTAssertEqual(result.entities.first { $0.name == "Chrome" }?.inBytes, 250)
-        XCTAssertTrue(result.entities.allSatisfy { $0.name != "Clash Verge" })
-    }
-
-    func testFreeCalibrationClearsClashResidualWhenAppsExist() {
-        let entities = [
-            ProcessEntity(pid: 11, name: "Chrome", inBytes: 800, outBytes: 100),
-            ProcessEntity(pid: 13, name: "Clash Verge", inBytes: 200, outBytes: 50)
-        ]
-
-        let result = calibrateFreeAttribution(
-            entities: entities,
-            reference: UTunTrafficCounters(inBytes: 1_000, outBytes: 150)
-        )
-
-        // Attributed total matches the reference (gap = 0), but the residual on
-        // the Clash Verge row is still redistributed to the active app and the
-        // now-empty fallback row is dropped from the frame.
-        XCTAssertEqual(result.confidence, .calibratedWithProxyFallback)
-        XCTAssertEqual(result.entities.map(\.inBytes).reduce(0, +), 1_000)
-        XCTAssertEqual(result.entities.map(\.outBytes).reduce(0, +), 150)
-        XCTAssertEqual(result.entities.first { $0.name == "Chrome" }?.inBytes, 1_000)
-        XCTAssertEqual(result.entities.first { $0.name == "Chrome" }?.outBytes, 150)
-        XCTAssertTrue(result.entities.allSatisfy { $0.name != "Clash Verge" })
-    }
-
-    func testFreeCalibrationFallsBackToClashWhenNoActiveApp() {
-        let entities = [
-            ProcessEntity(pid: 13, name: "Clash Verge", inBytes: 100, outBytes: 20)
-        ]
-
-        let result = calibrateFreeAttribution(
-            entities: entities,
-            reference: UTunTrafficCounters(inBytes: 200, outBytes: 40)
-        )
-
-        XCTAssertEqual(result.confidence, .calibratedWithProxyFallback)
-        XCTAssertEqual(result.entities.map(\.inBytes).reduce(0, +), 200)
-        XCTAssertEqual(result.entities.map(\.outBytes).reduce(0, +), 40)
-        XCTAssertEqual(result.entities.first { $0.name == "Clash Verge" }?.inBytes, 200)
-        XCTAssertEqual(result.entities.first { $0.name == "Clash Verge" }?.outBytes, 40)
-    }
-
-    func testFreeCalibrationDoesNotInventBytesWhenReferenceIsLower() {
-        let entities = [
-            ProcessEntity(pid: 10, name: "Safari", inBytes: 600, outBytes: 200)
-        ]
-
-        let result = calibrateFreeAttribution(
-            entities: entities,
-            reference: UTunTrafficCounters(inBytes: 500, outBytes: 100)
-        )
-
-        XCTAssertEqual(result.confidence, .referenceMismatch)
-        XCTAssertEqual(result.entities.map(\.inBytes).reduce(0, +), 600)
-        XCTAssertEqual(result.entities.map(\.outBytes).reduce(0, +), 200)
-        XCTAssertTrue(result.entities.allSatisfy { $0.name != "Clash Verge" })
+        XCTAssertEqual(result.confidence, .noReference)
+        XCTAssertEqual(result.entities.count, entities.count)
+        XCTAssertEqual(result.entities.first?.pid, entities.first?.pid)
+        XCTAssertEqual(result.entities.first?.name, entities.first?.name)
+        XCTAssertEqual(result.entities.first?.inBytes, entities.first?.inBytes)
+        XCTAssertEqual(result.entities.first?.outBytes, entities.first?.outBytes)
+        XCTAssertEqual(result.positiveGap, UTunTrafficCounters(inBytes: 0, outBytes: 0))
     }
 
     private func sampleRecord(sequence: Int64) -> TrafficFilterRecord {

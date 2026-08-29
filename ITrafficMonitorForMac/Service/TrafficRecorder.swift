@@ -2,11 +2,9 @@
 //  TrafficRecorder.swift
 //  ITrafficMonitorForMac
 //
-//  Accumulates per-frame deltas into the current minute bucket in memory,
-//  then flushes the finished bucket to SQLite as a single transaction.
-//  `record(entities:)` runs on the nettop runner queue (not main thread);
-//  only the in-memory dict is touched there, and it is guarded by the
-//  recorder's own serial queue to stay race-free.
+//  Persists each finalized frame as an idempotent sample. This keeps the
+//  current minute queryable and makes a crash/replay unable to duplicate a
+//  frame.
 //
 
 import Foundation
@@ -18,102 +16,83 @@ final class TrafficRecorder {
     /// All mutations happen on this queue; `record` is the only entry point.
     private let queue = DispatchQueue(label: "traffic-recorder", qos: .utility)
 
-    /// App key -> (displayName, inBytes, outBytes) for the current minute.
-    private var currentDict: [String: (name: String, inBytes: Int, outBytes: Int)] = [:]
-    private var currentBucketStart: Int = 0
-    private var currentDay = 0
-    private var currentHour = 0
-
     private let calendar = Calendar.current
-
-    init() {
-        let now = Date()
-        currentBucketStart = Int(now.timeIntervalSince1970 / 60) * 60
-        (currentDay, currentHour) = Self.dayAndHour(for: now, calendar: calendar)
-    }
 
     // MARK: - Recording
 
-    /// Accumulate one frame's entities into the current minute bucket.
-    /// If the wall clock moved into a new minute, flush the previous bucket first.
-    func record(entities: [ProcessEntity]) {
+    /// Persist one finalized frame. The nettop path supplies the original raw
+    /// totals so the database can reject any non-conservative result.
+    func record(
+        entities: [ProcessEntity],
+        sampleID: String = UUID().uuidString,
+        capturedAt: Date = Date(),
+        rawInBytes: Int? = nil,
+        rawOutBytes: Int? = nil
+    ) {
         queue.async { [weak self] in
             guard let self else { return }
-            let now = Date()
-            let bucketStart = Int(now.timeIntervalSince1970 / 60) * 60
-
-            if bucketStart != self.currentBucketStart {
-                self.flushLocked()
-                self.currentBucketStart = bucketStart
-                (self.currentDay, self.currentHour) = Self.dayAndHour(for: now, calendar: self.calendar)
-                self.currentDict.removeAll(keepingCapacity: true)
-            }
-
-            for entity in entities {
-                // Skip idle processes so the history stays lean — an app
-                // with no traffic simply has no bucket rows.
-                guard entity.inBytes > 0 || entity.outBytes > 0 else { continue }
-                let key = entity.appKey
-                if var entry = self.currentDict[key] {
-                    entry.inBytes += entity.inBytes
-                    entry.outBytes += entity.outBytes
-                    self.currentDict[key] = entry
-                } else {
-                    self.currentDict[key] = (entity.displayName, entity.inBytes, entity.outBytes)
-                }
-            }
+            let allocations = self.allocations(from: entities)
+            let totalIn = rawInBytes ?? allocations.reduce(0) { $0 + $1.inBytes }
+            let totalOut = rawOutBytes ?? allocations.reduce(0) { $0 + $1.outBytes }
+            self.database.commitSample(self.sample(
+                id: sampleID,
+                capturedAt: capturedAt,
+                rawInBytes: totalIn,
+                rawOutBytes: totalOut,
+                allocations: allocations
+            ))
         }
     }
 
-    /// Accumulate records produced by the Network Extension. These records
-    /// already use stable App keys, so no PID or process lookup is needed.
-    func record(filterRecords: [TrafficFilterRecord]) {
-        queue.async { [weak self] in
-            guard let self else { return }
-            let now = Date()
-            let bucketStart = Int(now.timeIntervalSince1970 / 60) * 60
-
-            if bucketStart != self.currentBucketStart {
-                self.flushLocked()
-                self.currentBucketStart = bucketStart
-                (self.currentDay, self.currentHour) = Self.dayAndHour(for: now, calendar: self.calendar)
-                self.currentDict.removeAll(keepingCapacity: true)
-            }
-
-            for record in filterRecords where record.inBytes > 0 || record.outBytes > 0 {
-                let inBytes = Int(min(Int64(Int.max), max(0, record.inBytes)))
-                let outBytes = Int(min(Int64(Int.max), max(0, record.outBytes)))
-                if var entry = self.currentDict[record.appKey] {
-                    entry.inBytes += inBytes
-                    entry.outBytes += outBytes
-                    self.currentDict[record.appKey] = entry
-                } else {
-                    self.currentDict[record.appKey] = (record.displayName, inBytes, outBytes)
-                }
-            }
-        }
-    }
-
-    /// Flush any pending bucket immediately (e.g. on quit). Blocks until the
-    /// in-memory bucket is handed to the database queue.
+    /// Wait until all queued frame commits have completed (e.g. on quit).
     func flush() {
         queue.sync {
-            flushLocked()
+            // Every frame is committed before it leaves this queue.
         }
     }
 
-    private func flushLocked() {
-        guard !currentDict.isEmpty else { return }
-        let rows = currentDict.map { key, value in
-            AppTrafficRow(appKey: key, displayName: value.name, inBytes: value.inBytes, outBytes: value.outBytes)
+    private func allocations(from entities: [ProcessEntity]) -> [TrafficSampleAllocation] {
+        var grouped: [String: TrafficSampleAllocation] = [:]
+        for entity in entities where entity.inBytes > 0 || entity.outBytes > 0 {
+            let allocation = TrafficSampleAllocation(
+                appKey: entity.appKey,
+                displayName: entity.displayName,
+                inBytes: max(0, entity.inBytes),
+                outBytes: max(0, entity.outBytes)
+            )
+            if let existing = grouped[allocation.appKey] {
+                grouped[allocation.appKey] = TrafficSampleAllocation(
+                    appKey: allocation.appKey,
+                    displayName: existing.displayName,
+                    inBytes: existing.inBytes + allocation.inBytes,
+                    outBytes: existing.outBytes + allocation.outBytes
+                )
+            } else {
+                grouped[allocation.appKey] = allocation
+            }
         }
-        let batch = TrafficBatch(
-            bucketStart: currentBucketStart,
-            day: currentDay,
-            hour: currentHour,
-            rows: rows
+        return Array(grouped.values)
+    }
+
+    private func sample(
+        id: String,
+        capturedAt: Date,
+        rawInBytes: Int,
+        rawOutBytes: Int,
+        allocations: [TrafficSampleAllocation]
+    ) -> TrafficSample {
+        let bucketStart = Int(capturedAt.timeIntervalSince1970 / 60) * 60
+        let (day, hour) = Self.dayAndHour(for: capturedAt, calendar: calendar)
+        return TrafficSample(
+            id: id,
+            capturedAtMs: Int64(capturedAt.timeIntervalSince1970 * 1_000),
+            bucketStart: bucketStart,
+            day: day,
+            hour: hour,
+            rawInBytes: max(0, rawInBytes),
+            rawOutBytes: max(0, rawOutBytes),
+            allocations: allocations
         )
-        database.commitBatch(batch)
     }
 
     // MARK: - Query passthrough

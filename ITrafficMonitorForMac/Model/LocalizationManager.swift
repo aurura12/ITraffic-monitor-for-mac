@@ -93,8 +93,6 @@ final class LocalizationManager: ObservableObject {
         "Name": "名称",
         "Peak": "峰值",
         "No apps match the current filter.": "没有匹配当前筛选的应用",
-        "Refresh": "手动",
-
         // Usage bar chart
         "Traffic Usage": "流量使用",
         "Linear": "实际比例",
@@ -155,10 +153,20 @@ final class LocalizationManager: ObservableObject {
         "Clear": "清空",
         "Proxy attribution diagnostics are retained locally (up to 16 MB).": "代理归属诊断日志仅保存在本机（最多 16 MB）。",
 
-        // Free VPN calibration section
-        "Free VPN calibration": "免费 VPN 校准",
-        "utun total reference": "utun 总量参考",
-        "Uses nettop, proxy connections, and utun counters. Unmatched bytes are distributed proportionally to active apps.": "基于 nettop、代理连接表和 utun 计数器；无法匹配的字节按比例分摊到活跃应用",
+        "Traffic metric": "流量口径",
+        "Totals use nettop non-loopback interface socket traffic; this is not a physical Wi-Fi/Ethernet counter.": "总量采用 nettop 非回环接口 socket 流量，不等同于物理 Wi-Fi/有线网卡计数",
+        "Only same-frame confirmed proxy bytes are reassigned; unmatched bytes stay with Clash.": "仅重新归属同一采样帧内已确认的代理字节；无法确认的字节保留在 Clash",
+
+        // Sampling diagnostics
+        "Sampling diagnostics": "采样诊断",
+        "Last nettop sample": "最近一次 nettop 采样",
+        "nettop delta": "nettop 增量",
+        "Physical interface delta": "物理网卡增量",
+        "VPN utun delta": "VPN utun 增量",
+        "Reference counters are for comparison only and are not added to historical totals.": "参考计数仅用于对比，不会加入历史总量",
+        "Waiting for nettop sample": "等待 nettop 采样",
+        "nettop sampling active": "nettop 采样正常",
+        "nettop sampling restarting": "nettop 采样重启中",
 
         // Network Extension / calibration status
         "Authorizing…": "授权中…",

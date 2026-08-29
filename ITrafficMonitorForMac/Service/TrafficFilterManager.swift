@@ -21,10 +21,6 @@ final class TrafficFilterManager: ObservableObject {
     private let queue = DispatchQueue(label: "itraffic.filter-manager", qos: .utility)
     private var consumedSequence: Int64 = 0
 
-    /// Becomes true only after at least one valid Network Extension batch has
-    /// been consumed, preventing duplicate history writes during startup.
-    private(set) var usesFilterHistory = false
-
     func start() {
         queue.async { [weak self] in
             guard let self else { return }
@@ -95,15 +91,12 @@ final class TrafficFilterManager: ObservableObject {
         do {
             let records = try statsStore.readNewRecords()
             guard !records.isEmpty else { return }
-            // Helper processes (WebKit daemon, app services, bundled helpers)
-            // are attributed to their owning app through the nettop path
-            // (Network.handleFrame records helper entities unconditionally),
-            // so skip their records here to avoid double counting.
-            let mergeable = records.filter { !HelperAttributionRegistry.shared.isKnownHelper($0.appKey) }
-            SharedStore.recorder.record(filterRecords: mergeable)
-            try statsStore.markConsumedThrough(sequence: records.last?.sequence ?? consumedSequence)
-            consumedSequence = records.last?.sequence ?? consumedSequence
-            usesFilterHistory = true
+            let lastSequence = records.last?.sequence ?? consumedSequence
+            // The extension stream is identity/status data only. nettop is the
+            // sole historical byte source, so consuming these records must not
+            // create a second set of traffic samples.
+            try statsStore.markConsumedThrough(sequence: lastSequence)
+            consumedSequence = lastSequence
             let apps = Set(records.map(\.appKey)).count
             publishReport(date: Date(), appCount: apps)
         } catch {

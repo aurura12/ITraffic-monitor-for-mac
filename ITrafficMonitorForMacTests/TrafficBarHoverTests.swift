@@ -1,8 +1,18 @@
 import XCTest
 import CoreGraphics
+import SwiftUI
 @testable import ITraffic
 
 final class TrafficBarHoverTests: XCTestCase {
+    func testTotalAccentUsesReadableBluePurpleColor() {
+        let components = Theme.total.cgColor?.components ?? []
+
+        XCTAssertEqual(components.count, 4)
+        XCTAssertEqual(components[0], 0.486, accuracy: 0.001)
+        XCTAssertEqual(components[1], 0.514, accuracy: 0.001)
+        XCTAssertEqual(components[2], 0.961, accuracy: 0.001)
+    }
+
     private enum TestError: Error {
         case registrationFailed
     }
@@ -79,6 +89,21 @@ final class TrafficBarHoverTests: XCTestCase {
 
         XCTAssertEqual(response?.statusCode, 200)
         XCTAssertEqual(response?.body, "{\"connections\":[]}")
+    }
+
+    func testNettopParserHandlesQuotedCommaInProcessName() {
+        let network = Network()
+
+        let entity = network.parser(text: "\"My, Browser.42\",100,200")
+
+        XCTAssertEqual(entity?.name, "My, Browser")
+        XCTAssertEqual(entity?.pid, 42)
+        XCTAssertEqual(entity?.inBytes, 100)
+        XCTAssertEqual(entity?.outBytes, 200)
+    }
+
+    func testNettopParserRejectsUnclosedQuotedField() {
+        XCTAssertNil(Network().parser(text: "\"My, Browser.42,100,200"))
     }
 
     func testHelperProcessUsesParentAppNameInsteadOfTruncatedProcessName() {
@@ -294,18 +319,6 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(result.remaining, pending)
     }
 
-    func testExpiredPendingCreditsAreRemovedBeforeAttribution() {
-        let pending = [
-            PendingProxyCredit(timestamp: 10, pid: 1, inBytes: 100, outBytes: 0),
-            PendingProxyCredit(timestamp: 11, pid: 2, inBytes: 0, outBytes: 50)
-        ]
-
-        let result = expirePendingProxyCredits(pending, now: 21, ttl: 10)
-
-        XCTAssertEqual(result.expired, [PendingProxyCredit(timestamp: 10, pid: 1, inBytes: 100, outBytes: 0)])
-        XCTAssertEqual(result.active, [PendingProxyCredit(timestamp: 11, pid: 2, inBytes: 0, outBytes: 50)])
-    }
-
     func testSocketKeysKeepTCPAndUDPSamePortSeparate() {
         let tcp = SocketKey(protocol: .tcp, port: 54000)
         let udp = SocketKey(protocol: .udp, port: 54000)
@@ -421,433 +434,6 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
-    // MARK: - Proxy attribution window budget
-
-    func testProxyCumulativeAtReturnsZeroBeforeFirstSample() {
-        let history = [
-            ProxyCumulativePoint(timestamp: 100, inBytes: 1_000, outBytes: 200),
-            ProxyCumulativePoint(timestamp: 102, inBytes: 3_000, outBytes: 400)
-        ]
-
-        let early = proxyCumulativeAt(history, time: 99)
-        XCTAssertEqual(early.inBytes, 0)
-        XCTAssertEqual(early.outBytes, 0)
-
-        let inWindow = proxyCumulativeAt(history, time: 101)
-        XCTAssertEqual(inWindow.inBytes, 1_000)
-        XCTAssertEqual(inWindow.outBytes, 200)
-
-        let latest = proxyCumulativeAt(history, time: 200)
-        XCTAssertEqual(latest.inBytes, 3_000)
-        XCTAssertEqual(latest.outBytes, 400)
-    }
-
-    func testProxyCumulativeDeltaMeasuresBytesSinceCreditCreated() {
-        let history = [
-            ProxyCumulativePoint(timestamp: 100, inBytes: 1_000, outBytes: 100),
-            ProxyCumulativePoint(timestamp: 104, inBytes: 4_000, outBytes: 300)
-        ]
-
-        let delta = proxyCumulativeDelta(history: history, since: 101, now: 104)
-        XCTAssertEqual(delta.inBytes, 3_000)
-        XCTAssertEqual(delta.outBytes, 200)
-
-        let beforeStart = proxyCumulativeDelta(history: history, since: 99, now: 104)
-        XCTAssertEqual(beforeStart.inBytes, 4_000)
-    }
-
-    func testAppendProxyCumulativePointAccumulatesAndPrunesOldSamples() {
-        var history: [ProxyCumulativePoint] = []
-        history = appendProxyCumulativePoint(history, timestamp: 100, deltaIn: 1_000, deltaOut: 100, ttl: 60)
-        history = appendProxyCumulativePoint(history, timestamp: 102, deltaIn: 2_000, deltaOut: 50, ttl: 60)
-        // 162 - 100 = 62 > 60, so the t=100 sample is pruned; t=102 is kept.
-        history = appendProxyCumulativePoint(history, timestamp: 162, deltaIn: 500, deltaOut: 0, ttl: 60)
-
-        XCTAssertEqual(history.map(\.timestamp), [102, 162])
-        XCTAssertEqual(history.last?.inBytes, 3_500)
-        XCTAssertEqual(history.last?.outBytes, 150)
-    }
-
-    func testAppendProxyCumulativePointClampsNegativeDeltas() {
-        var history: [ProxyCumulativePoint] = []
-        history = appendProxyCumulativePoint(history, timestamp: 100, deltaIn: 1_000, deltaOut: 0, ttl: 60)
-        // A counter reset / negative frame must not shrink the running total.
-        history = appendProxyCumulativePoint(history, timestamp: 102, deltaIn: -500, deltaOut: 0, ttl: 60)
-
-        XCTAssertEqual(history.last?.inBytes, 1_000)
-    }
-
-    func testWindowBudgetCoversBytesSinceOldestPendingCredit() {
-        let credits = [
-            PendingProxyCredit(timestamp: 100, pid: 1, inBytes: 900, outBytes: 0),
-            PendingProxyCredit(timestamp: 104, pid: 2, inBytes: 900, outBytes: 0)
-        ]
-        let cumulative = [
-            ProxyCumulativePoint(timestamp: 102, inBytes: 1_200, outBytes: 0),
-            ProxyCumulativePoint(timestamp: 106, inBytes: 2_400, outBytes: 0)
-        ]
-
-        // Oldest credit at t=100 predates the first sample, so the whole
-        // observed window counts.
-        let budget = proxyCreditWindowBudget(credits: credits, cumulative: cumulative, now: 106)
-        XCTAssertEqual(budget.inBytes, 2_400)
-    }
-
-    func testConsumePendingCreditsUsesWindowBudget() {
-        let credits = [
-            PendingProxyCredit(timestamp: 100, pid: 1, inBytes: 900, outBytes: 0),
-            PendingProxyCredit(timestamp: 102, pid: 2, inBytes: 900, outBytes: 0)
-        ]
-        let cumulative = [ProxyCumulativePoint(timestamp: 106, inBytes: 1_000, outBytes: 0)]
-
-        let result = consumePendingProxyCredits(credits, cumulative: cumulative, now: 106)
-
-        XCTAssertEqual(result.credited[1]?.inBytes, 900)
-        XCTAssertEqual(result.credited[2]?.inBytes, 100)
-        XCTAssertEqual(result.remaining, [
-            PendingProxyCredit(timestamp: 102, pid: 2, inBytes: 800, outBytes: 0)
-        ])
-    }
-
-    // MARK: - Proxy redistribution
-
-    func testRedistributionIsDisabledWhenProxyNotDetected() {
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900, outBytes: 0)],
-            proxyDetected: false,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
-            now: 101
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [:])
-
-        XCTAssertEqual(outcome.entities.first?.inBytes, 1_000)
-        XCTAssertTrue(outcome.consumed.isEmpty)
-        XCTAssertEqual(outcome.remaining.count, 1)
-    }
-
-    func testRedistributionRunsWhenProxyDetectedButPIDUnresolved() {
-        // Regression: the proxy core runs as root and is invisible to the
-        // app's lsof, so proxyPIDs may be empty. Redistribution must still
-        // credit apps via name matching instead of silently keeping traffic on
-        // the proxy.
-        let raw = [
-            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0),
-            ProcessEntity(pid: 61013, name: "Google Chrome H", inBytes: 100, outBytes: 0)
-        ]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900_000, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000_000, outBytes: 0)],
-            now: 101
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
-
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 900_000)
-        let proxy = outcome.entities.first { $0.pid == 91681 }
-        XCTAssertEqual(proxy?.inBytes, 100_000, "Proxy keeps only its own uncarried bytes")
-        let chrome = outcome.entities.first { $0.pid == 61013 }
-        XCTAssertEqual(chrome?.inBytes, 900_100)
-    }
-
-    func testRedistributionDefersCreditsWhenProxyRowAbsent() {
-        let raw = [ProcessEntity(pid: 61013, name: "Google Chrome H", inBytes: 100, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 900, outBytes: 0)],
-            now: 101
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [:])
-
-        XCTAssertTrue(outcome.consumed.isEmpty)
-        XCTAssertEqual(outcome.remaining, snapshot.credits)
-    }
-
-    func testProxyRowSelectionPrefersMatchingRowCarryingBytes() {
-        // Regression: user-level lsof can leave a garbage pid (e.g.
-        // loginwindow) in proxyPIDs when the core runs as root. When that
-        // process appears in a frame before the real proxy row, first-match
-        // logic picked it (0 bytes) and the real Clash row was never drained —
-        // the same bytes then counted on both Clash and the credited app.
-        let raw = [
-            ProcessEntity(pid: 166, name: "loginwindow", inBytes: 0, outBytes: 0),
-            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)
-        ]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900_000, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [166, 91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000_000, outBytes: 0)],
-            now: 101
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
-
-        let proxy = outcome.entities.first { $0.pid == 91681 }
-        XCTAssertEqual(proxy?.inBytes, 100_000, "Real proxy row must be drained by the credited bytes")
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 900_000)
-        // loginwindow must keep its (empty) row untouched.
-        XCTAssertEqual(outcome.entities.first { $0.pid == 166 }?.inBytes, 0)
-    }
-
-    func testProxyDebtCarriesForwardSoLateProxyBytesStillDrained() {
-        // Regression: nettop reports the proxy row in bursts that lag the
-        // credit window. Frame 1 consumes credits while the proxy row shows no
-        // bytes — the app is credited and the undrained amount becomes debt.
-        let raw1 = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 0, outBytes: 0)]
-        let snap1 = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
-            now: 101
-        )
-        let out1 = redistributeProxyTraffic(raw: raw1, snapshot: snap1, pidNames: [61013: "Google Chrome H"])
-        XCTAssertEqual(out1.consumed[61013]?.inBytes, 900)
-        XCTAssertEqual(out1.remainingDebtIn, 900, "Undrained credit must carry forward as debt")
-
-        // Frame 2: the proxy row finally reports the bytes with no new
-        // credits. The carried debt must drain the row — otherwise the same
-        // bytes count on both the proxy and the credited app.
-        let raw2 = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 0)]
-        let snap2 = ProxyAttributionSnapshot(
-            credits: [],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 102, inBytes: 1_000, outBytes: 0)],
-            now: 102,
-            proxyDebtIn: out1.remainingDebtIn,
-            proxyDebtOut: out1.remainingDebtOut
-        )
-        let out2 = redistributeProxyTraffic(raw: raw2, snapshot: snap2, pidNames: [:])
-        XCTAssertEqual(out2.entities.first { $0.pid == 91681 }?.inBytes, 100, "Carried debt must drain the late proxy bytes")
-        XCTAssertEqual(out2.remainingDebtIn, 0, "Debt is exhausted once the proxy bytes are drained")
-    }
-
-    func testRedistributionCreatesNewEntityForCreditedAppWithNoDirectTraffic() {
-        // Chrome sits behind a system proxy and never touches the external
-        // interface, so it has no nettop row; the credited bytes become a new
-        // entity. A fake high pid keeps name resolution deterministic.
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 429_001, inBytes: 900, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
-            now: 101
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [429_001: "Google Chrome H"])
-
-        let chrome = outcome.entities.first { $0.pid == 429_001 }
-        XCTAssertEqual(chrome?.inBytes, 900)
-        XCTAssertEqual(chrome?.name, "Google Chrome H")
-        XCTAssertEqual(outcome.entities.count, 2)
-    }
-
-    // MARK: - Nettop proxy window budget (prevents API over-credit)
-
-    func testConsumptionIsCappedByNettopProxyWindow() {
-        // TUN-mode double-count regression: nettop puts tunneled bytes on the
-        // app's own socket, so the proxy row carries far fewer bytes than the
-        // API reports. Capping consumption by the nettop window must prevent
-        // the full API credit from being added to the app on top of its own
-        // nettop bytes.
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 1_000, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
-            nettopProxyCumulative: [ProxyCumulativePoint(timestamp: 101, inBytes: 500, outBytes: 0)],
-            now: 101
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
-
-        // Only the 500 bytes the proxy row can actually pay are consumed; the
-        // other 500 must stay pending instead of being invented onto the app.
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 500)
-        XCTAssertEqual(outcome.entities.first { $0.pid == 91681 }?.inBytes, 0, "Proxy row is fully drained by what it carried")
-        XCTAssertEqual(outcome.remaining, [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 500, outBytes: 0)])
-    }
-
-    func testConsumptionFallsBackToAPIWindowWhenNettopUnavailable() {
-        // When the nettop proxy window is empty (no proxy row in the frame),
-        // the historical API-window behavior must be preserved so credits are
-        // not silently stranded.
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 0)],
-            now: 101
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
-
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 900, "API window budget is used when nettop window is absent")
-    }
-
-    func testConsumptionNettopWindowUsesMaxOfBothDirections() {
-        // Each direction is capped independently by its own nettop window; a
-        // mismatch in one direction must not leak into the other.
-        let raw = [
-            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500, outBytes: 100),
-            ProcessEntity(pid: 61013, name: "Google Chrome H", inBytes: 0, outBytes: 0)
-        ]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 1_000, outBytes: 500)],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000, outBytes: 500)],
-            nettopProxyCumulative: [ProxyCumulativePoint(timestamp: 101, inBytes: 500, outBytes: 100)],
-            now: 101
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
-
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 500, "Download capped by nettop in-window")
-        XCTAssertEqual(outcome.consumed[61013]?.outBytes, 100, "Upload capped by nettop out-window")
-        let chrome = outcome.entities.first { $0.pid == 61013 }
-        XCTAssertEqual(chrome?.inBytes, 500)
-        XCTAssertEqual(chrome?.outBytes, 100)
-    }
-
-    // MARK: - Recovery credits (expired credits whose process is still alive)
-
-    func testRecoveryCreditsAreConsumedAndDrainProxyRow() {
-        // A credit expired while the proxy row was absent (age 31 > TTL 30) but
-        // its owning process is still alive, so it is re-queued in the recovery
-        // list. Consumption must credit the specific app and drain the proxy row
-        // exactly like a normal pending credit.
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000_000, outBytes: 0)],
-            now: 101,
-            proxyDebtIn: 0,
-            proxyDebtOut: 0,
-            recoveryCredits: [PendingProxyCredit(timestamp: 70, pid: 61013, inBytes: 900_000, outBytes: 0)]
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"], creditTTL: 30)
-
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 900_000)
-        let proxy = outcome.entities.first { $0.pid == 91681 }
-        XCTAssertEqual(proxy?.inBytes, 100_000, "Recovered bytes must drain the proxy row")
-        let chrome = outcome.entities.first { $0.pid == 61013 }
-        XCTAssertEqual(chrome?.inBytes, 900_000)
-        XCTAssertTrue(outcome.remainingRecovery.isEmpty)
-    }
-
-    func testRecoveryCreditsConsumeBeforePendingCredits() {
-        // Recovery credits are older than fresh pending credits; consuming the
-        // shared window budget oldest-first must credit the recovered pid first
-        // so the older bytes are not stranded behind new ones.
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 100, pid: 429_002, inBytes: 200_000, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000_000, outBytes: 0)],
-            now: 101,
-            recoveryCredits: [PendingProxyCredit(timestamp: 70, pid: 61013, inBytes: 900_000, outBytes: 0)]
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H", 429_002: "Safari"], creditTTL: 30)
-
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 900_000, "Recovery consumes its full share first")
-        XCTAssertEqual(outcome.consumed[429_002]?.inBytes, 100_000)
-    }
-
-    func testUnconsumedRecoveryCreditSplitsBackToRecoveryNotPending() {
-        // When the budget cannot cover the whole recovery credit, the remainder
-        // must return to the recovery list (it is older than the pending TTL and
-        // must not be re-expired by the normal pending logic).
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 100_000, outBytes: 0)],
-            now: 101,
-            recoveryCredits: [PendingProxyCredit(timestamp: 70, pid: 61013, inBytes: 900_000, outBytes: 0)]
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"], creditTTL: 30)
-
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 100_000)
-        XCTAssertTrue(outcome.remaining.isEmpty)
-        XCTAssertEqual(outcome.remainingRecovery, [
-            PendingProxyCredit(timestamp: 70, pid: 61013, inBytes: 800_000, outBytes: 0)
-        ])
-    }
-
-    func testFreshPendingCreditStaysPendingNotRecovery() {
-        // A pending credit younger than the TTL must remain pending after an
-        // unconsumed frame, never classified as recovery.
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [PendingProxyCredit(timestamp: 90, pid: 61013, inBytes: 900_000, outBytes: 0)],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 100_000, outBytes: 0)],
-            now: 101,
-            recoveryCredits: []
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"], creditTTL: 30)
-
-        XCTAssertEqual(outcome.consumed[61013]?.inBytes, 100_000)
-        XCTAssertEqual(outcome.remaining, [PendingProxyCredit(timestamp: 90, pid: 61013, inBytes: 800_000, outBytes: 0)])
-        XCTAssertTrue(outcome.remainingRecovery.isEmpty)
-    }
-
-    func testRedistributionCarriesRecoveryCreditsWhenProxyRowAbsent() {
-        // No proxy row this frame: recovery credits must be preserved for a
-        // later frame instead of being dropped.
-        let raw = [ProcessEntity(pid: 61013, name: "Google Chrome H", inBytes: 100, outBytes: 0)]
-        let snapshot = ProxyAttributionSnapshot(
-            credits: [],
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 100_000, outBytes: 0)],
-            now: 101,
-            recoveryCredits: [PendingProxyCredit(timestamp: 70, pid: 61013, inBytes: 900_000, outBytes: 0)]
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [:], creditTTL: 30)
-
-        XCTAssertTrue(outcome.consumed.isEmpty)
-        XCTAssertEqual(outcome.remainingRecovery, snapshot.recoveryCredits)
-    }
-
     // MARK: - Proxy row visibility diagnostic
 
     func testVisibilityTransitionIsNotConsumedWhileDetectionUnavailable() {
@@ -900,99 +486,130 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNil(update.diagnostic)
     }
 
-    // MARK: - Proxy foreground fallback
-
-    private func foregroundSnapshot(
-        foregroundPID: Int?,
-        activeProxyPIDs: Set<Int>,
-        enabled: Bool,
-        credits: [PendingProxyCredit] = []
-    ) -> ProxyAttributionSnapshot {
-        ProxyAttributionSnapshot(
-            credits: credits,
-            proxyDetected: true,
-            proxyPIDs: [91681],
-            isClashVergeProxy: true,
-            cumulativeProxy: [ProxyCumulativePoint(timestamp: 101, inBytes: 1_000_000, outBytes: 0)],
-            now: 101,
-            foregroundPID: foregroundPID,
-            activeProxyPIDs: activeProxyPIDs,
-            foregroundAttributionEnabled: enabled
-        )
-    }
-
-    func testForegroundFallbackMovesResidualFromProxyToForegroundApp() {
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000_000, outBytes: 0)]
-        let snapshot = foregroundSnapshot(
-            foregroundPID: 429_002,
-            activeProxyPIDs: [429_002],
-            enabled: true,
-            credits: [PendingProxyCredit(timestamp: 100, pid: 429_002, inBytes: 400_000, outBytes: 0)]
-        )
-
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [429_002: "Google Chrome H"])
-
-        let proxy = outcome.entities.first { $0.pid == 91681 }
-        let chrome = outcome.entities.first { $0.pid == 429_002 }
-        XCTAssertEqual(proxy?.inBytes, 0, "Residual must be drained from the proxy row")
-        XCTAssertEqual(chrome?.inBytes, 1_000_000, "Consumed credit plus drained residual")
-        XCTAssertEqual(chrome?.name, "Google Chrome H")
-    }
-
-    func testForegroundFallbackAddsToExistingForegroundEntity() {
+    func testSameWindowSettlementClampsDeclarationsAndPreservesBothDirections() {
         let raw = [
-            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0),
-            ProcessEntity(pid: 61013, name: "Google Chrome H", inBytes: 100, outBytes: 0)
+            ProcessEntity(pid: 61013, name: "Google Chrome", inBytes: 100, outBytes: 50),
+            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 500)
         ]
-        let snapshot = foregroundSnapshot(foregroundPID: 61013, activeProxyPIDs: [61013], enabled: true)
+        let declarations = [
+            PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 1_500, outBytes: 700)
+        ]
 
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+        let result = settleProxyWindow(
+            raw: raw,
+            proxyPIDs: [91681],
+            isClashVerge: true,
+            declarations: declarations,
+            pidNames: [61013: "Google Chrome"]
+        )
 
-        let chrome = outcome.entities.first { $0.pid == 61013 }
-        let proxy = outcome.entities.first { $0.pid == 91681 }
-        XCTAssertEqual(chrome?.inBytes, 500_100)
-        XCTAssertEqual(proxy?.inBytes, 0)
+        XCTAssertEqual(result.credited[61013]?.inBytes, 1_000)
+        XCTAssertEqual(result.credited[61013]?.outBytes, 500)
+        XCTAssertTrue(result.droppedDeclarations.isEmpty == false)
+        XCTAssertEqual(result.droppedDeclarations.first?.inBytes, 500)
+        XCTAssertEqual(result.droppedDeclarations.first?.outBytes, 200)
+
+        let rawIn = raw.reduce(0) { $0 + $1.inBytes }
+        let rawOut = raw.reduce(0) { $0 + $1.outBytes }
+        let finalIn = result.entities.reduce(0) { $0 + $1.inBytes }
+        let finalOut = result.entities.reduce(0) { $0 + $1.outBytes }
+        XCTAssertEqual(finalIn, rawIn)
+        XCTAssertEqual(finalOut, rawOut)
+        XCTAssertEqual(result.entities.first(where: { $0.pid == 91681 })?.inBytes, 0)
+        XCTAssertEqual(result.entities.first(where: { $0.pid == 91681 })?.outBytes, 0)
     }
 
-    func testForegroundFallbackCreatesNewEntityForFrontmostAppWithNoRow() {
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
-        let snapshot = foregroundSnapshot(foregroundPID: 429_003, activeProxyPIDs: [429_003], enabled: true)
+    func testMissingProxyRowLeavesBytesOnRawEntitiesAndDoesNotCreateDebt() {
+        let raw = [
+            ProcessEntity(pid: 61013, name: "Google Chrome", inBytes: 100, outBytes: 25)
+        ]
+        let declarations = [
+            PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900, outBytes: 300)
+        ]
 
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [:])
+        let result = settleProxyWindow(
+            raw: raw,
+            proxyPIDs: [91681],
+            isClashVerge: true,
+            declarations: declarations,
+            pidNames: [61013: "Google Chrome"]
+        )
 
-        let chrome = outcome.entities.first { $0.pid == 429_003 }
-        XCTAssertEqual(chrome?.inBytes, 500_000)
-        XCTAssertEqual(chrome?.name, "429003", "pidNames fallback is the numeric pid")
-        XCTAssertEqual(outcome.entities.count, 2)
+        XCTAssertTrue(result.credited.isEmpty)
+        XCTAssertEqual(result.entities.map(\.inBytes), raw.map(\.inBytes))
+        XCTAssertEqual(result.entities.map(\.outBytes), raw.map(\.outBytes))
+        XCTAssertEqual(result.droppedDeclarations, declarations)
     }
 
-    func testForegroundFallbackSkipsWhenForegroundIsProxyPID() {
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
-        let snapshot = foregroundSnapshot(foregroundPID: 91681, activeProxyPIDs: [91681], enabled: true)
+    func testUploadOnlyDeclarationCreatesAnAppRowWithoutChangingTotal() {
+        let raw = [
+            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 0, outBytes: 500)
+        ]
+        let result = settleProxyWindow(
+            raw: raw,
+            proxyPIDs: [91681],
+            isClashVerge: true,
+            declarations: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 0, outBytes: 300)],
+            pidNames: [61013: "Google Chrome"]
+        )
 
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [:])
-
-        XCTAssertEqual(outcome.entities.first?.inBytes, 500_000, "Residual stays on the proxy")
-        XCTAssertEqual(outcome.entities.count, 1)
+        XCTAssertEqual(result.entities.first(where: { $0.pid == 61013 })?.inBytes, 0)
+        XCTAssertEqual(result.entities.first(where: { $0.pid == 61013 })?.outBytes, 300)
+        XCTAssertEqual(result.entities.reduce(0) { $0 + $1.inBytes }, 0)
+        XCTAssertEqual(result.entities.reduce(0) { $0 + $1.outBytes }, 500)
     }
 
-    func testForegroundFallbackSkipsWhenForegroundNotUsingProxy() {
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
-        let snapshot = foregroundSnapshot(foregroundPID: 61013, activeProxyPIDs: [], enabled: true)
+    func testDuplicateRawProcessRowsDoNotDuplicateASettlement() {
+        let raw = [
+            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 800, outBytes: 0),
+            ProcessEntity(pid: 61013, name: "Google Chrome", inBytes: 20, outBytes: 0),
+            ProcessEntity(pid: 61013, name: "Google Chrome", inBytes: 30, outBytes: 0)
+        ]
+        let result = settleProxyWindow(
+            raw: raw,
+            proxyPIDs: [91681],
+            isClashVerge: true,
+            declarations: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 500, outBytes: 0)],
+            pidNames: [61013: "Google Chrome"]
+        )
 
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
-
-        XCTAssertEqual(outcome.entities.first?.inBytes, 500_000, "Guardrail: foreground app must actually use the proxy")
-        XCTAssertEqual(outcome.entities.count, 1)
+        XCTAssertEqual(result.entities.reduce(0) { $0 + $1.inBytes }, 850)
+        XCTAssertEqual(result.entities.filter { $0.pid == 61013 }.map(\.inBytes), [520, 30])
     }
 
-    func testForegroundFallbackSkipsWhenDisabled() {
-        let raw = [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 500_000, outBytes: 0)]
-        let snapshot = foregroundSnapshot(foregroundPID: 61013, activeProxyPIDs: [61013], enabled: false)
+    func testSampleLedgerCommitIsIdempotentAndIncludesCurrentMinute() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itraffic-test-\(UUID().uuidString).sqlite3")
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + "-shm"))
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + "-wal"))
+        }
 
-        let outcome = redistributeProxyTraffic(raw: raw, snapshot: snapshot, pidNames: [61013: "Google Chrome H"])
+        let database = TrafficDatabase(databaseURL: url)
+        let sample = TrafficSample(
+            id: "sample-1",
+            capturedAtMs: 1_700_000_012_345,
+            bucketStart: 1_700_000_000,
+            day: 19_675,
+            hour: 1,
+            rawInBytes: 100,
+            rawOutBytes: 50,
+            allocations: [
+                TrafficSampleAllocation(appKey: "Google Chrome", displayName: "Google Chrome", inBytes: 75, outBytes: 40),
+                TrafficSampleAllocation(appKey: "Clash Verge", displayName: "Clash Verge", inBytes: 25, outBytes: 10)
+            ]
+        )
 
-        XCTAssertEqual(outcome.entities.first?.inBytes, 500_000)
-        XCTAssertEqual(outcome.entities.count, 1)
+        database.commitSample(sample)
+        database.commitSample(sample)
+
+        let expectation = expectation(description: "sample is queryable")
+        database.totalTraffic(start: 1_700_000_000, end: 1_700_000_060) { total in
+            XCTAssertEqual(total.inBytes, 100)
+            XCTAssertEqual(total.outBytes, 50)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 2)
     }
 }

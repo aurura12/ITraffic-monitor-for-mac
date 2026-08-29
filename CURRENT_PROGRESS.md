@@ -1,6 +1,6 @@
 # 当前进度：VPN 按 App 流量统计
 
-更新时间：2026-08-20
+更新时间：2026-08-27
 
 ## 目标
 
@@ -10,9 +10,10 @@
 
 - 系统总流量统计可以继续使用，当前仍以 `nettop` 采集为主。
 - Network Extension Content Filter 的按 App 统计源码仍保留，但不属于默认免费工程。
-- 默认免费构建使用 `nettop + 代理连接表 + utun 总量参考`，不会编译、安装或启用未签名的 Network Extension。
+- 默认免费构建使用 `nettop -t external` 作为唯一总量来源；不会编译、安装或启用未签名的 Network Extension。
 - 当前 Mac 没有 Apple Developer Team、开发证书和对应签名授权，因此无法把 VPN 隧道内的每个 App 字节数做成精确统计。
-- 免费方案已继续增强：加入 `nettop + 代理连接表 + utun 总量参考` 的保守校准层，不需要 Apple Developer Program。
+- 代理 API 现在只提供归属声明：只在同一 nettop 采样帧的 Clash 原始预算内转移，无法确认的字节保留在 Clash。
+- 历史数据按逐帧采样账本持久化，重复采样提交幂等，当前分钟可直接查询。
 - 免费运行配置已修复：主 App 不再引用 Network Extension entitlements，因此可以使用 Xcode 的 `Sign to Run Locally` 运行；Network Extension entitlements 文件仍保留给以后有 Team 时使用。
 
 ## 已完成内容
@@ -25,21 +26,18 @@
 - 对无法识别的连接归入 `Clash Verge`（没有独立的未归属 VPN 桶）。
 - 主 App 保留 `TrafficFilterManager`，作为以后有 Team 时接回扩展的基础；默认启动流程不会调用它。
 - 增加统计游标、JSONL 共享输出和聚合逻辑，避免重复记录。
-- Network Extension 未产出数据时继续使用 `nettop`，避免界面完全没有数据。
+- Network Extension 统计流只保留为身份/状态诊断，不写入历史账本；历史始终由 `nettop` 采样产生。
 - 设置页面保留 Network Extension 状态相关代码，默认免费构建不宣称这些状态代表扩展已安装或已启用。
 
-### 免费校准方案
+### 守恒归属方案
 
-- 添加 `UTunTrafficSampler`，在独立后台队列读取 `netstat -ib` 中的 `utun*` 接口累计字节。
-- 添加 `FreeAttributionCalibrator`，将能解释的流量保留给对应 App。
-- 只有当 `utun` 参考总量高于当前已归属总量时，才产生差额；差额按活跃 App 的字节比例分摊到对应应用，而不是整段计入 `Clash Verge`。
-- 当计数器回退、采样不可用或参考总量较低时，不扣减已有 App 数据，继续使用原有 `nettop` 结果。
-- 设置页面增加免费校准状态，显示 `utun` 参考是否可用。
-- `Network` 使用校准后的实体和总量更新实时显示，同时保留旧的无校准回退路径。
+- `Network` 记录每个 nettop 帧的原始上下行字节；代理归属只能从该帧的 Clash 行转移同量字节。
+- 移除正式链路中的 utun 补差、比例分摊、跨帧 proxy debt 和前台应用兜底。
+- `traffic_samples` 与 `sample_allocations` 在一个事务中提交，最终 App 总量加 Clash 剩余严格等于原始 nettop 总量。
 
 ### 测试与检查
 
-- 当前 Xcode 测试总计：83 个测试通过，0 个失败。
+- 新增守恒结算、无代理行保留原始字节、采样账本幂等测试。
 - 无签名 `build-for-testing` 通过。
 - Entitlements 和 Info.plist 的 `plutil` 检查通过。
 - `git diff --check` 通过。
@@ -63,7 +61,7 @@
 - 总流量可以继续显示。
 - 普通直连流量通常可以按进程统计。
 - VPN/代理流量只能尽量归属到 App，不能保证每个 App 的 VPN 字节数 100% 精确。
-- 无法匹配的流量按活跃 App 的字节比例分摊给对应应用（估算），而不是单独显示为“未归属”或强行分配给某一个 App。
+- 无法匹配的流量保留在 Clash，不按比例分摊，也不强行分配给前台 App。
 
 总流量也可能与 VPN 服务器端看到的流量存在差异，因为两边的统计口径可能包含不同的协议开销、DNS、重传和隧道数据。
 
@@ -92,8 +90,7 @@
 - `ITrafficMonitorForMac/Service/TrafficFilterStatsStore.swift`：共享统计读取和游标。
 - `ITrafficMonitorForMac/Service/TrafficRecorder.swift`：流量写入入口。
 - `ITrafficMonitorForMac/Service/NettopRunner.swift`：当前免费方案的重要数据来源。
-- `ITrafficMonitorForMac/Service/UTunTrafficSampler.swift`：免费 VPN 总量参考采样。
-- `ITrafficMonitorForMac/Service/FreeAttributionCalibrator.swift`：保守的差额归属和可信度。
+- `ITrafficMonitorForMac/Service/UTunTrafficSampler.swift`：仅保留为可选诊断采样，不参与历史总量。
 - `ITrafficMonitorForMac/NetworkFilter/`：Network Extension 两个 Provider 及共享代码。
 - `ITrafficMonitorForMacTests/TrafficFilterTests.swift`：新增统计逻辑测试。
 - `project.yml`：XcodeGen 工程配置。
@@ -105,7 +102,6 @@
 - 不要把“无签名编译通过”表述成“Network Extension 已经运行正常”。
 - 在没有真实签名和 VPN 测试前，不要宣称按 App 的 VPN 流量已经精确。
 - 重新运行 `xcodegen generate --spec project.yml` 后，要检查默认工程不包含两个 Network Extension target，且主 App 不出现 `CODE_SIGN_ENTITLEMENTS`。
-- 当前改动尚未提交 Git commit；继续开发前先查看 `git status`，避免覆盖已有修改。
-- `utun` 采样需要 macOS 实际返回接口计数；如果系统拒绝 `netstat -ib`，界面会显示不可用并自动回退。
-- 目前仍未在真实 VPN 流量下完成端到端对账，因此不能宣称每个 App 已达到 100% 精确。
+- 设计基线已提交 Git；代码改造完成前仍需查看最终 `git status`，避免覆盖已有修改。
+- 目前仍未在真实 VPN 流量下完成端到端对账，因此只能宣称总量守恒；不能宣称每个 App 已达到 100% 精确。
 - 如果以后恢复精确方案，需要重新加入两个 Network Extension target、App 的嵌入关系、签名配置和真实安装启用流程；当前免费工程不会自动完成这些步骤。
