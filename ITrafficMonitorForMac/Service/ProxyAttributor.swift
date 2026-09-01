@@ -512,6 +512,14 @@ final class ProxyAttributor: ObservableObject {
     private var timer: DispatchSourceTimer?
     private var previousConnections: [String: TrackedConnection] = [:]
     private let interval = 2 // seconds, matches nettop cadence
+    /// Epoch seconds of the last successful connection poll. A gap larger
+    /// than `staleGapSeconds` means the proxy API was unreachable for the
+    /// intervening window; the then-computed deltas cover bytes that already
+    /// landed on the proxy row in earlier frames and must not be credited.
+    private var lastDetectionAt: Int64 = 0
+    /// Deltas spanning a poll gap wider than this are considered stale
+    /// (3 missed ticks) and are kept on the proxy row instead of credited.
+    private let staleGapSeconds: Int64 = 7
 
     // MARK: - Config
 
@@ -663,7 +671,15 @@ final class ProxyAttributor: ObservableObject {
             emitDiagnostic(.authRequired(endpoint: endpoint))
         case .notFound:
             logger.debug("proxy controller not found")
-            reset()
+            // Transient API failures (timeouts under load) must not discard
+            // tracked connection totals: a full reset() would make the next
+            // successful tick re-credit every surviving connection's
+            // session-cumulative bytes as a "first observation", monopolizing
+            // the recovery frame's proxy-row budget and starving other apps'
+            // declarations exactly when the system is loaded (the condition
+            // that caused the timeout). Suspend attribution but keep the
+            // per-connection totals so recovery stays incremental.
+            suspendAttribution()
             emitStatus(.notDetected)
             let endpoint = candidates.map { proxyEndpointLabel($0.unixSocket ?? $0.baseURL) }.joined(separator: ",")
             logger.info("proxy API unavailable endpoints=\(endpoint, privacy: .public)")
@@ -700,6 +716,11 @@ final class ProxyAttributor: ObservableObject {
         let proxyPIDs = resolveProxyPIDs(candidate: candidate)
         let proxyPid = proxyPIDs.sorted().first
         let prev = previousConnections
+        // After a long poll gap (proxy API unreachable) the deltas computed
+        // below would cover the whole outage window — bytes that already sat
+        // on the proxy row in earlier frames. Crediting them would distort
+        // this frame's attribution, so they stay on the proxy row instead.
+        let staleGap = lastDetectionAt > 0 && now - lastDetectionAt > staleGapSeconds
 
         var credits: [Int: (inBytes: Int, outBytes: Int)] = [:]
         var newPrevious: [String: TrackedConnection] = [:]
@@ -741,7 +762,7 @@ final class ProxyAttributor: ObservableObject {
             if let prevConn = prev[conn.id] {
                 let dIn = nonNegativeProxyDelta(current: conn.download, previous: prevConn.downloadTotal)
                 let dOut = nonNegativeProxyDelta(current: conn.upload, previous: prevConn.uploadTotal)
-                if (dIn > 0 || dOut > 0), prevConn.pid > 0, !proxyPIDs.contains(prevConn.pid) {
+                if !staleGap, (dIn > 0 || dOut > 0), prevConn.pid > 0, !proxyPIDs.contains(prevConn.pid) {
                     var c = credits[prevConn.pid] ?? (inBytes: 0, outBytes: 0)
                     c.inBytes += Int(dIn)
                     c.outBytes += Int(dOut)
@@ -749,7 +770,7 @@ final class ProxyAttributor: ObservableObject {
                 }
                 // prevConn.pid == proxyPid → the proxy's own direct connection,
                 // not tunneled traffic; keep it on the proxy.
-            } else if attributed > 0, !proxyPIDs.contains(attributed) {
+            } else if !staleGap, attributed > 0, !proxyPIDs.contains(attributed) {
                 // First observation of a connection. Its session-cumulative
                 // bytes are the only snapshot we get if the connection is
                 // short-lived (Steam chunk downloads, DNS lookups, …), so
@@ -816,6 +837,12 @@ final class ProxyAttributor: ObservableObject {
             logger.info("proxy unmapped connections=\(connections.count - mappedConnectionCount, privacy: .public) in=\(unmappedIn, privacy: .public) out=\(unmappedOut, privacy: .public) ports=\(ports, privacy: .public)")
             DiagnosticLogStore.shared.append("proxy unmapped connections=\(connections.count - mappedConnectionCount) in=\(unmappedIn) out=\(unmappedOut) ports=\(ports)")
         }
+        if staleGap {
+            let gap = now - lastDetectionAt
+            logger.info("proxy attribution resumed after gap=\(gap, privacy: .public)s; outage-window deltas kept on proxy row")
+            DiagnosticLogStore.shared.append("proxy attribution resumed after gap=\(gap)s; outage-window deltas kept on proxy row")
+        }
+        lastDetectionAt = now
     }
 
     // MARK: - Detection / fetch
@@ -1324,6 +1351,7 @@ final class ProxyAttributor: ObservableObject {
 
     private func reset() {
         previousConnections.removeAll(keepingCapacity: true)
+        lastDetectionAt = 0
         stateLock.lock()
         pendingCredits = []
         proxyDetected = false
@@ -1332,6 +1360,23 @@ final class ProxyAttributor: ObservableObject {
         sourcePortCache = [:]
         isClashVergeProxy = false
         guiAncestorCache = [:]
+        stateLock.unlock()
+        emitDiagnostic(.notDetected)
+    }
+
+    /// Temporarily disables attribution while the proxy API is unreachable,
+    /// keeping `previousConnections` so the next successful poll resumes with
+    /// incremental deltas instead of re-crediting session-cumulative bytes.
+    /// Stale `pendingCredits` are dropped: their bytes were already recorded
+    /// on the proxy row while attribution was suspended, and nettop frames
+    /// discard declarations whenever `proxyDetected` is false anyway.
+    private func suspendAttribution() {
+        stateLock.lock()
+        pendingCredits = []
+        proxyDetected = false
+        proxyPid = nil
+        proxyPIDs = []
+        isClashVergeProxy = false
         stateLock.unlock()
         emitDiagnostic(.notDetected)
     }
