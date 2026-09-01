@@ -260,8 +260,15 @@ final class DiagnosticLogStore: ObservableObject {
             } else {
                 try? data.write(to: logURL, options: .atomic)
             }
-            guard let current = try? Data(contentsOf: logURL), current.count > maximumBytes else { return }
-            try? retainingNewestDiagnosticLogBytes(current, maximumBytes: maximumBytes).write(to: logURL, options: .atomic)
+            // O(1) size check via stat; the full read+rewrite only runs at the
+            // high-water mark and trims to half the cap, so it is amortized
+            // over ~8 MB of subsequent appends instead of running on every
+            // line once the log is full.
+            let attributes = try? FileManager.default.attributesOfItem(atPath: logURL.path)
+            let size = (attributes?[.size] as? NSNumber)?.intValue ?? 0
+            guard size > maximumBytes, let current = try? Data(contentsOf: logURL) else { return }
+            let trimmed = retainingNewestDiagnosticLogBytes(current, maximumBytes: maximumBytes / 2)
+            try? trimmed.write(to: logURL, options: .atomic)
         }
     }
 
