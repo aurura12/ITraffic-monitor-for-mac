@@ -43,7 +43,12 @@ final class NettopRunner {
 
     init(
         interval: Int,
-        debounceInterval: TimeInterval = 0.1,
+        // Frame boundary detection: nettop frames have no delimiter, so a
+        // frame is flushed after this much read idle time. The value must
+        // absorb stdout chunk gaps under load (a split frame would be
+        // recorded as two partial samples) while staying well below the
+        // sampling cadence so records are not delayed.
+        debounceInterval: TimeInterval = 0.35,
         processConfigurator: @escaping (Process, Int) -> Void = { task, interval in
             task.executableURL = URL(fileURLWithPath: "/usr/bin/script")
             let nettopCommand = "/usr/bin/nettop -P -d -L 0 -J bytes_in,bytes_out -t external -s \(interval) -c"
