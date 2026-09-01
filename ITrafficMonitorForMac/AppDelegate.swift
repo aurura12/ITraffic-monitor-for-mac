@@ -16,9 +16,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     static var dashboardWindow: NSWindow?
     static var settingsWindow: NSWindow?
     var network: Network!
+    private var menuBarController: MenuBarController?
 
-    /// Open (or reuse) the dashboard window. This is the app's main window —
-    /// shown on launch and reopened from the Dock after the user closes it.
+    /// Open (or reuse) the full dashboard window from the menu bar entry.
     static func showDashboard() {
         if dashboardWindow == nil {
             let window = NSWindow(
@@ -54,6 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.center()
             settingsWindow = window
         }
+        NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
@@ -80,6 +81,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         AppDelegate.applyAppearance(UserDefaults.standard.string(forKey: "appAppearance") ?? "system")
+        NSApp.setActivationPolicy(.accessory)
+        menuBarController = MenuBarController()
 
         // Wire the storyboard's Preferences… menu item (⌘,) to the settings window.
         if let prefs = NSApp.mainMenu?.item(at: 0)?.submenu?.items.first(where: { $0.keyEquivalent == "," }) {
@@ -98,8 +101,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // real apps. No-ops when no proxy is detected.
         SharedStore.proxyAttributor.start()
 
-        // Open the statistics dashboard as the main window.
-        AppDelegate.showDashboard()
+        // The app is menu-bar-first. The full dashboard remains available from
+        // the status item popover and the application menu.
     }
 
     /// Keep running in the background after the window is closed so nettop
@@ -108,7 +111,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// Reopen the dashboard window when the user clicks the Dock icon.
+    /// Reopen the dashboard if macOS asks the accessory app to reactivate.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
             if let window = AppDelegate.dashboardWindow, window.isMiniaturized {

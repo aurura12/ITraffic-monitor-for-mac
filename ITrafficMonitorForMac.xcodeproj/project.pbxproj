@@ -48,6 +48,7 @@
 		ECF6447B8596DF45AC89197F /* FreeAttributionCalibrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF29493AB65C88B04AE9758 /* FreeAttributionCalibrator.swift */; };
 		ED92E8103B5EA56B695BE2EE /* NettopRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30BFFD61518831774A91BFE /* NettopRunner.swift */; };
 		F0639BF56F0C9DE49B981667 /* TrafficFilterSharedOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC134DBEDC722C7EFB9C9653 /* TrafficFilterSharedOutput.swift */; };
+		F0EE8F0974E9A4DE3F4CBEC1 /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08982BEA9591C5710684F088 /* MenuBar.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -63,6 +64,7 @@
 /* Begin PBXFileReference section */
 		031A75F509B62CC97841A678 /* TrafficRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficRecorder.swift; sourceTree = "<group>"; };
 		065D4B4260EC8645AF7E7918 /* TrafficBarChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficBarChartView.swift; sourceTree = "<group>"; };
+		08982BEA9591C5710684F088 /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
 		0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		0CC43C0CA35F7577E3D134A8 /* ProxyAttributor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyAttributor.swift; sourceTree = "<group>"; };
 		0DA22D03B2B11F19C7F5DFE3 /* AppDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDetailView.swift; sourceTree = "<group>"; };
@@ -222,6 +224,7 @@
 				5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */,
 				8DC67E0DE60F9255C3A54E63 /* Assets.xcassets */,
 				8DE533394707409DB44B2D69 /* GeneratedBuildInfo.swift */,
+				08982BEA9591C5710684F088 /* MenuBar.swift */,
 				B4DE4AB076FAF20A640BD23F /* Network.swift */,
 				CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */,
 				748FB46B5B1D40583CCBFC28 /* Store.swift */,
@@ -369,6 +372,7 @@
 				DAB06093F1BBA6C87FA423E5 /* GeneratedBuildInfo.swift in Sources */,
 				9419659EEBE860E8E43AD67B /* ListViewModel.swift in Sources */,
 				7F6633B2B1C6637EC54CDC9C /* LocalizationManager.swift in Sources */,
+				F0EE8F0974E9A4DE3F4CBEC1 /* MenuBar.swift in Sources */,
 				ED92E8103B5EA56B695BE2EE /* NettopRunner.swift in Sources */,
 				403DD76556F421C4383180FB /* Network.swift in Sources */,
 				2F2F1D0255B78909846B9451 /* PerAppRateStore.swift in Sources */,

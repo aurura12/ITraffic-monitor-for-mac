@@ -104,7 +104,7 @@ Bytetally Pro features include a free trial and can then be unlocked with a subs
 iTraffic keeps one job simple: show which processes are using your network right now.
 
 - Per-process upload and download speeds
-- Native macOS dashboard interface
+- Native macOS dashboard interface with a menu-bar resident quick view
 - Light and dark mode
 - Direct Swift driver for macOS `nettop`
 - Delta-mode sampling for more accurate live rates

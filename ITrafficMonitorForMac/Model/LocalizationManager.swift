@@ -39,6 +39,9 @@ final class LocalizationManager: ObservableObject {
         "Processes": "进程",
         "Export": "导出",
         "Settings": "设置",
+        "Open Dashboard": "打开仪表盘",
+        "Quit": "退出",
+        "Idle": "空闲",
         "Search apps": "搜索应用",
 
         // Overview

@@ -219,6 +219,14 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertEqual(result.positiveGap, UTunTrafficCounters(inBytes: 0, outBytes: 0))
     }
 
+    func testMenuBarSnapshotNormalizesRatesAndReportsIdleState() {
+        let snapshot = MenuBarSnapshot(downloadRate: -10, uploadRate: 0)
+
+        XCTAssertEqual(snapshot.downloadRate, 0)
+        XCTAssertEqual(snapshot.uploadRate, 0)
+        XCTAssertTrue(snapshot.isIdle)
+    }
+
     private func sampleRecord(sequence: Int64) -> TrafficFilterRecord {
         TrafficFilterRecord(
             schemaVersion: 1,
