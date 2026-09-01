@@ -494,7 +494,13 @@ final class ProxyAttributor: ObservableObject {
     /// Maps short-lived CLI process pids (node, npm, …) to the regular GUI
     /// application that hosts them (the terminal / IDE), so proxy traffic
     /// from terminal commands is shown under the app the user actually sees.
-    private var guiAncestorCache: [Int: Int] = [:]
+    /// Each entry records the pid's process start time so a recycled pid
+    /// cannot inherit the previous process's host application.
+    private struct GuiAncestorCacheEntry {
+        let hostPID: Int
+        let startTime: Int64?
+    }
+    private var guiAncestorCache: [Int: GuiAncestorCacheEntry] = [:]
     /// Last status label appended to the diagnostics log, so only genuine
     /// status transitions are recorded.
     private var lastLoggedStatus = ""
@@ -1274,13 +1280,18 @@ final class ProxyAttributor: ObservableObject {
     /// Maps a CLI process pid (e.g. node/npm spawned by a terminal) to the
     /// regular GUI application that hosts it, so terminal traffic shows under
     /// the terminal / IDE instead of a short-lived CLI process. GUI pids are
-    /// returned unchanged; results are cached for the process's lifetime.
+    /// returned unchanged; results are cached for the process's lifetime,
+    /// validated against the process start time so a recycled pid re-resolves
+    /// instead of inheriting the previous process's host app.
     /// Only called on the attributor queue, so no lock is needed.
     private func effectiveAttributionPID(_ pid: Int) -> Int {
         guard pid > 0 else { return 0 }
-        if let cached = guiAncestorCache[pid] { return cached }
+        let startTime = processStartTime(of: pid)
+        if let cached = guiAncestorCache[pid], cached.startTime == startTime {
+            return cached.hostPID
+        }
         let resolved = guiAncestorPID(of: pid) ?? pid
-        guiAncestorCache[pid] = resolved
+        guiAncestorCache[pid] = GuiAncestorCacheEntry(hostPID: resolved, startTime: startTime)
         return resolved
     }
 

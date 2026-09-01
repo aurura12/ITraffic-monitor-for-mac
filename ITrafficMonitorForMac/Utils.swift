@@ -401,6 +401,20 @@ func parentPid(of pid: Int) -> Int? {
     return Int(info.kp_eproc.e_ppid)
 }
 
+/// Process start time (epoch seconds) via sysctl. Used to validate pid-keyed
+/// caches: macOS recycles pids, so a start-time mismatch means the cached
+/// entry belongs to a previous process. Returns nil when the process is gone.
+func processStartTime(of pid: Int) -> Int64? {
+    var info = kinfo_proc()
+    var size = MemoryLayout<kinfo_proc>.stride
+    var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, Int32(pid)]
+    let result = mib.withUnsafeMutableBufferPointer { ptr -> Int32 in
+        sysctl(ptr.baseAddress, UInt32(ptr.count), &info, &size, nil, 0)
+    }
+    guard result == 0, size > 0 else { return nil }
+    return Int64(info.kp_proc.p_starttime.tv_sec)
+}
+
 // Note: previous versions did manual `lockFocus`/`draw` rasterisation
 // to a fixed pixel size — that rendered at 1x on Retina displays.
 // All scaling is now done by SwiftUI via `.resizable().interpolation(.high)`.
