@@ -82,6 +82,21 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNotEqual(normal.x, 200)
     }
 
+    func testHeatmapTooltipIsOffsetFromPointerAndFlipsBelowAtTopEdge() {
+        let normal = heatmapTooltipPosition(
+            for: CGPoint(x: 200, y: 100),
+            in: CGSize(width: 600, height: 300)
+        )
+        let nearTop = heatmapTooltipPosition(
+            for: CGPoint(x: 200, y: 10),
+            in: CGSize(width: 600, height: 300)
+        )
+
+        XCTAssertLessThan(normal.y, 100)
+        XCTAssertGreaterThan(nearTop.y, 10)
+        XCTAssertNotEqual(normal.x, 200)
+    }
+
     func testUnixSocketCurlOutputParsesStatusAndBody() {
         let output = "{\"connections\":[]}\n__ITRAFFIC_STATUS__:200\n"
 

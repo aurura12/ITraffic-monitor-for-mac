@@ -9,6 +9,23 @@
 
 import SwiftUI
 
+func heatmapTooltipPosition(for pointer: CGPoint, in size: CGSize) -> CGPoint {
+    let horizontalGap: CGFloat = 16
+    let verticalGap: CGFloat = 10
+    let halfTooltipWidth: CGFloat = 90
+    let halfTooltipHeight: CGFloat = 15
+
+    let minX = min(halfTooltipWidth, size.width / 2)
+    let maxX = max(minX, size.width - minX)
+    let x = min(max(pointer.x + horizontalGap, minX), maxX)
+
+    let above = pointer.y - halfTooltipHeight - verticalGap
+    let y = above >= halfTooltipHeight
+        ? above
+        : min(pointer.y + halfTooltipHeight + verticalGap, max(halfTooltipHeight, size.height - halfTooltipHeight))
+    return CGPoint(x: x, y: y)
+}
+
 struct TrafficCalendarHeatmap: View {
     let cells: [CalendarDayCell]
     let maxBytes: Int
@@ -182,9 +199,10 @@ struct TrafficCalendarHeatmap: View {
             .frame(width: gridWidth, height: gridHeight, alignment: .topLeading)
 
             if let hovered {
-                let location = clampedLocation(hovered.location, size: gridSize)
+                let location = heatmapTooltipPosition(for: hovered.location, in: gridSize)
                 tooltip(cell: hovered.cell)
                     .position(x: location.x, y: location.y)
+                    .allowsHitTesting(false)
             }
         }
         .frame(width: gridWidth, height: gridHeight)
@@ -232,15 +250,6 @@ struct TrafficCalendarHeatmap: View {
     private func cellColor(_ bytes: Int) -> Color {
         let ratio = Double(bytes) / Double(max(maxBytes, 1))
         return Theme.heatmap.opacity(0.22 + 0.78 * ratio)
-    }
-
-    private func clampedLocation(_ location: CGPoint, size: CGSize) -> CGPoint {
-        let w = size.width
-        let h = size.height
-        // Keep the tooltip fully inside the grid with a small margin.
-        let x = min(max(location.x, 40), max(40, w - 40))
-        let y = min(max(location.y, 14), max(14, h - 14))
-        return CGPoint(x: x, y: y)
     }
 
     private func tooltip(cell: CalendarDayCell) -> some View {
