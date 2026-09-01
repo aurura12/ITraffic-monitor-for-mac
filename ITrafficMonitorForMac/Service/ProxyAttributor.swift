@@ -288,7 +288,7 @@ final class DiagnosticLogStore: ObservableObject {
     }
 }
 
-enum SocketProtocol: Hashable {
+enum SocketProtocol: Hashable, CaseIterable {
     case tcp
     case udp
 
@@ -309,25 +309,83 @@ struct SocketKey: Hashable {
 struct SocketOwner: Equatable {
     let pid: Int
     let name: String
+    let startTime: Int64?
+
+    init(pid: Int, name: String, startTime: Int64? = nil) {
+        self.pid = pid
+        self.name = name
+        self.startTime = startTime
+    }
 }
 
 struct CachedSocketOwner: Equatable {
     let pid: Int
     let name: String
     let lastSeen: Int64
+    let startTime: Int64?
+
+    init(pid: Int, name: String, lastSeen: Int64, startTime: Int64? = nil) {
+        self.pid = pid
+        self.name = name
+        self.lastSeen = lastSeen
+        self.startTime = startTime
+    }
 }
 
 func mergeSocketOwners(
     live: [SocketKey: SocketOwner],
     cached: [SocketKey: CachedSocketOwner],
     now: Int64,
-    ttl: Int64
+    ttl: Int64,
+    ownerIsCurrent: (CachedSocketOwner) -> Bool = { _ in true }
 ) -> [SocketKey: SocketOwner] {
     var result = live
-    for (port, entry) in cached where result[port] == nil && now - entry.lastSeen <= ttl {
-        result[port] = SocketOwner(pid: entry.pid, name: entry.name)
+    for (port, entry) in cached
+    where result[port] == nil && now - entry.lastSeen <= ttl && ownerIsCurrent(entry) {
+        result[port] = SocketOwner(pid: entry.pid, name: entry.name, startTime: entry.startTime)
     }
     return result
+}
+
+/// Resolve a proxy-reported source port to a process. When the proxy does not
+/// report its transport, only a single TCP/UDP owner is safe to use; choosing
+/// one from an ambiguous port would silently charge the wrong application.
+func socketOwnerPID(
+    sourcePort: Int,
+    transport: SocketProtocol?,
+    ports: [SocketKey: Int]
+) -> Int? {
+    if let transport {
+        return ports[SocketKey(protocol: transport, port: sourcePort)]
+    }
+
+    let candidates = Set(SocketProtocol.allCases.compactMap {
+        ports[SocketKey(protocol: $0, port: sourcePort)]
+    })
+    return candidates.count == 1 ? candidates.first : nil
+}
+
+/// A connection id is not sufficient as an identity forever. If a proxy
+/// reuses an id for a different source endpoint, retaining the previous PID
+/// would attribute the new connection to the old application.
+func shouldReuseTrackedProxyPID(
+    previousSourcePort: Int,
+    previousTransport: SocketProtocol?,
+    currentSourcePort: Int,
+    currentTransport: SocketProtocol?
+) -> Bool {
+    previousSourcePort == currentSourcePort && previousTransport == currentTransport
+}
+
+func proxyMappingCoverage(_ diagnostic: ProxyDiagnostic) -> Double? {
+    switch diagnostic {
+    case let .detected(_, _, connectionCount, mappedConnectionCount, _),
+         let .waitingForProxyRow(_, _, connectionCount, mappedConnectionCount, _):
+        guard connectionCount > 0 else { return 1 }
+        return min(1, max(0, Double(mappedConnectionCount) / Double(connectionCount)))
+    case .idle, .apiUnavailable, .authRequired, .notDetected:
+        return nil
+    }
 }
 
 func proxyEntityMatches(pid: Int, name: String, proxyPIDs: Set<Int>, isClashVerge: Bool) -> Bool {
@@ -468,6 +526,7 @@ private struct ProxyConnection {
 private struct TrackedConnection {
     let pid: Int
     let sourcePort: Int
+    let transport: SocketProtocol?
     let uploadTotal: Int64
     let downloadTotal: Int64
 }
@@ -710,10 +769,19 @@ final class ProxyAttributor: ObservableObject {
             live: socketSnapshot.owners,
             cached: sourcePortCache,
             now: now,
-            ttl: sourcePortCacheTTL
+            ttl: sourcePortCacheTTL,
+            ownerIsCurrent: { entry in
+                guard let expectedStartTime = entry.startTime else { return true }
+                return processStartTime(of: entry.pid) == expectedStartTime
+            }
         )
         let liveCache = socketSnapshot.owners.mapValues {
-            CachedSocketOwner(pid: $0.pid, name: $0.name, lastSeen: now)
+            CachedSocketOwner(
+                pid: $0.pid,
+                name: $0.name,
+                lastSeen: now,
+                startTime: $0.startTime ?? processStartTime(of: $0.pid)
+            )
         }
         sourcePortCache = sourcePortCache.filter {
             socketSnapshot.owners[$0.key] == nil && now - $0.value.lastSeen <= sourcePortCacheTTL
@@ -723,7 +791,7 @@ final class ProxyAttributor: ObservableObject {
             result[owner.pid] = owner.name
         }
         let portMap = (
-            ports: owners.mapValues(\.pid),
+            ports: owners.mapValues { $0.pid },
             names: socketSnapshot.names.merging(ownerNames) { _, new in new }
         )
         let proxyPIDs = resolveProxyPIDs(candidate: candidate)
@@ -745,11 +813,24 @@ final class ProxyAttributor: ObservableObject {
         // port range) are visible.
         var unmappedPorts: [Int] = []
         for conn in connections {
-            let resolvedPID = conn.transport.flatMap { portMap.ports[SocketKey(protocol: $0, port: conn.sourcePort)] }
+            let resolvedPID = socketOwnerPID(
+                sourcePort: conn.sourcePort,
+                transport: conn.transport,
+                ports: portMap.ports
+            )
                 ?? resolveProcessPID(name: conn.process, path: conn.processPath)
                 ?? 0
+            let previous = prev[conn.id]
+            let previousPID = previous.flatMap {
+                shouldReuseTrackedProxyPID(
+                    previousSourcePort: $0.sourcePort,
+                    previousTransport: $0.transport,
+                    currentSourcePort: conn.sourcePort,
+                    currentTransport: conn.transport
+                ) ? $0.pid : nil
+            } ?? 0
             let pid = attributedPID(
-                previousPID: prev[conn.id]?.pid ?? 0,
+                previousPID: previousPID,
                 resolvedPID: resolvedPID
             )
             // Terminal commands (node, npm, curl, …) are short-lived CLI
@@ -769,10 +850,17 @@ final class ProxyAttributor: ObservableObject {
             newPrevious[conn.id] = TrackedConnection(
                 pid: attributed,
                 sourcePort: conn.sourcePort,
+                transport: conn.transport,
                 uploadTotal: conn.upload,
                 downloadTotal: conn.download
             )
-            if let prevConn = prev[conn.id] {
+            if let prevConn = previous,
+               shouldReuseTrackedProxyPID(
+                   previousSourcePort: prevConn.sourcePort,
+                   previousTransport: prevConn.transport,
+                   currentSourcePort: conn.sourcePort,
+                   currentTransport: conn.transport
+               ) {
                 let dIn = nonNegativeProxyDelta(current: conn.download, previous: prevConn.downloadTotal)
                 let dOut = nonNegativeProxyDelta(current: conn.upload, previous: prevConn.uploadTotal)
                 if !staleGap, (dIn > 0 || dOut > 0), prevConn.pid > 0, !proxyPIDs.contains(prevConn.pid) {
@@ -1155,7 +1243,11 @@ final class ProxyAttributor: ObservableObject {
             }
         }
         let owners = ports.reduce(into: [SocketKey: SocketOwner]()) { result, entry in
-            result[entry.key] = SocketOwner(pid: entry.value, name: names[entry.value] ?? "")
+            result[entry.key] = SocketOwner(
+                pid: entry.value,
+                name: names[entry.value] ?? "",
+                startTime: processStartTime(of: entry.value)
+            )
         }
         return (ports, names, owners)
     }

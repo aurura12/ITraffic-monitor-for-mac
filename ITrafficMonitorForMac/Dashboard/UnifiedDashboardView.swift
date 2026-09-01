@@ -12,6 +12,7 @@ struct UnifiedDashboardView: View {
     @EnvironmentObject var viewModel: DashboardViewModel
     @EnvironmentObject var i18n: LocalizationManager
     @EnvironmentObject var realtimeRateStore: RealtimeRateStore
+    @EnvironmentObject var proxyAttributor: ProxyAttributor
 
     private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
@@ -21,6 +22,7 @@ struct UnifiedDashboardView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     toolbar
                     statCards
+                    attributionNotice
                     chartSection
                     rankingSection
                 }
@@ -112,6 +114,67 @@ struct UnifiedDashboardView: View {
 
     private var latestRateSample: RateSample? {
         realtimeRateStore.samples.last
+    }
+
+    private var attributionNotice: some View {
+        let diagnostic = proxyAttributor.diagnostic
+        let title: String
+        let detail: String
+        let color: Color
+
+        switch diagnostic {
+        case .idle:
+            title = i18n.text("Attribution status")
+            detail = i18n.text("Collecting proxy attribution status")
+            color = .secondary
+        case .notDetected:
+            title = i18n.text("Direct process accounting")
+            detail = i18n.text("Total traffic uses nettop bytes; apps are read directly from their sockets.")
+            color = .green
+        case let .detected(name, _, connectionCount, mappedConnectionCount, _):
+            title = mappedConnectionCount == connectionCount
+                ? i18n.text("Proxy mapping active")
+                : i18n.text("Proxy mapping partly complete")
+            detail = "\(name): \(mappedConnectionCount)/\(connectionCount) " +
+                i18n.text("proxy connections mapped; unmatched bytes stay with the proxy.")
+            color = mappedConnectionCount == connectionCount ? .blue : .orange
+        case let .waitingForProxyRow(name, _, connectionCount, mappedConnectionCount, _):
+            title = i18n.text("Proxy row not visible")
+            detail = "\(name): \(mappedConnectionCount)/\(connectionCount) " +
+                i18n.text("connections mapped; total remains conservative.")
+            color = .orange
+        case .apiUnavailable:
+            title = i18n.text("Proxy mapping temporarily paused")
+            detail = i18n.text("Existing total accounting continues; new proxy bytes stay with the proxy until the API recovers.")
+            color = .orange
+        case .authRequired:
+            title = i18n.text("Proxy API needs a secret")
+            detail = i18n.text("Total traffic continues to be recorded; proxy traffic cannot be mapped until the secret is configured.")
+            color = .red
+        }
+
+        return HStack(alignment: .top, spacing: 8) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(detail)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                .fill(Theme.cardBackground)
+                .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).stroke(Theme.cardStroke))
+        )
     }
 
     // MARK: - Chart section

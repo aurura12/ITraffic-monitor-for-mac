@@ -1,6 +1,6 @@
 # 当前进度：VPN 按 App 流量统计
 
-更新时间：2026-08-27
+更新时间：2026-09-01
 
 ## 目标
 
@@ -13,6 +13,8 @@
 - 默认免费构建使用 `nettop -t external` 作为唯一总量来源；不会编译、安装或启用未签名的 Network Extension。
 - 当前 Mac 没有 Apple Developer Team、开发证书和对应签名授权，因此无法把 VPN 隧道内的每个 App 字节数做成精确统计。
 - 代理 API 现在只提供归属声明：只在同一 nettop 采样帧的 Clash 原始预算内转移，无法确认的字节保留在 Clash。
+- 免费归属链路已加强：端口缓存校验进程启动时间，连接 ID 复用时校验源端口和协议，代理未报告协议且 TCP/UDP 归属不唯一时拒绝猜测。
+- 主面板显示当前归属状态和代理连接映射覆盖率；总量继续明确使用 nettop 原始字节，应用归属保持最佳努力口径。
 - 历史数据按逐帧采样账本持久化，重复采样提交幂等，当前分钟可直接查询。
 - 免费运行配置已修复：主 App 不再引用 Network Extension entitlements，因此可以使用 Xcode 的 `Sign to Run Locally` 运行；Network Extension entitlements 文件仍保留给以后有 Team 时使用。
 
@@ -41,6 +43,7 @@
 - 无签名 `build-for-testing` 通过。
 - Entitlements 和 Info.plist 的 `plutil` 检查通过。
 - `git diff --check` 通过。
+- 2026-09-01：macOS arm64 构建通过；单元测试 71/71 通过。
 
 ## 当前限制
 

@@ -275,6 +275,70 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNil(merged[key])
     }
 
+    func testCachedSocketOwnerIsNotReusedWhenPIDWasRecycled() {
+        let key = SocketKey(protocol: .tcp, port: 64068)
+        let cached = [key: CachedSocketOwner(
+            pid: 30944,
+            name: "Code Helper",
+            lastSeen: 100,
+            startTime: 10
+        )]
+
+        let merged = mergeSocketOwners(
+            live: [:],
+            cached: cached,
+            now: 104,
+            ttl: 10,
+            ownerIsCurrent: { $0.startTime == 11 }
+        )
+
+        XCTAssertNil(merged[key])
+    }
+
+    func testUnknownProtocolUsesUniqueSocketOwner() {
+        let ports = [SocketKey(protocol: .tcp, port: 64068): 30944]
+
+        XCTAssertEqual(socketOwnerPID(sourcePort: 64068, transport: nil, ports: ports), 30944)
+    }
+
+    func testUnknownProtocolDoesNotChooseBetweenTCPAndUDPOwners() {
+        let ports = [
+            SocketKey(protocol: .tcp, port: 64068): 30944,
+            SocketKey(protocol: .udp, port: 64068): 30945
+        ]
+
+        XCTAssertNil(socketOwnerPID(sourcePort: 64068, transport: nil, ports: ports))
+    }
+
+    func testReusedConnectionIDCannotRetainPIDWhenEndpointChanges() {
+        XCTAssertFalse(shouldReuseTrackedProxyPID(
+            previousSourcePort: 64068,
+            previousTransport: .tcp,
+            currentSourcePort: 64069,
+            currentTransport: .tcp
+        ))
+        XCTAssertTrue(shouldReuseTrackedProxyPID(
+            previousSourcePort: 64068,
+            previousTransport: .tcp,
+            currentSourcePort: 64068,
+            currentTransport: .tcp
+        ))
+    }
+
+    func testProxyDiagnosticReportsPartialMappingCoverage() {
+        XCTAssertEqual(
+            proxyMappingCoverage(.detected(
+                name: "Clash Verge",
+                endpoint: "unix:/tmp/verge.sock",
+                connectionCount: 86,
+                mappedConnectionCount: 73,
+                proxyPID: 91681
+            )) ?? -1,
+            73.0 / 86.0,
+            accuracy: 0.0001
+        )
+    }
+
     func testClashConfigLineParsesControllerAndSecret() {
         XCTAssertEqual(parseProxyConfigLine("external-controller: 127.0.0.1:9097"),
                        ProxyConfigEntry(key: "external-controller", value: "127.0.0.1:9097"))
