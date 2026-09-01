@@ -621,9 +621,21 @@ final class TrafficDatabase {
             let names = self.displayNameMap()
             var rows: [AppPeakTrafficRow] = []
             var stmt: OpaquePointer?
+            // `accounted_traffic` holds one row per (sample, app): every 2s
+            // nettop frame inserts its own rows under the same minute bucket.
+            // A bare `MAX(in_bytes + out_bytes)` would therefore return the
+            // largest single 2s frame (~30x smaller than a minute total).
+            // Aggregate each minute bucket first, then take the peak minute.
             let sql = """
-            SELECT app_key, SUM(in_bytes), SUM(out_bytes), MAX(in_bytes + out_bytes)
-            FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ?
+            SELECT app_key, SUM(in_bytes), SUM(out_bytes), MAX(minute_total)
+            FROM (
+              SELECT app_key, bucket_start,
+                     SUM(in_bytes) AS in_bytes,
+                     SUM(out_bytes) AS out_bytes,
+                     SUM(in_bytes + out_bytes) AS minute_total
+              FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ?
+              GROUP BY app_key, bucket_start
+            )
             GROUP BY app_key ORDER BY (SUM(in_bytes)+SUM(out_bytes)) DESC LIMIT ?;
             """
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
