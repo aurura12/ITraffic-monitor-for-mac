@@ -69,14 +69,16 @@ final class MenuBarRateView: NSView {
 
         for label in [downloadLabel, uploadLabel] {
             label.font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
-            label.alignment = .center
+            // 两行文本左对齐：保证上下两行首字符（↑/↓）在同一列，
+            // 不受速率数值位数变化的影响；若用 .center 会因行宽不同而错位。
+            label.alignment = .left
             label.lineBreakMode = .byClipping
             label.textColor = .labelColor
         }
 
         let stack = NSStackView(views: [uploadLabel, downloadLabel])
         stack.orientation = .vertical
-        stack.alignment = .centerX
+        stack.alignment = .leading
         stack.distribution = .fillEqually
         stack.spacing = 0
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -101,6 +103,12 @@ final class MenuBarRateView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         onClick?()
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // 菜单栏按钮上覆盖了文本子视图，原 button action 已不生效；
+        // 让整块区域（含文本行）统一由自身响应点击，避免子 label 拦截导致弹窗打不开。
+        bounds.contains(point) ? self : nil
     }
 }
 
