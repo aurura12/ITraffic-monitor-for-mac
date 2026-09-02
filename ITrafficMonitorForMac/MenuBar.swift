@@ -37,7 +37,8 @@ struct MenuBarRateText: Equatable {
 }
 
 enum MenuBarLayout {
-    static let statusItemWidth: CGFloat = 62
+    /// 状态项宽度自适应两行文本内容，左右各留 2pt 的点击余量。
+    static let statusItemHorizontalPadding: CGFloat = 4
     static let statusItemHeight: CGFloat = 22
 }
 
@@ -99,6 +100,14 @@ final class MenuBarRateView: NSView {
         let text = MenuBarRateText(downloadRate: downloadRate, uploadRate: uploadRate)
         downloadLabel.stringValue = text.download
         uploadLabel.stringValue = text.upload
+    }
+
+    /// 两行文本中较宽一行的宽度，用于让状态项宽度自适应内容、不占多余菜单栏空间。
+    var neededWidth: CGFloat {
+        max(
+            downloadLabel.intrinsicContentSize.width,
+            uploadLabel.intrinsicContentSize.width
+        )
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -192,10 +201,12 @@ final class MenuBarController: NSObject {
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         popover = NSPopover()
+        // frame 仅作初始占位，随后会被 button 的四边约束接管，
+        // 实际水平宽度由 resizeToFitContent() 按文本内容自适应设置。
         rateView = MenuBarRateView(frame: NSRect(
             x: 0,
             y: 0,
-            width: MenuBarLayout.statusItemWidth,
+            width: MenuBarLayout.statusItemHeight,
             height: MenuBarLayout.statusItemHeight
         ))
         super.init()
@@ -206,7 +217,6 @@ final class MenuBarController: NSObject {
 
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
-        statusItem.length = MenuBarLayout.statusItemWidth
         button.image = nil
         button.title = ""
         button.isBordered = false
@@ -220,14 +230,24 @@ final class MenuBarController: NSObject {
             rateView.bottomAnchor.constraint(equalTo: button.bottomAnchor)
         ])
         rateView.onClick = { [weak self] in self?.togglePopover(nil) }
+        resizeToFitContent()
 
         SharedStore.statusDataModel.$totalInBytes
             .combineLatest(SharedStore.statusDataModel.$totalOutBytes)
             .receive(on: RunLoop.main)
             .sink { [weak self] downloadRate, uploadRate in
                 self?.rateView.update(downloadRate: downloadRate, uploadRate: uploadRate)
+                self?.resizeToFitContent()
             }
             .store(in: &cancellables)
+    }
+
+    /// 状态项宽度跟随两行文本中较宽一行自适应，避免固定宽度在菜单栏留白。
+    private func resizeToFitContent() {
+        let width = ceil(rateView.neededWidth) + MenuBarLayout.statusItemHorizontalPadding
+        if width != statusItem.length {
+            statusItem.length = width
+        }
     }
 
     private func configurePopover() {

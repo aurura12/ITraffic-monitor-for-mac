@@ -233,8 +233,8 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertEqual(text.rows, ["↑ 320K/s", "↓ 1.5M/s"])
     }
 
-    func testMenuBarLayoutUsesNarrowStatusItem() {
-        XCTAssertEqual(MenuBarLayout.statusItemWidth, 62)
+    func testMenuBarLayoutLeavesOnlyTightHorizontalPadding() {
+        XCTAssertEqual(MenuBarLayout.statusItemHorizontalPadding, 4)
     }
 
     private func sampleRecord(sequence: Int64) -> TrafficFilterRecord {
