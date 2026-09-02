@@ -533,6 +533,34 @@ final class TrafficDatabase {
         }
     }
 
+    /// Whole-network totals for one local `day`, matching the dashboard's
+    /// daily bars. Read through the accounted view so both current samples
+    /// and legacy app_traffic rows are included.
+    func dayTotalTraffic(day: Int, completion: @escaping (TrafficTotal) -> Void) {
+        dbQueue.async { [weak self] in
+            guard let self, let db = self.db else {
+                DispatchQueue.main.async { completion(TrafficTotal(inBytes: 0, outBytes: 0)) }
+                return
+            }
+            var inBytes = 0, outBytes = 0
+            var stmt: OpaquePointer?
+            let sql = "SELECT SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE day = ?;"
+            if sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK {
+                sqlite3_bind_int64(stmt, 1, Int64(day))
+                if sqlite3_step(stmt) == SQLITE_ROW {
+                    if sqlite3_column_type(stmt, 0) != SQLITE_NULL {
+                        inBytes = Int(sqlite3_column_int64(stmt, 0))
+                    }
+                    if sqlite3_column_type(stmt, 1) != SQLITE_NULL {
+                        outBytes = Int(sqlite3_column_int64(stmt, 1))
+                    }
+                }
+            }
+            sqlite3_finalize(stmt)
+            DispatchQueue.main.async { completion(TrafficTotal(inBytes: inBytes, outBytes: outBytes)) }
+        }
+    }
+
     /// Per-app daily totals within [start, end). One row per (app_key, day).
     func trafficMatrix(start: Int, end: Int, completion: @escaping ([TrafficMatrixRow]) -> Void) {
         dbQueue.async { [weak self] in

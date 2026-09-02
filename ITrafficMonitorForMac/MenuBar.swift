@@ -121,47 +121,64 @@ final class MenuBarRateView: NSView {
     }
 }
 
+/// Today's traffic totals shown in the popover. Filled asynchronously from
+/// the persisted per-frame samples, so the numbers survive app restarts and
+/// stay consistent with the dashboard's daily bars.
+final class TodayUsageModel: ObservableObject {
+    @Published private(set) var inBytes = 0
+    @Published private(set) var outBytes = 0
+
+    func update(total: TrafficTotal) {
+        inBytes = max(0, total.inBytes)
+        outBytes = max(0, total.outBytes)
+    }
+
+    var totalBytes: Int {
+        inBytes + outBytes
+    }
+}
+
 struct MenuBarSummaryView: View {
-    @EnvironmentObject private var statusDataModel: StatusDataModel
     @EnvironmentObject private var i18n: LocalizationManager
+    @ObservedObject var todayUsage: TodayUsageModel
 
     let onOpenDashboard: () -> Void
     let onOpenSettings: () -> Void
     let onQuit: () -> Void
 
-    private var snapshot: MenuBarSnapshot {
-        MenuBarSnapshot(
-            downloadRate: statusDataModel.totalInBytes,
-            uploadRate: statusDataModel.totalOutBytes
-        )
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Label(AppDelegate.appDisplayName, systemImage: "network")
                     .font(.headline)
                 Spacer()
-                if snapshot.isIdle {
-                    Text(i18n.text("Idle"))
-                        .foregroundColor(.secondary)
-                        .font(.caption)
-                }
+                Text(i18n.text("Today's Usage"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
-                rateRow(
-                    title: i18n.text("Download Speed"),
-                    value: formatBytes(bytes: snapshot.downloadRate),
-                    color: Theme.download,
-                    symbol: "arrow.down"
-                )
-                rateRow(
-                    title: i18n.text("Upload Speed"),
-                    value: formatBytes(bytes: snapshot.uploadRate),
-                    color: Theme.upload,
-                    symbol: "arrow.up"
-                )
+            usageRow(
+                title: i18n.text("Download"),
+                bytes: todayUsage.inBytes,
+                color: Theme.download,
+                symbol: "arrow.down"
+            )
+            usageRow(
+                title: i18n.text("Upload"),
+                bytes: todayUsage.outBytes,
+                color: Theme.upload,
+                symbol: "arrow.up"
+            )
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Text(i18n.text("Total"))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(formatBytesTotal(bytes: todayUsage.totalBytes))
+                    .font(.system(.body, design: .monospaced))
+                    .fontWeight(.semibold)
             }
 
             Divider()
@@ -178,7 +195,7 @@ struct MenuBarSummaryView: View {
         .frame(width: 320)
     }
 
-    private func rateRow(title: String, value: String, color: Color, symbol: String) -> some View {
+    private func usageRow(title: String, bytes: Int, color: Color, symbol: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
                 .foregroundColor(color)
@@ -186,7 +203,7 @@ struct MenuBarSummaryView: View {
             Text(title)
                 .foregroundColor(.secondary)
             Spacer()
-            Text(value)
+            Text(formatBytesTotal(bytes: bytes))
                 .font(.system(.body, design: .monospaced))
         }
     }
@@ -196,6 +213,8 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private let rateView: MenuBarRateView
+    private let todayUsage = TodayUsageModel()
+    private var refreshTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
 
     override init() {
@@ -213,6 +232,12 @@ final class MenuBarController: NSObject {
 
         configureStatusItem()
         configurePopover()
+        refreshTodayUsage()
+        scheduleTodayUsageRefresh()
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
     }
 
     private func configureStatusItem() {
@@ -253,9 +278,10 @@ final class MenuBarController: NSObject {
     private func configurePopover() {
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 320, height: 190)
+        popover.contentSize = NSSize(width: 320, height: 214)
         popover.contentViewController = NSHostingController(
             rootView: MenuBarSummaryView(
+                todayUsage: todayUsage,
                 onOpenDashboard: { [weak self] in self?.openDashboard() },
                 onOpenSettings: { [weak self] in self?.openSettings() },
                 onQuit: { [weak self] in self?.quit() }
@@ -264,11 +290,30 @@ final class MenuBarController: NSObject {
         )
     }
 
+    /// Query the current local day's total from the history database.
+    private func refreshTodayUsage() {
+        let day = dayIndex(for: Date(), calendar: .current)
+        SharedStore.recorder.dayTotalTraffic(day: day) { [weak self] total in
+            self?.todayUsage.update(total: total)
+        }
+    }
+
+    /// While the popover stays open the day totals keep climbing; refresh
+    /// every few seconds so the numbers stay live without polling the DB
+    /// when the popover is hidden.
+    private func scheduleTodayUsageRefresh() {
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            guard let self, self.popover.isShown else { return }
+            self.refreshTodayUsage()
+        }
+    }
+
     @objc private func togglePopover(_ sender: Any?) {
         guard let button = statusItem.button else { return }
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            refreshTodayUsage()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
         }

@@ -113,6 +113,10 @@ final class TrafficRecorder {
         database.dailyTraffic(start: start, end: end, appKey: appKey, completion: completion)
     }
 
+    func dayTotalTraffic(day: Int, completion: @escaping (TrafficTotal) -> Void) {
+        database.dayTotalTraffic(day: day, completion: completion)
+    }
+
     func trafficSeries(start: Int, end: Int, granularity: TimeSeriesGranularity,
                        completion: @escaping ([TrafficSeriesPoint]) -> Void) {
         database.trafficSeries(start: start, end: end, granularity: granularity, completion: completion)
