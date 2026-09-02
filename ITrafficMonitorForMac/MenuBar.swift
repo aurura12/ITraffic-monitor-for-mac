@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import Combine
 import SwiftUI
 
 /// A small, testable snapshot of the rates shown in the menu bar popover.
@@ -18,6 +19,88 @@ struct MenuBarSnapshot: Equatable {
 
     var isIdle: Bool {
         downloadRate == 0 && uploadRate == 0
+    }
+}
+
+struct MenuBarRateText: Equatable {
+    let download: String
+    let upload: String
+
+    var rows: [String] {
+        [upload, download]
+    }
+
+    init(downloadRate: Int, uploadRate: Int) {
+        download = "↓ " + formatMenuBarRate(bytes: downloadRate)
+        upload = "↑ " + formatMenuBarRate(bytes: uploadRate)
+    }
+}
+
+enum MenuBarLayout {
+    static let statusItemWidth: CGFloat = 62
+    static let statusItemHeight: CGFloat = 22
+}
+
+/// Compact rate format for the narrow, two-line status item.
+func formatMenuBarRate(bytes: Int) -> String {
+    let kilobytes = Double(max(0, bytes)) / 1024
+    if kilobytes < 1024 {
+        if kilobytes < 10 {
+            return String(format: "%.1fK/s", kilobytes)
+        }
+        return String(format: "%.0fK/s", kilobytes)
+    }
+
+    let megabytes = kilobytes / 1024
+    if megabytes < 1024 {
+        return String(format: "%.1fM/s", megabytes)
+    }
+
+    return String(format: "%.1fG/s", megabytes / 1024)
+}
+
+final class MenuBarRateView: NSView {
+    private let downloadLabel = NSTextField(labelWithString: "↓ 0.0K/s")
+    private let uploadLabel = NSTextField(labelWithString: "↑ 0.0K/s")
+    var onClick: (() -> Void)?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+
+        for label in [downloadLabel, uploadLabel] {
+            label.font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
+            label.alignment = .center
+            label.lineBreakMode = .byClipping
+            label.textColor = .labelColor
+        }
+
+        let stack = NSStackView(views: [uploadLabel, downloadLabel])
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.distribution = .fillEqually
+        stack.spacing = 0
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func update(downloadRate: Int, uploadRate: Int) {
+        let text = MenuBarRateText(downloadRate: downloadRate, uploadRate: uploadRate)
+        downloadLabel.stringValue = text.download
+        uploadLabel.stringValue = text.upload
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
     }
 }
 
@@ -95,10 +178,18 @@ struct MenuBarSummaryView: View {
 final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
+    private let rateView: MenuBarRateView
+    private var cancellables = Set<AnyCancellable>()
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         popover = NSPopover()
+        rateView = MenuBarRateView(frame: NSRect(
+            x: 0,
+            y: 0,
+            width: MenuBarLayout.statusItemWidth,
+            height: MenuBarLayout.statusItemHeight
+        ))
         super.init()
 
         configureStatusItem()
@@ -107,15 +198,28 @@ final class MenuBarController: NSObject {
 
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
-        button.image = NSImage(
-            systemSymbolName: "network",
-            accessibilityDescription: AppDelegate.appDisplayName
-        )
-        button.image?.isTemplate = true
-        button.imagePosition = .imageOnly
+        statusItem.length = MenuBarLayout.statusItemWidth
+        button.image = nil
+        button.title = ""
+        button.isBordered = false
         button.toolTip = AppDelegate.appDisplayName
-        button.target = self
-        button.action = #selector(togglePopover(_:))
+        rateView.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(rateView)
+        NSLayoutConstraint.activate([
+            rateView.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+            rateView.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+            rateView.topAnchor.constraint(equalTo: button.topAnchor),
+            rateView.bottomAnchor.constraint(equalTo: button.bottomAnchor)
+        ])
+        rateView.onClick = { [weak self] in self?.togglePopover(nil) }
+
+        SharedStore.statusDataModel.$totalInBytes
+            .combineLatest(SharedStore.statusDataModel.$totalOutBytes)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] downloadRate, uploadRate in
+                self?.rateView.update(downloadRate: downloadRate, uploadRate: uploadRate)
+            }
+            .store(in: &cancellables)
     }
 
     private func configurePopover() {

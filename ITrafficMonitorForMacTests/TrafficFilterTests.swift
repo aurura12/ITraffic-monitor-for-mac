@@ -227,6 +227,16 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertTrue(snapshot.isIdle)
     }
 
+    func testMenuBarRateTextPlacesUploadAboveDownloadInCompactRows() {
+        let text = MenuBarRateText(downloadRate: 1_572_864, uploadRate: 327_680)
+
+        XCTAssertEqual(text.rows, ["↑ 320K/s", "↓ 1.5M/s"])
+    }
+
+    func testMenuBarLayoutUsesNarrowStatusItem() {
+        XCTAssertEqual(MenuBarLayout.statusItemWidth, 62)
+    }
+
     private func sampleRecord(sequence: Int64) -> TrafficFilterRecord {
         TrafficFilterRecord(
             schemaVersion: 1,
