@@ -134,7 +134,17 @@ ON CONFLICT(app_key,bucket_start) DO UPDATE SET
   sample_count = app_traffic.sample_count + excluded.sample_count;
 """
 
-/// Rollup sweep 2/3: delete the allocations of the swept samples.
+/// Rollup sweep 2/4: tombstone the swept sample ids so a replay of an
+/// already-archived frame stays a no-op (commitSample idempotency). Without
+/// this, deleting the frame row would also delete the dedup key.
+private let rollupArchiveSamplesSQL = """
+INSERT INTO archived_samples(sample_id)
+SELECT sample_id FROM traffic_samples
+WHERE finalized = 1 AND bucket_start < ?
+ON CONFLICT(sample_id) DO NOTHING;
+"""
+
+/// Rollup sweep 3/4: delete the allocations of the swept samples.
 private let rollupDeleteAllocationsSQL = """
 DELETE FROM sample_allocations
 WHERE sample_id IN (
@@ -143,7 +153,7 @@ WHERE sample_id IN (
 );
 """
 
-/// Rollup sweep 3/3: delete the swept samples.
+/// Rollup sweep 4/4: delete the swept samples.
 private let rollupDeleteSamplesSQL = """
 DELETE FROM traffic_samples
 WHERE finalized = 1 AND bucket_start < ?;
@@ -245,6 +255,9 @@ final class TrafficDatabase {
           PRIMARY KEY (sample_id, app_key)
         );
         CREATE INDEX IF NOT EXISTS idx_sample_allocations_app ON sample_allocations(app_key);
+        CREATE TABLE IF NOT EXISTS archived_samples (
+          sample_id TEXT PRIMARY KEY
+        );
         CREATE VIEW IF NOT EXISTS accounted_traffic AS
           SELECT app_key, bucket_start, day, hour, in_bytes, out_bytes
           FROM app_traffic
@@ -340,14 +353,18 @@ final class TrafficDatabase {
     // MARK: - Rollup (frame ledger → minute buckets)
 
     /// Roll every finalized sample with `bucket_start < beforeBucket` up into
-    /// `app_traffic` and delete the frame rows, in one transaction.
+    /// `app_traffic` and delete the frame rows, in one transaction. Returns
+    /// false when the sweep could not be committed (BEGIN / step / COMMIT
+    /// failure); callers should retry later.
     ///
     /// The cutoff is minute-aligned, so a sweep never splits a minute bucket.
     /// Idempotent: a swept row is deleted in the same transaction that
-    /// aggregates it, so repeated calls with non-decreasing cutoffs can never
-    /// double-count. Runs synchronously on `dbQueue`; never call this from a
-    /// block that is already executing on `dbQueue`.
-    func rollupCompletedBuckets(before beforeBucket: Int) {
+    /// aggregates it, and its sample id is tombstoned in `archived_samples`
+    /// so a replayed frame can never double-count. Repeated calls with
+    /// non-decreasing cutoffs are safe. Runs synchronously on `dbQueue`;
+    /// never call this from a block already executing on `dbQueue`.
+    @discardableResult
+    func rollupCompletedBuckets(before beforeBucket: Int) -> Bool {
         dbQueue.sync {
             rollupCompletedBucketsLocked(before: beforeBucket)
         }
@@ -369,24 +386,29 @@ final class TrafficDatabase {
         }
     }
 
-    private func rollupCompletedBucketsLocked(before beforeBucket: Int) {
-        guard let db else { return }
+    private func rollupCompletedBucketsLocked(before beforeBucket: Int) -> Bool {
+        guard let db else { return false }
         guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
             print("[TrafficDatabase] rollup BEGIN failed: \(String(cString: sqlite3_errmsg(db)))")
-            return
+            return false
         }
 
         var failed = false
         if !execRollupStatement(db, sql: rollupInsertSQL, before: beforeBucket) { failed = true }
+        if !execRollupStatement(db, sql: rollupArchiveSamplesSQL, before: beforeBucket) { failed = true }
         if !execRollupStatement(db, sql: rollupDeleteAllocationsSQL, before: beforeBucket) { failed = true }
         if !execRollupStatement(db, sql: rollupDeleteSamplesSQL, before: beforeBucket) { failed = true }
 
         if failed {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
             print("[TrafficDatabase] rolled back rollup before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)))")
-        } else if sqlite3_exec(db, "COMMIT;", nil, nil, nil) != SQLITE_OK {
-            print("[TrafficDatabase] rollup COMMIT failed before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)))")
+            return false
         }
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] rollup COMMIT failed before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        return true
     }
 
     /// Run one rollup statement with the cutoff bound to its single `?`.
@@ -400,6 +422,14 @@ final class TrafficDatabase {
 
     private func commitSampleLocked(_ sample: TrafficSample) {
         guard let db else { return }
+        // A frame whose bucket was already rolled into `app_traffic` no longer
+        // has a ledger row, so the usual sample_id dedup would not see it. Its
+        // id is tombstoned in `archived_samples` at rollup time; a replay must
+        // stay a no-op or the same bytes would be counted twice.
+        if sampleWasArchived(db, sampleID: sample.id) {
+            print("[TrafficDatabase] sample \(sample.id) already archived; ignoring replay")
+            return
+        }
         guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
             print("[TrafficDatabase] BEGIN failed for sample \(sample.id): \(String(cString: sqlite3_errmsg(db)))")
             return
@@ -527,6 +557,18 @@ final class TrafficDatabase {
         } else if sqlite3_exec(db, "COMMIT;", nil, nil, nil) != SQLITE_OK {
             print("[TrafficDatabase] COMMIT failed for sample \(sample.id): \(String(cString: sqlite3_errmsg(db)))")
         }
+    }
+
+    /// True when `sampleID` was already rolled up into `app_traffic` and its
+    /// frame rows deleted. Such ids are tombstoned in `archived_samples`.
+    /// Runs on `dbQueue` (no active transaction needed).
+    private func sampleWasArchived(_ db: OpaquePointer?, sampleID: String) -> Bool {
+        var stmt: OpaquePointer?
+        let sql = "SELECT 1 FROM archived_samples WHERE sample_id = ?;"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, sampleID, -1, SQLITE_TRANSIENT)
+        return sqlite3_step(stmt) == SQLITE_ROW
     }
 
     // MARK: - Read (each returns via a completion on the given queue)

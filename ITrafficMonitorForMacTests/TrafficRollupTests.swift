@@ -246,14 +246,41 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("SELECT SUM(in_bytes) FROM app_traffic;", in: url), 100)
     }
 
+    func testReplayAfterArchiveDoesNotDoubleCount() {
+        let (db, url) = makeDatabase()
+        let b0 = baseBucket
+        let sample = makeSample(
+            id: "s1", bucketStart: b0, inBytes: 100, outBytes: 50,
+            allocations: [allocation(app: "Chrome", inBytes: 100, outBytes: 50)]
+        )
+
+        db.commitSample(sample)
+        db.rollupCompletedBuckets(before: b0 + 60)
+        XCTAssertEqual(readTotal(db, start: b0, end: b0 + 60).inBytes, 100)
+
+        // Replay the same frame after its ledger row was rolled up and
+        // deleted: must remain a no-op (tombstoned sample id).
+        db.commitSample(sample)
+        db.rollupCompletedBuckets(before: b0 + 60)
+
+        let total = readTotal(db, start: b0, end: b0 + 60)
+        XCTAssertEqual(total.inBytes, 100)
+        XCTAssertEqual(total.outBytes, 50)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM traffic_samples;", in: url), 0)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM app_traffic;", in: url), 1)
+        XCTAssertEqual(rawCount("SELECT SUM(in_bytes) FROM app_traffic;", in: url), 100)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM archived_samples WHERE sample_id='s1';", in: url), 1)
+    }
+
     func testRollupMergesIntoPreexistingAppTrafficRow() {
         let (db, url) = makeDatabase()
         let b0 = baseBucket
 
-        // Legacy minute row that predates the frame ledger.
+        // Legacy minute row that predates the frame ledger. Day/hour are bound
+        // parameters (no underscore literals inside the SQL text).
         XCTAssertTrue(execRaw(
-            "INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count) VALUES('Chrome',?,19_675,3,500,100,3);",
-            [Int64(b0)], in: url
+            "INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count) VALUES('Chrome',?,?,?,500,100,3);",
+            [Int64(b0), 19_675, 3], in: url
         ))
 
         db.commitSample(makeSample(

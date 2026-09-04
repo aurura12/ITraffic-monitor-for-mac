@@ -22,6 +22,10 @@ final class TrafficRecorder {
     /// Minute bucket of the newest sweep already performed. Touched only on `queue`.
     private var lastRolledUpBucket: Int?
 
+    /// Earliest date at which a rollup sweep may be attempted again after a
+    /// failure. Touched only on `queue`.
+    private var nextRollupAttemptAt = Date.distantPast
+
     /// One-minute buckets folded per backfill transaction (~1 hour, up to
     /// ~1,800 frames) so a large legacy ledger is archived in bounded chunks
     /// that let frame commits and dashboard reads interleave on `dbQueue`.
@@ -78,11 +82,19 @@ final class TrafficRecorder {
     /// so every earlier minute is already committed before the sweep. Only
     /// complete past minutes are archived; the frame's own (current) minute
     /// stays directly queryable.
+    ///
+    /// `lastRolledUpBucket` advances only on success; a failed sweep is
+    /// retried by later frames after a backoff instead of being skipped
+    /// forever, so transient SQLITE_BUSY / I/O errors cannot stall archival.
     private func rollUpIfNeeded(capturedAt: Date) {
         let bucket = Self.minuteBucket(for: capturedAt)
-        guard bucket != lastRolledUpBucket else { return }
-        lastRolledUpBucket = bucket
-        database.rollupCompletedBuckets(before: bucket)
+        guard bucket != lastRolledUpBucket, Date() >= nextRollupAttemptAt else { return }
+        if database.rollupCompletedBuckets(before: bucket) {
+            lastRolledUpBucket = bucket
+            nextRollupAttemptAt = .distantPast
+        } else {
+            nextRollupAttemptAt = Date().addingTimeInterval(60)
+        }
     }
 
     /// Fold the frame ledger accumulated by a previous run into `app_traffic`
@@ -99,14 +111,32 @@ final class TrafficRecorder {
                 // sweep instead of one empty transaction per minute.
                 guard let next = self.database.oldestFinalizedBucket(below: finalCutoff) else { return }
                 let high = min(next + Self.backfillChunkBuckets, finalCutoff)
-                self.database.rollupCompletedBuckets(before: high)
+                guard self.rollUpChunk(before: high) else {
+                    print("[TrafficRecorder] backfill gave up at bucket \(high); will retry on next launch")
+                    return
+                }
                 // After a successful sweep every finalized bucket below `high`
                 // is gone, so the next oldest is nil or >= high. If it is still
-                // < high the chunk rolled back — stop rather than retry forever.
+                // < high the chunk was not committed — stop rather than spin.
                 guard let after = self.database.oldestFinalizedBucket(below: finalCutoff),
                       after >= high else { return }
             }
         }
+    }
+
+    /// Try one backfill chunk up to `maxAttempts` times with a short pause in
+    /// between, so transient SQLITE_BUSY / I/O errors don't abort the whole
+    /// backfill for this launch. Runs on the backfill queue.
+    private func rollUpChunk(before high: Int, maxAttempts: Int = 3) -> Bool {
+        for attempt in 1...maxAttempts {
+            if database.rollupCompletedBuckets(before: high) {
+                return true
+            }
+            if attempt < maxAttempts {
+                Thread.sleep(forTimeInterval: 1.0)
+            }
+        }
+        return false
     }
 
     private func allocations(from entities: [ProcessEntity]) -> [TrafficSampleAllocation] {
