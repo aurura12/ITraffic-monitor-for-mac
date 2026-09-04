@@ -272,6 +272,31 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM archived_samples WHERE sample_id='s1';", in: url), 1)
     }
 
+    func testExpiredArchiveTombstonesArePruned() {
+        let (db, url) = makeDatabase()
+        let b0 = baseBucket
+        let sample = makeSample(
+            id: "expired", bucketStart: b0, inBytes: 100, outBytes: 50,
+            allocations: [allocation(app: "Chrome", inBytes: 100, outBytes: 50)]
+        )
+
+        db.commitSample(sample)
+        db.rollupCompletedBuckets(before: b0 + 60)
+
+        let expiredAt = Int64(Date().timeIntervalSince1970) - 2 * 24 * 60 * 60
+        XCTAssertTrue(execRaw(
+            "UPDATE archived_samples SET archived_at = ? WHERE sample_id='expired';",
+            [expiredAt], in: url
+        ))
+
+        // A later successful sweep compacts old deduplication metadata while
+        // retaining recent tombstones for delayed frame retries.
+        XCTAssertTrue(db.rollupCompletedBuckets(before: b0 + 120))
+        XCTAssertEqual(rawCount(
+            "SELECT COUNT(*) FROM archived_samples WHERE sample_id='expired';", in: url
+        ), 0)
+    }
+
     func testRollupMergesIntoPreexistingAppTrafficRow() {
         let (db, url) = makeDatabase()
         let b0 = baseBucket

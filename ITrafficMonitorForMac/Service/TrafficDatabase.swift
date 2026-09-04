@@ -112,7 +112,9 @@ GROUP BY strftime('%Y-%m-%d %H', bucket_start, 'unixepoch', 'localtime')
 ORDER BY hour_start;
 """
 
-/// Rollup sweep 1/3: aggregate every finalized sample below a cutoff into the
+private let archivedSampleRetentionSeconds = 24 * 60 * 60
+
+/// Rollup sweep 1/5: aggregate every finalized sample below a cutoff into the
 /// minute-bucket `app_traffic` table, merging additively with any legacy rows
 /// that already exist for the same (app_key, bucket_start).
 ///
@@ -134,17 +136,25 @@ ON CONFLICT(app_key,bucket_start) DO UPDATE SET
   sample_count = app_traffic.sample_count + excluded.sample_count;
 """
 
-/// Rollup sweep 2/4: tombstone the swept sample ids so a replay of an
+/// Rollup sweep 2/5: tombstone the swept sample ids so a replay of an
 /// already-archived frame stays a no-op (commitSample idempotency). Without
 /// this, deleting the frame row would also delete the dedup key.
 private let rollupArchiveSamplesSQL = """
-INSERT INTO archived_samples(sample_id)
-SELECT sample_id FROM traffic_samples
+INSERT INTO archived_samples(sample_id, archived_at)
+SELECT sample_id, CAST(strftime('%s','now') AS INTEGER) FROM traffic_samples
 WHERE finalized = 1 AND bucket_start < ?
 ON CONFLICT(sample_id) DO NOTHING;
 """
 
-/// Rollup sweep 3/4: delete the allocations of the swept samples.
+/// Rollup sweep 3/5: remove deduplication metadata outside the retry window.
+/// This bounds the tombstone table instead of moving the unbounded growth from
+/// the frame ledger into `archived_samples`.
+private let rollupPruneArchivedSamplesSQL = """
+DELETE FROM archived_samples
+WHERE archived_at < CAST(strftime('%s','now') AS INTEGER) - \(archivedSampleRetentionSeconds);
+"""
+
+/// Rollup sweep 4/5: delete the allocations of the swept samples.
 private let rollupDeleteAllocationsSQL = """
 DELETE FROM sample_allocations
 WHERE sample_id IN (
@@ -153,7 +163,7 @@ WHERE sample_id IN (
 );
 """
 
-/// Rollup sweep 4/4: delete the swept samples.
+/// Rollup sweep 5/5: delete the swept samples.
 private let rollupDeleteSamplesSQL = """
 DELETE FROM traffic_samples
 WHERE finalized = 1 AND bucket_start < ?;
@@ -256,7 +266,8 @@ final class TrafficDatabase {
         );
         CREATE INDEX IF NOT EXISTS idx_sample_allocations_app ON sample_allocations(app_key);
         CREATE TABLE IF NOT EXISTS archived_samples (
-          sample_id TEXT PRIMARY KEY
+          sample_id   TEXT PRIMARY KEY,
+          archived_at INTEGER NOT NULL DEFAULT 0
         );
         CREATE VIEW IF NOT EXISTS accounted_traffic AS
           SELECT app_key, bucket_start, day, hour, in_bytes, out_bytes
@@ -272,8 +283,50 @@ final class TrafficDatabase {
             print("[TrafficDatabase] migrate failed: \(msg)")
             return
         }
+        migrateArchivedSamplesTimestamp()
         migrateClashVergeName()
         migrateUnattributedVPNName()
+    }
+
+    /// Add the archive timestamp to databases created by the first tombstone
+    /// migration. Existing rows are treated as recently archived so a schema
+    /// upgrade does not immediately discard their replay protection.
+    private func migrateArchivedSamplesTimestamp() {
+        guard let db else { return }
+
+        var stmt: OpaquePointer?
+        let tableInfo = "PRAGMA table_info(archived_samples);"
+        guard sqlite3_prepare_v2(db, tableInfo, -1, &stmt, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] archived_samples schema inspection failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+
+        var hasArchivedAt = false
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            if String(cString: sqlite3_column_text(stmt, 1)) == "archived_at" {
+                hasArchivedAt = true
+                break
+            }
+        }
+        sqlite3_finalize(stmt)
+
+        if !hasArchivedAt {
+            let alter = "ALTER TABLE archived_samples ADD COLUMN archived_at INTEGER NOT NULL DEFAULT 0;"
+            guard sqlite3_exec(db, alter, nil, nil, nil) == SQLITE_OK else {
+                print("[TrafficDatabase] archived_samples timestamp migration failed: \(String(cString: sqlite3_errmsg(db)))")
+                return
+            }
+            let backfill = "UPDATE archived_samples SET archived_at = CAST(strftime('%s','now') AS INTEGER) WHERE archived_at = 0;"
+            guard sqlite3_exec(db, backfill, nil, nil, nil) == SQLITE_OK else {
+                print("[TrafficDatabase] archived_samples timestamp backfill failed: \(String(cString: sqlite3_errmsg(db)))")
+                return
+            }
+        }
+
+        let index = "CREATE INDEX IF NOT EXISTS idx_archived_samples_at ON archived_samples(archived_at);"
+        if sqlite3_exec(db, index, nil, nil, nil) != SQLITE_OK {
+            print("[TrafficDatabase] archived_samples timestamp index migration failed: \(String(cString: sqlite3_errmsg(db)))")
+        }
     }
 
     /// Merge rows written by older versions under the raw mihomo process name
@@ -396,6 +449,7 @@ final class TrafficDatabase {
         var failed = false
         if !execRollupStatement(db, sql: rollupInsertSQL, before: beforeBucket) { failed = true }
         if !execRollupStatement(db, sql: rollupArchiveSamplesSQL, before: beforeBucket) { failed = true }
+        if !execRollupStatementWithoutBindings(db, sql: rollupPruneArchivedSamplesSQL) { failed = true }
         if !execRollupStatement(db, sql: rollupDeleteAllocationsSQL, before: beforeBucket) { failed = true }
         if !execRollupStatement(db, sql: rollupDeleteSamplesSQL, before: beforeBucket) { failed = true }
 
@@ -404,8 +458,7 @@ final class TrafficDatabase {
             print("[TrafficDatabase] rolled back rollup before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)))")
             return false
         }
-        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] rollup COMMIT failed before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)))")
+        guard commitTransaction(db, failureMessage: "[TrafficDatabase] rollup COMMIT failed before=\(beforeBucket)") else {
             return false
         }
         return true
@@ -418,6 +471,27 @@ final class TrafficDatabase {
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_int64(stmt, 1, Int64(before))
         return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
+    /// Execute a rollup statement that has no bound values.
+    private func execRollupStatementWithoutBindings(_ db: OpaquePointer?, sql: String) -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        return sqlite3_step(stmt) == SQLITE_DONE
+    }
+
+    /// COMMIT can fail after all statements have succeeded (for example when
+    /// SQLite cannot obtain the final lock). Always close that transaction so
+    /// the next retry can issue BEGIN successfully.
+    private func commitTransaction(_ db: OpaquePointer?, failureMessage: String) -> Bool {
+        guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
+            let msg = String(cString: sqlite3_errmsg(db))
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            print("\(failureMessage): \(msg)")
+            return false
+        }
+        return true
     }
 
     private func commitSampleLocked(_ sample: TrafficSample) {
@@ -469,7 +543,7 @@ final class TrafficDatabase {
                         failed = true
                     } else if finalized {
                         sqlite3_finalize(stmt)
-                        sqlite3_exec(db, "COMMIT;", nil, nil, nil)
+                        _ = commitTransaction(db, failureMessage: "[TrafficDatabase] COMMIT failed for sample \(sample.id)")
                         return
                     }
                 } else {
@@ -554,8 +628,8 @@ final class TrafficDatabase {
         if failed {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
             print("[TrafficDatabase] rolled back sample \(sample.id): \(String(cString: sqlite3_errmsg(db)))")
-        } else if sqlite3_exec(db, "COMMIT;", nil, nil, nil) != SQLITE_OK {
-            print("[TrafficDatabase] COMMIT failed for sample \(sample.id): \(String(cString: sqlite3_errmsg(db)))")
+        } else {
+            _ = commitTransaction(db, failureMessage: "[TrafficDatabase] COMMIT failed for sample \(sample.id)")
         }
     }
 

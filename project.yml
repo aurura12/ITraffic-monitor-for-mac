@@ -15,7 +15,7 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
 
 targets:
-  ITrafficMonitorForMac:
+  ITraffic:
     type: application
     platform: macOS
     deploymentTarget: "14.0"
@@ -98,7 +98,7 @@ targets:
     sources:
       - path: ITrafficMonitorForMacTests
     dependencies:
-      - target: ITrafficMonitorForMac
+      - target: ITraffic
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
@@ -115,7 +115,7 @@ schemes:
   ITrafficMonitorForMac:
     build:
       targets:
-        ITrafficMonitorForMac: all
+        ITraffic: all
     run:
       config: Debug
     analyze:
