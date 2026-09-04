@@ -4,6 +4,12 @@ import SwiftUI
 @testable import ITraffic
 
 final class TrafficBarHoverTests: XCTestCase {
+    func testTrafficXAxisUsesFewerLabelsForThirtyDayRange() {
+        XCTAssertEqual(trafficXAxisStrideCount(for: .today), 3)
+        XCTAssertEqual(trafficXAxisStrideCount(for: .sevenDays), 1)
+        XCTAssertEqual(trafficXAxisStrideCount(for: .thirtyDays), 5)
+    }
+
     func testLineRefreshPrioritizesSeriesBeforeSecondaryData() {
         XCTAssertEqual(
             DashboardRefreshPlan.operations(for: .line),

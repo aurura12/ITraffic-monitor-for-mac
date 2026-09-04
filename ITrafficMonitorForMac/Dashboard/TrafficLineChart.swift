@@ -46,6 +46,14 @@ func trafficBarValue(for point: TrafficSeriesPoint) -> Int {
     point.inBytes + point.outBytes
 }
 
+func trafficXAxisStrideCount(for timeRange: TimeRange) -> Int {
+    switch timeRange {
+    case .today: return 3
+    case .sevenDays: return 1
+    case .thirtyDays: return 5
+    }
+}
+
 struct TrafficLineChart: View {
     let points: [TrafficSeriesPoint]
     let timeRange: TimeRange
@@ -109,6 +117,10 @@ struct TrafficLineChart: View {
         }
     }
 
+    private var xAxisStrideCount: Int {
+        trafficXAxisStrideCount(for: timeRange)
+    }
+
     var body: some View {
         if points.isEmpty {
             emptyState
@@ -130,7 +142,7 @@ struct TrafficLineChart: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .stride(by: xAxisStride, count: timeRange == .today ? 3 : 1)) {
+            AxisMarks(values: .stride(by: xAxisStride, count: xAxisStrideCount)) {
                 AxisValueLabel(format: xAxisFormat)
                 AxisGridLine()
             }
