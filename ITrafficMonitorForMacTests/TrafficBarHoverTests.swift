@@ -4,6 +4,41 @@ import SwiftUI
 @testable import ITraffic
 
 final class TrafficBarHoverTests: XCTestCase {
+    func testLineRefreshPrioritizesSeriesBeforeSecondaryData() {
+        XCTAssertEqual(
+            DashboardRefreshPlan.operations(for: .line),
+            [.series, .total, .topApps]
+        )
+    }
+
+    func testRefreshTokenRejectsResultsFromAnOlderRequest() {
+        let older = DashboardRefreshToken(
+            sequence: 1,
+            timeRange: .today,
+            chartMode: .line
+        )
+        let newer = DashboardRefreshToken(
+            sequence: 2,
+            timeRange: .sevenDays,
+            chartMode: .line
+        )
+
+        XCTAssertFalse(
+            older.matches(
+                sequence: newer.sequence,
+                timeRange: newer.timeRange,
+                chartMode: newer.chartMode
+            )
+        )
+        XCTAssertTrue(
+            newer.matches(
+                sequence: newer.sequence,
+                timeRange: newer.timeRange,
+                chartMode: newer.chartMode
+            )
+        )
+    }
+
     func testTotalAccentUsesReadableBluePurpleColor() {
         let components = Theme.total.cgColor?.components ?? []
 

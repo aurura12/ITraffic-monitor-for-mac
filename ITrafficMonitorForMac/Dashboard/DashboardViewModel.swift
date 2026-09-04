@@ -54,6 +54,41 @@ enum ChartMode: String, CaseIterable, Identifiable {
     var labelKey: String { rawValue }
 }
 
+enum DashboardRefreshOperation: Equatable {
+    case series
+    case total
+    case topApps
+    case heatmap
+    case usage
+}
+
+enum DashboardRefreshPlan {
+    static func operations(for chartMode: ChartMode) -> [DashboardRefreshOperation] {
+        switch chartMode {
+        case .line:
+            // The chart is the control's most visible result. It should be
+            // queued before the less visible cards below it.
+            return [.series, .total, .topApps]
+        case .heatmap:
+            return [.heatmap, .total, .topApps]
+        case .usage:
+            return [.usage, .total, .topApps]
+        }
+    }
+}
+
+struct DashboardRefreshToken: Equatable {
+    let sequence: UInt64
+    let timeRange: TimeRange
+    let chartMode: ChartMode
+
+    func matches(sequence: UInt64, timeRange: TimeRange, chartMode: ChartMode) -> Bool {
+        self.sequence == sequence &&
+            self.timeRange == timeRange &&
+            self.chartMode == chartMode
+    }
+}
+
 /// Produces a fixed 24-point local-day series for the Today view. SQLite only
 /// returns buckets that contain traffic, so missing hours must be materialized
 /// as zeroes before the chart can represent the whole day.
@@ -178,6 +213,7 @@ class DashboardViewModel: ObservableObject {
     private let calendar = Calendar.current
     private var allDayRows: [DayTrafficRow] = []
     private var hasLoadedBarHistory = false
+    private var refreshSequence: UInt64 = 0
 
     init(_ dailyTrafficLoader: @escaping (Int, Int, @escaping ([DayTrafficRow]) -> Void) -> Void = { start, end, completion in
         SharedStore.recorder.dailyTraffic(start: start, end: end, completion: completion)
@@ -188,40 +224,62 @@ class DashboardViewModel: ObservableObject {
     // MARK: - Refresh
 
     func refreshDashboard() {
-        let interval = timeRange.interval(calendar: calendar)
+        refreshSequence &+= 1
+        let token = DashboardRefreshToken(
+            sequence: refreshSequence,
+            timeRange: timeRange,
+            chartMode: chartMode
+        )
+        let interval = token.timeRange.interval(calendar: calendar)
 
-        recorder.totalTraffic(start: interval.start, end: interval.end) { [weak self] total in
-            self?.rangeTotal = total
-        }
-
-        recorder.topAppsWithPeak(start: interval.start, end: interval.end, limit: 50) { [weak self] rows in
-            self?.rangeTopApps = rows
-        }
-
-        switch chartMode {
-        case .line:
-            recorder.trafficSeries(
-                start: interval.start,
-                end: interval.end,
-                granularity: timeRange.seriesGranularity
-            ) { [weak self] points in
-                guard let self else { return }
-                if self.timeRange == .today {
-                    let startDate = Date(timeIntervalSince1970: TimeInterval(interval.start))
-                    self.seriesPoints = hourlySeriesPoints(
-                        points: points,
-                        start: startDate,
-                        calendar: self.calendar
-                    )
-                } else {
-                    self.seriesPoints = points
+        for operation in DashboardRefreshPlan.operations(for: token.chartMode) {
+            switch operation {
+            case .series:
+                recorder.trafficSeries(
+                    start: interval.start,
+                    end: interval.end,
+                    granularity: token.timeRange.seriesGranularity
+                ) { [weak self] points in
+                    guard let self, self.isCurrent(token) else { return }
+                    if token.timeRange == .today {
+                        let startDate = Date(timeIntervalSince1970: TimeInterval(interval.start))
+                        self.seriesPoints = hourlySeriesPoints(
+                            points: points,
+                            start: startDate,
+                            calendar: self.calendar
+                        )
+                    } else {
+                        self.seriesPoints = points
+                    }
                 }
+
+            case .total:
+                recorder.totalTraffic(start: interval.start, end: interval.end) { [weak self] total in
+                    guard let self, self.isCurrent(token) else { return }
+                    self.rangeTotal = total
+                }
+
+            case .topApps:
+                recorder.topAppsWithPeak(start: interval.start, end: interval.end, limit: 50) { [weak self] rows in
+                    guard let self, self.isCurrent(token) else { return }
+                    self.rangeTopApps = rows
+                }
+
+            case .heatmap:
+                refreshHeatmap(refreshToken: token)
+
+            case .usage:
+                refreshBarChart()
             }
-        case .heatmap:
-            refreshHeatmap()
-        case .usage:
-            refreshBarChart()
         }
+    }
+
+    private func isCurrent(_ token: DashboardRefreshToken) -> Bool {
+        token.matches(
+            sequence: refreshSequence,
+            timeRange: timeRange,
+            chartMode: chartMode
+        )
     }
 
     /// Load all per-day rows once, then refresh only today's aggregate. This
@@ -261,10 +319,13 @@ class DashboardViewModel: ObservableObject {
 
     /// Load per-day totals for the last 365 days, shown as a calendar heatmap.
     /// Independent of `timeRange` so the heatmap always spans a full year.
-    func refreshHeatmap() {
+    func refreshHeatmap(refreshToken: DashboardRefreshToken? = nil) {
         let interval = heatmapInterval()
         recorder.dailyTraffic(start: interval.start, end: interval.end) { [weak self] rows in
             guard let self else { return }
+            if let refreshToken, !self.isCurrent(refreshToken) {
+                return
+            }
             let dense = self.densifyCalendar(rows: rows, interval: interval)
             self.calendarCells = dense
             self.calendarMaxBytes = max(dense.map(\.totalBytes).max() ?? 1, 1)
