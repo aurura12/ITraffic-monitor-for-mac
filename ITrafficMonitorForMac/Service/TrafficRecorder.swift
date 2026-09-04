@@ -11,12 +11,33 @@ import Foundation
 
 final class TrafficRecorder {
 
-    private let database = TrafficDatabase()
+    private let database: TrafficDatabase
+    private let backfillQueue = DispatchQueue(label: "traffic-recorder-backfill", qos: .utility)
 
     /// All mutations happen on this queue; `record` is the only entry point.
     private let queue = DispatchQueue(label: "traffic-recorder", qos: .utility)
 
     private let calendar = Calendar.current
+
+    /// Minute bucket of the newest sweep already performed. Touched only on `queue`.
+    private var lastRolledUpBucket: Int?
+
+    /// One-minute buckets folded per backfill transaction (~1 hour, up to
+    /// ~1,800 frames) so a large legacy ledger is archived in bounded chunks
+    /// that let frame commits and dashboard reads interleave on `dbQueue`.
+    private static let backfillChunkBuckets = 60
+
+    init(databaseURL: URL? = nil) {
+        self.database = TrafficDatabase(databaseURL: databaseURL)
+        startBackfill(finalCutoff: Self.minuteBucket(for: Date()))
+    }
+
+    /// Whole-minute bucket (epoch seconds of the minute start) for a date.
+    /// Shared by the sample ledger's `bucketStart` and the rollup cutoff so
+    /// the write path and the archival sweep never disagree.
+    static func minuteBucket(for date: Date) -> Int {
+        Int(date.timeIntervalSince1970 / 60) * 60
+    }
 
     // MARK: - Recording
 
@@ -41,6 +62,7 @@ final class TrafficRecorder {
                 rawOutBytes: totalOut,
                 allocations: allocations
             ))
+            self.rollUpIfNeeded(capturedAt: capturedAt)
         }
     }
 
@@ -48,6 +70,42 @@ final class TrafficRecorder {
     func flush() {
         queue.sync {
             // Every frame is committed before it leaves this queue.
+        }
+    }
+
+    /// Fire at most once per new minute: roll every complete bucket below the
+    /// frame's bucket. Runs after the frame's own commit on this serial queue,
+    /// so every earlier minute is already committed before the sweep. Only
+    /// complete past minutes are archived; the frame's own (current) minute
+    /// stays directly queryable.
+    private func rollUpIfNeeded(capturedAt: Date) {
+        let bucket = Self.minuteBucket(for: capturedAt)
+        guard bucket != lastRolledUpBucket else { return }
+        lastRolledUpBucket = bucket
+        database.rollupCompletedBuckets(before: bucket)
+    }
+
+    /// Fold the frame ledger accumulated by a previous run into `app_traffic`
+    /// in bounded chunks on a dedicated queue, without blocking frame
+    /// recording or dashboard reads. Frames of the launch minute are never
+    /// touched here (they are >= `finalCutoff`); the per-minute trigger in
+    /// `record` archives them as their minutes complete.
+    private func startBackfill(finalCutoff: Int) {
+        backfillQueue.async { [weak self] in
+            guard let self else { return }
+            while true {
+                // Each iteration starts from the oldest un-rolled bucket, so
+                // long empty gaps between data regions are crossed in a single
+                // sweep instead of one empty transaction per minute.
+                guard let next = self.database.oldestFinalizedBucket(below: finalCutoff) else { return }
+                let high = min(next + Self.backfillChunkBuckets, finalCutoff)
+                self.database.rollupCompletedBuckets(before: high)
+                // After a successful sweep every finalized bucket below `high`
+                // is gone, so the next oldest is nil or >= high. If it is still
+                // < high the chunk rolled back — stop rather than retry forever.
+                guard let after = self.database.oldestFinalizedBucket(below: finalCutoff),
+                      after >= high else { return }
+            }
         }
     }
 
@@ -81,7 +139,7 @@ final class TrafficRecorder {
         rawOutBytes: Int,
         allocations: [TrafficSampleAllocation]
     ) -> TrafficSample {
-        let bucketStart = Int(capturedAt.timeIntervalSince1970 / 60) * 60
+        let bucketStart = Self.minuteBucket(for: capturedAt)
         let (day, hour) = Self.dayAndHour(for: capturedAt, calendar: calendar)
         return TrafficSample(
             id: id,

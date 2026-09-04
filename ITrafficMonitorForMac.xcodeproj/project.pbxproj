@@ -49,6 +49,7 @@
 		ED92E8103B5EA56B695BE2EE /* NettopRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30BFFD61518831774A91BFE /* NettopRunner.swift */; };
 		F0639BF56F0C9DE49B981667 /* TrafficFilterSharedOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC134DBEDC722C7EFB9C9653 /* TrafficFilterSharedOutput.swift */; };
 		F0EE8F0974E9A4DE3F4CBEC1 /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08982BEA9591C5710684F088 /* MenuBar.swift */; };
+		FE4F53C25F06D7C16BC91AD6 /* TrafficRollupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6898F90C736ADDBFB454500F /* TrafficRollupTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,6 +81,7 @@
 		5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardViewModel.swift; sourceTree = "<group>"; };
 		619A0B2F8706BE146256112B /* TrafficCalendarHeatmap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficCalendarHeatmap.swift; sourceTree = "<group>"; };
+		6898F90C736ADDBFB454500F /* TrafficRollupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficRollupTests.swift; sourceTree = "<group>"; };
 		748FB46B5B1D40583CCBFC28 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		754E9D4DB5DAABA8084C6D4E /* TrafficFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterTests.swift; sourceTree = "<group>"; };
 		8191AA13BA7BD18EB4944E14 /* TrafficFilterManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterManager.swift; sourceTree = "<group>"; };
@@ -214,6 +216,7 @@
 			children = (
 				4889D7E3690CBEA1CDF7C956 /* TrafficBarHoverTests.swift */,
 				754E9D4DB5DAABA8084C6D4E /* TrafficFilterTests.swift */,
+				6898F90C736ADDBFB454500F /* TrafficRollupTests.swift */,
 			);
 			path = ITrafficMonitorForMacTests;
 			sourceTree = "<group>";
@@ -355,6 +358,7 @@
 			files = (
 				41A2BA9B90B99047FA68B2B0 /* TrafficBarHoverTests.swift in Sources */,
 				A630FD43890D5C19CF10FF37 /* TrafficFilterTests.swift in Sources */,
+				FE4F53C25F06D7C16BC91AD6 /* TrafficRollupTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -425,6 +429,9 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = (
+					"-lsqlite3",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.foamzou.ITrafficMonitorForMacTests;
 				PRODUCT_NAME = ITrafficMonitorForMacTests;
 				SDKROOT = macosx;
@@ -619,6 +626,9 @@
 					"@loader_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = (
+					"-lsqlite3",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.foamzou.ITrafficMonitorForMacTests;
 				PRODUCT_NAME = ITrafficMonitorForMacTests;
 				SDKROOT = macosx;

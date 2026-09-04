@@ -108,6 +108,8 @@ targets:
         BUNDLE_LOADER: "$(TEST_HOST)"
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ITraffic.app/Contents/MacOS/ITraffic"
         SWIFT_VERSION: 5.0
+        OTHER_LDFLAGS:
+          - "-lsqlite3"
 
 schemes:
   ITrafficMonitorForMac:

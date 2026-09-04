@@ -112,6 +112,43 @@ GROUP BY strftime('%Y-%m-%d %H', bucket_start, 'unixepoch', 'localtime')
 ORDER BY hour_start;
 """
 
+/// Rollup sweep 1/3: aggregate every finalized sample below a cutoff into the
+/// minute-bucket `app_traffic` table, merging additively with any legacy rows
+/// that already exist for the same (app_key, bucket_start).
+///
+/// `MIN(s.day)/MIN(s.hour)` are safe because a `bucket_start` is a whole
+/// minute, so all samples inside it map to the same local (day, hour).
+private let rollupInsertSQL = """
+INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
+SELECT a.app_key, s.bucket_start,
+       MIN(s.day), MIN(s.hour),
+       SUM(a.in_bytes), SUM(a.out_bytes),
+       COUNT(*)
+FROM sample_allocations AS a
+JOIN traffic_samples AS s ON s.sample_id = a.sample_id
+WHERE s.finalized = 1 AND s.bucket_start < ?
+GROUP BY a.app_key, s.bucket_start
+ON CONFLICT(app_key,bucket_start) DO UPDATE SET
+  in_bytes     = app_traffic.in_bytes     + excluded.in_bytes,
+  out_bytes    = app_traffic.out_bytes    + excluded.out_bytes,
+  sample_count = app_traffic.sample_count + excluded.sample_count;
+"""
+
+/// Rollup sweep 2/3: delete the allocations of the swept samples.
+private let rollupDeleteAllocationsSQL = """
+DELETE FROM sample_allocations
+WHERE sample_id IN (
+  SELECT s.sample_id FROM traffic_samples AS s
+  WHERE s.finalized = 1 AND s.bucket_start < ?
+);
+"""
+
+/// Rollup sweep 3/3: delete the swept samples.
+private let rollupDeleteSamplesSQL = """
+DELETE FROM traffic_samples
+WHERE finalized = 1 AND bucket_start < ?;
+"""
+
 struct TrafficSampleAllocation: Equatable {
     let appKey: String
     let displayName: String
@@ -298,6 +335,67 @@ final class TrafficDatabase {
         dbQueue.sync {
             commitSampleLocked(sample)
         }
+    }
+
+    // MARK: - Rollup (frame ledger → minute buckets)
+
+    /// Roll every finalized sample with `bucket_start < beforeBucket` up into
+    /// `app_traffic` and delete the frame rows, in one transaction.
+    ///
+    /// The cutoff is minute-aligned, so a sweep never splits a minute bucket.
+    /// Idempotent: a swept row is deleted in the same transaction that
+    /// aggregates it, so repeated calls with non-decreasing cutoffs can never
+    /// double-count. Runs synchronously on `dbQueue`; never call this from a
+    /// block that is already executing on `dbQueue`.
+    func rollupCompletedBuckets(before beforeBucket: Int) {
+        dbQueue.sync {
+            rollupCompletedBucketsLocked(before: beforeBucket)
+        }
+    }
+
+    /// Smallest finalized bucket below `beforeBucket`, or nil when nothing is
+    /// pending. Used by the startup backfill loop to find the first frame
+    /// bucket without scanning the whole epoch.
+    func oldestFinalizedBucket(below beforeBucket: Int) -> Int? {
+        dbQueue.sync {
+            guard let db else { return nil }
+            var stmt: OpaquePointer?
+            let sql = "SELECT MIN(bucket_start) FROM traffic_samples WHERE finalized = 1 AND bucket_start < ?;"
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+            defer { sqlite3_finalize(stmt) }
+            guard sqlite3_step(stmt) == SQLITE_ROW,
+                  sqlite3_column_type(stmt, 0) != SQLITE_NULL else { return nil }
+            return Int(sqlite3_column_int64(stmt, 0))
+        }
+    }
+
+    private func rollupCompletedBucketsLocked(before beforeBucket: Int) {
+        guard let db else { return }
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] rollup BEGIN failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+
+        var failed = false
+        if !execRollupStatement(db, sql: rollupInsertSQL, before: beforeBucket) { failed = true }
+        if !execRollupStatement(db, sql: rollupDeleteAllocationsSQL, before: beforeBucket) { failed = true }
+        if !execRollupStatement(db, sql: rollupDeleteSamplesSQL, before: beforeBucket) { failed = true }
+
+        if failed {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            print("[TrafficDatabase] rolled back rollup before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)))")
+        } else if sqlite3_exec(db, "COMMIT;", nil, nil, nil) != SQLITE_OK {
+            print("[TrafficDatabase] rollup COMMIT failed before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)))")
+        }
+    }
+
+    /// Run one rollup statement with the cutoff bound to its single `?`.
+    private func execRollupStatement(_ db: OpaquePointer?, sql: String, before: Int) -> Bool {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, Int64(before))
+        return sqlite3_step(stmt) == SQLITE_DONE
     }
 
     private func commitSampleLocked(_ sample: TrafficSample) {
