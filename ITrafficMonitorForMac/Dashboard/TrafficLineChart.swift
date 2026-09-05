@@ -31,13 +31,16 @@ func trafficBucketStart(for date: Date, timeRange: TimeRange, calendar: Calendar
     }
 }
 
-func trafficBucketRangeLabel(for date: Date, timeRange: TimeRange, calendar: Calendar) -> String {
+func trafficBucketLabel(for date: Date, timeRange: TimeRange, calendar: Calendar) -> String {
     let formatter = DateFormatter()
     formatter.calendar = calendar
     formatter.timeZone = calendar.timeZone
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = timeRange == .today ? "HH:mm" : "yyyy-MM-dd"
     let start = trafficBucketStart(for: date, timeRange: timeRange, calendar: calendar)
+    guard timeRange == .today else {
+        return formatter.string(from: start)
+    }
     let end = trafficBucketEnd(for: start, timeRange: timeRange, calendar: calendar)
     return "\(formatter.string(from: start))–\(formatter.string(from: end))"
 }
@@ -234,7 +237,7 @@ struct TrafficLineChart: View {
 
     private func tooltip(point: TrafficSeriesPoint) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(trafficBucketRangeLabel(for: point.date, timeRange: timeRange, calendar: .current))
+            Text(trafficBucketLabel(for: point.date, timeRange: timeRange, calendar: .current))
                 .font(.system(size: 11, weight: .semibold))
             Text("流量 \(formatBytesTotal(bytes: trafficBarValue(for: point)))")
                 .foregroundStyle(.secondary)

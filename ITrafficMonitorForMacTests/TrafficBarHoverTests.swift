@@ -123,6 +123,17 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNotEqual(normal.x, 200)
     }
 
+    func testDailyTooltipsUseTheCorrespondingCalendarDate() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)!
+        let date = calendar.date(from: DateComponents(year: 2026, month: 8, day: 21, hour: 12))!
+
+        XCTAssertEqual(
+            trafficBucketLabel(for: date, timeRange: .thirtyDays, calendar: calendar),
+            "2026-08-21"
+        )
+    }
+
     func testHeatmapTooltipIsOffsetFromPointerAndFlipsBelowAtTopEdge() {
         let normal = heatmapTooltipPosition(
             for: CGPoint(x: 200, y: 100),
@@ -532,7 +543,7 @@ final class TrafficBarHoverTests: XCTestCase {
         let date = calendar.date(from: DateComponents(year: 2026, month: 8, day: 14, hour: 14))!
 
         XCTAssertEqual(
-            trafficBucketRangeLabel(for: date, timeRange: .today, calendar: calendar),
+            trafficBucketLabel(for: date, timeRange: .today, calendar: calendar),
             "14:00–15:00"
         )
     }
@@ -549,7 +560,7 @@ final class TrafficBarHoverTests: XCTestCase {
         let rawDate = calendar.date(from: DateComponents(year: 2026, month: 8, day: 14, hour: 19, minute: 5))!
 
         XCTAssertEqual(
-            trafficBucketRangeLabel(for: rawDate, timeRange: .today, calendar: calendar),
+            trafficBucketLabel(for: rawDate, timeRange: .today, calendar: calendar),
             "19:00–20:00"
         )
     }
