@@ -283,7 +283,7 @@ final class TrafficRollupTests: XCTestCase {
         db.commitSample(sample)
         db.rollupCompletedBuckets(before: b0 + 60)
 
-        let expiredAt = Int64(Date().timeIntervalSince1970) - 2 * 24 * 60 * 60
+        let expiredAt = Int64(Date().timeIntervalSince1970) - 10 * 24 * 60 * 60
         XCTAssertTrue(execRaw(
             "UPDATE archived_samples SET archived_at = ? WHERE sample_id='expired';",
             [expiredAt], in: url
@@ -295,6 +295,45 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount(
             "SELECT COUNT(*) FROM archived_samples WHERE sample_id='expired';", in: url
         ), 0)
+    }
+
+    func testFailedRollupRollsBackAndLeavesDatabaseUsable() {
+        let (db, url) = makeDatabase()
+        let b0 = baseBucket
+        db.commitSample(makeSample(
+            id: "s1", bucketStart: b0, inBytes: 100, outBytes: 50,
+            allocations: [allocation(app: "Chrome", inBytes: 100, outBytes: 50)]
+        ))
+
+        // Force a mid-transaction failure: dropping the tombstone table makes
+        // the archive step (and the prune step) fail to prepare.
+        XCTAssertTrue(execRaw("DROP TABLE archived_samples;", in: url))
+        XCTAssertFalse(db.rollupCompletedBuckets(before: b0 + 60))
+
+        // The failed sweep must have rolled back completely: the frame rows
+        // and query totals are untouched.
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM traffic_samples;", in: url), 1)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM sample_allocations;", in: url), 1)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM app_traffic;", in: url), 0)
+        XCTAssertEqual(readTotal(db, start: b0, end: b0 + 60).inBytes, 100)
+
+        // Restore the tombstone table, then prove the connection still works
+        // for both new commits and a successful rollup of the same bucket.
+        XCTAssertTrue(execRaw(
+            "CREATE TABLE archived_samples(sample_id TEXT PRIMARY KEY, archived_at INTEGER NOT NULL DEFAULT 0);",
+            in: url
+        ))
+        db.commitSample(makeSample(
+            id: "s2", bucketStart: b0, inBytes: 50, outBytes: 25,
+            allocations: [allocation(app: "Safari", inBytes: 50, outBytes: 25)]
+        ))
+        XCTAssertTrue(db.rollupCompletedBuckets(before: b0 + 60))
+
+        let total = readTotal(db, start: b0, end: b0 + 60)
+        XCTAssertEqual(total.inBytes, 150)
+        XCTAssertEqual(total.outBytes, 75)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM traffic_samples;", in: url), 0)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM archived_samples;", in: url), 2)
     }
 
     func testRollupMergesIntoPreexistingAppTrafficRow() {

@@ -112,7 +112,11 @@ GROUP BY strftime('%Y-%m-%d %H', bucket_start, 'unixepoch', 'localtime')
 ORDER BY hour_start;
 """
 
-private let archivedSampleRetentionSeconds = 24 * 60 * 60
+/// How long a tombstoned sample id is retained in `archived_samples`. A frame
+/// can only be replayed within the session/restart window that recorded it, so
+/// 7 days bounds the table (~302k rows) while covering every replay that can
+/// actually occur. `rollupPruneArchivedSamplesSQL` removes older rows.
+private let archivedSampleRetentionSeconds = 7 * 24 * 60 * 60
 
 /// Rollup sweep 1/5: aggregate every finalized sample below a cutoff into the
 /// minute-bucket `app_traffic` table, merging additively with any legacy rows
