@@ -512,6 +512,15 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(selected?.date, second.date)
     }
 
+    func testLineChartHoverSelectsTheNearestRenderedBar() {
+        let selected = nearestTrafficBarIndex(
+            to: 690,
+            barCenters: [100, 300, 500, 700]
+        )
+
+        XCTAssertEqual(selected, 3)
+    }
+
     func testHourlySeriesKeepsPerHourIncrementsAndFillsMissingHours() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

@@ -12,6 +12,13 @@ func nearestTrafficSeriesPoint(to date: Date, points: [TrafficSeriesPoint]) -> T
     }
 }
 
+func nearestTrafficBarIndex(to plotX: CGFloat, barCenters: [CGFloat]) -> Int? {
+    guard !barCenters.isEmpty else { return nil }
+    return barCenters.indices.min { lhs, rhs in
+        abs(barCenters[lhs] - plotX) < abs(barCenters[rhs] - plotX)
+    }
+}
+
 func trafficBucketEnd(for date: Date, timeRange: TimeRange, calendar: Calendar) -> Date {
     let start = trafficBucketStart(for: date, timeRange: timeRange, calendar: calendar)
     switch timeRange {
@@ -139,7 +146,16 @@ struct TrafficLineChart: View {
             }
 
             if let hoveredPoint {
-                RuleMark(x: .value("Hovered time", hoveredPoint.date))
+                RuleMark(
+                    x: .value(
+                        "Hovered time",
+                        trafficBucketStart(
+                            for: hoveredPoint.date,
+                            timeRange: timeRange,
+                            calendar: .current
+                        )
+                    )
+                )
                     .foregroundStyle(Color.secondary.opacity(0.35))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
             }
@@ -178,21 +194,21 @@ struct TrafficLineChart: View {
                                 max(location.x - plotFrame.origin.x, 0),
                                 plotFrame.width
                             )
-                            if let date: Date = proxy.value(atX: plotX),
-                               let point = points.first(where: { point in
-                                   let start = trafficBucketStart(
-                                       for: point.date,
-                                       timeRange: timeRange,
-                                       calendar: .current
-                                   )
-                                   return date >= start && date < trafficBucketEnd(
-                                       for: start,
-                                       timeRange: timeRange,
-                                       calendar: .current
-                                   )
-                               }) ?? nearestTrafficSeriesPoint(to: date, points: points) {
+                            let barCenters = plottedBars.enumerated().compactMap { index, bar -> (pointIndex: Int, center: CGFloat)? in
+                                guard let center = proxy.position(forX: bar.start) else { return nil }
+                                return (pointIndex: index, center: center)
+                            }
+                            if let nearestIndex = nearestTrafficBarIndex(
+                                to: plotX,
+                                barCenters: barCenters.map { $0.center }
+                            ) {
+                                let selectedBar = barCenters[nearestIndex]
+                                let point = points[selectedBar.pointIndex]
                                 hoveredDate = point.date
-                                hoveredLocation = location
+                                hoveredLocation = CGPoint(
+                                    x: plotFrame.origin.x + selectedBar.center,
+                                    y: location.y
+                                )
                             }
                         case .ended:
                             hoveredDate = nil
