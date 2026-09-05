@@ -52,6 +52,15 @@ func trafficBucketLabel(for date: Date, timeRange: TimeRange, calendar: Calendar
     return "\(formatter.string(from: start))–\(formatter.string(from: end))"
 }
 
+func trafficXAxisLabel(for date: Date, timeRange: TimeRange, calendar: Calendar) -> String {
+    let formatter = DateFormatter()
+    formatter.calendar = calendar
+    formatter.timeZone = calendar.timeZone
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = timeRange == .today ? "HH" : "MMM d"
+    return formatter.string(from: trafficBucketStart(for: date, timeRange: timeRange, calendar: calendar))
+}
+
 func trafficBarValue(for point: TrafficSeriesPoint) -> Int {
     point.inBytes + point.outBytes
 }
@@ -61,6 +70,22 @@ func trafficXAxisStrideCount(for timeRange: TimeRange) -> Int {
     case .today: return 3
     case .sevenDays: return 1
     case .thirtyDays: return 5
+    }
+}
+
+func trafficXAxisLabelsUseIntervalCentering(for timeRange: TimeRange) -> Bool {
+    switch timeRange {
+    case .today, .sevenDays, .thirtyDays:
+        return false
+    }
+}
+
+func trafficXAxisLabelOffset(for timeRange: TimeRange) -> CGFloat {
+    switch timeRange {
+    case .today:
+        return -11
+    case .sevenDays, .thirtyDays:
+        return -22
     }
 }
 
@@ -118,15 +143,6 @@ struct TrafficLineChart: View {
         }
     }
 
-    private var xAxisFormat: Date.FormatStyle {
-        switch timeRange {
-        case .today:
-            return .dateTime.hour()
-        case .sevenDays, .thirtyDays:
-            return .dateTime.month(.abbreviated).day()
-        }
-    }
-
     private var xAxisStrideCount: Int {
         trafficXAxisStrideCount(for: timeRange)
     }
@@ -161,8 +177,18 @@ struct TrafficLineChart: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .stride(by: xAxisStride, count: xAxisStrideCount)) {
-                AxisValueLabel(format: xAxisFormat)
+            AxisMarks(values: .stride(by: xAxisStride, count: xAxisStrideCount)) { value in
+                AxisValueLabel(
+                    centered: trafficXAxisLabelsUseIntervalCentering(for: timeRange),
+                    anchor: .center,
+                    collisionResolution: .disabled
+                ) {
+                    if let date = value.as(Date.self) {
+                        Text(trafficXAxisLabel(for: date, timeRange: timeRange, calendar: .current))
+                            .fixedSize(horizontal: true, vertical: false)
+                            .offset(x: trafficXAxisLabelOffset(for: timeRange))
+                    }
+                }
                 AxisGridLine()
             }
         }

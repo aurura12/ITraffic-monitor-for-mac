@@ -10,6 +10,33 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(trafficXAxisStrideCount(for: .thirtyDays), 5)
     }
 
+    func testTrafficXAxisLabelsStayOnTheirTickInsteadOfTheFollowingInterval() {
+        XCTAssertFalse(trafficXAxisLabelsUseIntervalCentering(for: .today))
+        XCTAssertFalse(trafficXAxisLabelsUseIntervalCentering(for: .sevenDays))
+        XCTAssertFalse(trafficXAxisLabelsUseIntervalCentering(for: .thirtyDays))
+    }
+
+    func testTrafficXAxisLabelOffsetMatchesTheRenderedLabelWidth() {
+        XCTAssertEqual(trafficXAxisLabelOffset(for: .today), -11)
+        XCTAssertEqual(trafficXAxisLabelOffset(for: .sevenDays), -22)
+        XCTAssertEqual(trafficXAxisLabelOffset(for: .thirtyDays), -22)
+    }
+
+    func testTrafficXAxisLabelsUseStableCalendarFormatting() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)!
+        let date = calendar.date(from: DateComponents(year: 2026, month: 8, day: 30, hour: 15))!
+
+        XCTAssertEqual(
+            trafficXAxisLabel(for: date, timeRange: .sevenDays, calendar: calendar),
+            "Aug 30"
+        )
+        XCTAssertEqual(
+            trafficXAxisLabel(for: date, timeRange: .today, calendar: calendar),
+            "15"
+        )
+    }
+
     func testLineRefreshPrioritizesSeriesBeforeSecondaryData() {
         XCTAssertEqual(
             DashboardRefreshPlan.operations(for: .line),
