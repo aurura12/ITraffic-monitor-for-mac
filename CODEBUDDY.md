@@ -20,7 +20,7 @@ xcodegen generate
 
 The generated `ITrafficMonitorForMac.xcodeproj` is committed, so commit it together with the changes that required regeneration. `project.yml` is the source of truth.
 
-Build and launch without opening Xcode (builds Release **unsigned**, writes the app to `dist/ITraffic.app`, and opens it):
+Build and launch without opening Xcode (builds Release **unsigned**, installs the app to `/Applications/ITraffic.app`, and launches that copy so Finder's Applications folder shows the current build):
 
 ```bash
 ./scripts/update.sh
@@ -33,7 +33,7 @@ Useful modes (see the script header):
 ./scripts/update.sh --logs       # launch + stream app logs (`log stream`)
 ./scripts/update.sh --telemetry  # launch + stream iTraffic subsystem logs
 ./scripts/update.sh --verify     # build, launch, verify process is running
-./scripts/update.sh --clean      # wipe dist/ build output, then build+launch
+./scripts/update.sh --clean      # wipe build output (/Applications copy + dist), then build+launch
 ```
 
 Sanity check for `update.sh` itself (static greps, no build):

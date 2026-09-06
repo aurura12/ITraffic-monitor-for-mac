@@ -10,7 +10,8 @@ DIST_DIR="$ROOT_DIR/dist"
 BUILD_CACHE_DIR="${TMPDIR:-/tmp}/ITrafficMonitorForMac"
 DERIVED_DATA_DIR="$BUILD_CACHE_DIR/DerivedData"
 APP_BUNDLE="$DIST_DIR/ITraffic.app"
-APP_BINARY="$APP_BUNDLE/Contents/MacOS/ITraffic"
+INSTALL_APP="/Applications/ITraffic.app"
+APP_BINARY="$INSTALL_APP/Contents/MacOS/ITraffic"
 PROJECT="$ROOT_DIR/ITrafficMonitorForMac.xcodeproj"
 SCHEME="ITrafficMonitorForMac"
 MIN_SYSTEM_VERSION="14.0"
@@ -42,7 +43,7 @@ case "$MODE" in
 esac
 
 if [[ "$MODE" == "clean" || "$MODE" == "--clean" ]]; then
-  rm -rf "$DERIVED_DATA_DIR" "$APP_BUNDLE"
+  rm -rf "$DERIVED_DATA_DIR" "$APP_BUNDLE" "$INSTALL_APP"
   MODE="run"
 fi
 
@@ -100,15 +101,24 @@ if command -v codesign >/dev/null 2>&1; then
   codesign --force --deep --sign - --timestamp=none "$APP_BUNDLE"
 fi
 
+# Install the app into /Applications so Finder's Applications folder shows
+# the freshly built version, then launch that copy.
+rm -rf "$INSTALL_APP"
+ditto "$APP_BUNDLE" "$INSTALL_APP"
+
+if command -v codesign >/dev/null 2>&1; then
+  codesign --force --deep --sign - --timestamp=none "$INSTALL_APP"
+fi
+
 open_app() {
   pkill -x "ITraffic" >/dev/null 2>&1 || true
-  /usr/bin/open -n "$APP_BUNDLE"
+  /usr/bin/open -n "$INSTALL_APP"
 }
 
 case "$MODE" in
   run)
     open_app
-    echo "ITraffic updated and launched from $APP_BUNDLE"
+    echo "ITraffic updated and launched (installed to $INSTALL_APP)"
     ;;
   --debug|debug)
     lldb -- "$APP_BINARY"
@@ -125,6 +135,6 @@ case "$MODE" in
     open_app
     sleep 2
     pgrep -x "ITraffic" >/dev/null
-    echo "ITraffic is running from $APP_BUNDLE"
+    echo "ITraffic is running from $INSTALL_APP"
     ;;
 esac
