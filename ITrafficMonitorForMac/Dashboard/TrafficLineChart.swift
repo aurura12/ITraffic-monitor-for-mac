@@ -32,12 +32,10 @@ func trafficBucketEnd(for date: Date, timeRange: TimeRange, calendar: Calendar) 
 
 /// Date used to plot a bucket's column and hover marker on the chart.
 ///
-/// Daily buckets occupy an interval between two midnight boundaries, so their
-/// column belongs at the interval midpoint. Hourly buckets keep their start
-/// date because the hourly axis labels are anchored to the hour boundary.
+/// Every bucket occupies an interval between two boundaries, so its column and
+/// hover marker belong at the interval midpoint.
 func trafficBucketPlotDate(for date: Date, timeRange: TimeRange, calendar: Calendar) -> Date {
     let start = trafficBucketStart(for: date, timeRange: timeRange, calendar: calendar)
-    guard timeRange != .today else { return start }
     let end = trafficBucketEnd(for: date, timeRange: timeRange, calendar: calendar)
     return start.addingTimeInterval(end.timeIntervalSince(start) / 2)
 }
@@ -164,6 +162,34 @@ struct TrafficLineChart: View {
         trafficXAxisStrideCount(for: timeRange)
     }
 
+    private var xAxisMarkDates: [Date] {
+        let start = xDomain.lowerBound
+        let end = xDomain.upperBound
+        var date = start
+        var values: [Date] = []
+
+        while date < end {
+            values.append(
+                timeRange == .today
+                    ? trafficBucketPlotDate(for: date, timeRange: timeRange, calendar: .current)
+                    : date
+            )
+            guard let next = Calendar.current.date(
+                byAdding: xAxisStride,
+                value: xAxisStrideCount,
+                to: date
+            ), next > date else {
+                break
+            }
+            date = next
+        }
+
+        if timeRange != .today {
+            values.append(end)
+        }
+        return values
+    }
+
     var body: some View {
         if points.isEmpty {
             emptyState
@@ -194,7 +220,7 @@ struct TrafficLineChart: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .stride(by: xAxisStride, count: xAxisStrideCount)) { value in
+            AxisMarks(values: xAxisMarkDates) { value in
                 AxisValueLabel(
                     centered: trafficXAxisLabelsUseIntervalCentering(for: timeRange),
                     anchor: .center,
