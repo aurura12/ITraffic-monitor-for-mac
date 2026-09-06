@@ -30,6 +30,18 @@ func trafficBucketEnd(for date: Date, timeRange: TimeRange, calendar: Calendar) 
     }
 }
 
+/// Date used to plot a bucket's column and hover marker on the chart.
+///
+/// Daily buckets occupy an interval between two midnight boundaries, so their
+/// column belongs at the interval midpoint. Hourly buckets keep their start
+/// date because the hourly axis labels are anchored to the hour boundary.
+func trafficBucketPlotDate(for date: Date, timeRange: TimeRange, calendar: Calendar) -> Date {
+    let start = trafficBucketStart(for: date, timeRange: timeRange, calendar: calendar)
+    guard timeRange != .today else { return start }
+    let end = trafficBucketEnd(for: date, timeRange: timeRange, calendar: calendar)
+    return start.addingTimeInterval(end.timeIntervalSince(start) / 2)
+}
+
 func trafficBucketStart(for date: Date, timeRange: TimeRange, calendar: Calendar) -> Date {
     switch timeRange {
     case .today:
@@ -122,6 +134,7 @@ struct TrafficLineChart: View {
     private struct PlottedBar: Identifiable {
         let start: Date
         let end: Date
+        let plotDate: Date
         let value: Double
 
         var id: Date { start }
@@ -129,9 +142,12 @@ struct TrafficLineChart: View {
 
     private var plottedBars: [PlottedBar] {
         points.map { point in
-            PlottedBar(
-                start: trafficBucketStart(for: point.date, timeRange: timeRange, calendar: .current),
-                end: trafficBucketEnd(for: point.date, timeRange: timeRange, calendar: .current),
+            let start = trafficBucketStart(for: point.date, timeRange: timeRange, calendar: .current)
+            let end = trafficBucketEnd(for: point.date, timeRange: timeRange, calendar: .current)
+            return PlottedBar(
+                start: start,
+                end: end,
+                plotDate: trafficBucketPlotDate(for: point.date, timeRange: timeRange, calendar: .current),
                 value: yUnit.value(trafficBarValue(for: point))
             )
         }
@@ -166,7 +182,7 @@ struct TrafficLineChart: View {
                 RuleMark(
                     x: .value(
                         "Hovered time",
-                        trafficBucketStart(
+                        trafficBucketPlotDate(
                             for: hoveredPoint.date,
                             timeRange: timeRange,
                             calendar: .current
@@ -227,7 +243,7 @@ struct TrafficLineChart: View {
                                 plotFrame.width
                             )
                             let barCenters = plottedBars.enumerated().compactMap { index, bar -> (pointIndex: Int, center: CGFloat)? in
-                                guard let center = proxy.position(forX: bar.start) else { return nil }
+                                guard let center = proxy.position(forX: bar.plotDate) else { return nil }
                                 return (pointIndex: index, center: center)
                             }
                             if let nearestIndex = nearestTrafficBarIndex(
@@ -275,7 +291,7 @@ struct TrafficLineChart: View {
     @ChartContentBuilder
     private func trafficBarMark(_ bar: PlottedBar) -> some ChartContent {
         BarMark(
-            x: .value("Time", bar.start),
+            x: .value("Time", bar.plotDate),
             yStart: .value(yUnit.label, 0),
             yEnd: .value(yUnit.label, bar.value),
             width: MarkDimension.fixed(18)

@@ -57,6 +57,25 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testDailyBarPlotDatesUseBucketCentersButHourlyBarsUseBucketStarts() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        let date = calendar.date(from: DateComponents(year: 2026, month: 9, day: 1, hour: 15, minute: 30))!
+
+        let dailyStart = trafficBucketStart(for: date, timeRange: .sevenDays, calendar: calendar)
+        let dailyEnd = trafficBucketEnd(for: date, timeRange: .sevenDays, calendar: calendar)
+        XCTAssertEqual(
+            trafficBucketPlotDate(for: date, timeRange: .sevenDays, calendar: calendar),
+            dailyStart.addingTimeInterval(dailyEnd.timeIntervalSince(dailyStart) / 2)
+        )
+
+        let hourlyStart = trafficBucketStart(for: date, timeRange: .today, calendar: calendar)
+        XCTAssertEqual(
+            trafficBucketPlotDate(for: date, timeRange: .today, calendar: calendar),
+            hourlyStart
+        )
+    }
+
     func testLineRefreshPrioritizesSeriesBeforeSecondaryData() {
         XCTAssertEqual(
             DashboardRefreshPlan.operations(for: .line),
