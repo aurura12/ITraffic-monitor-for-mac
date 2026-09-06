@@ -112,7 +112,7 @@ fi
 
 open_app() {
   pkill -x "ITraffic" >/dev/null 2>&1 || true
-  /usr/bin/open -n "$INSTALL_APP"
+  /usr/bin/open -n "$INSTALL_APP" --args --open-dashboard
 }
 
 case "$MODE" in

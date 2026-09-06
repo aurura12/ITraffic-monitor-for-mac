@@ -8,6 +8,10 @@
 import Cocoa
 import SwiftUI
 
+func shouldOpenDashboardAtLaunch(arguments: [String] = CommandLine.arguments) -> Bool {
+    arguments.contains("--open-dashboard")
+}
+
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
 
@@ -88,6 +92,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let prefs = NSApp.mainMenu?.item(at: 0)?.submenu?.items.first(where: { $0.keyEquivalent == "," }) {
             prefs.target = self
             prefs.action = #selector(showSettingsWindow(_:))
+        }
+
+        if shouldOpenDashboardAtLaunch() {
+            DispatchQueue.main.async {
+                Self.showDashboard()
+            }
         }
 
         self.network = Network()

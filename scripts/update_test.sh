@@ -14,6 +14,7 @@ grep -q 'ITraffic.app' "$SCRIPT"
 grep -q -- '--verify' "$SCRIPT"
 grep -q -- '--logs' "$SCRIPT"
 grep -q -- '--telemetry' "$SCRIPT"
+grep -q -- '--open-dashboard' "$SCRIPT"
 grep -q -- '-destination' "$SCRIPT"
 grep -q 'updated and launched' "$SCRIPT"
 

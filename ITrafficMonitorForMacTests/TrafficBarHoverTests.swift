@@ -11,6 +11,11 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testDashboardLaunchFlagIsOptIn() {
+        XCTAssertTrue(shouldOpenDashboardAtLaunch(arguments: ["ITraffic", "--open-dashboard"]))
+        XCTAssertFalse(shouldOpenDashboardAtLaunch(arguments: ["ITraffic"]))
+    }
+
     func testTrafficXAxisUsesFewerLabelsForThirtyDayRange() {
         XCTAssertEqual(trafficXAxisStrideCount(for: .today), 3)
         XCTAssertEqual(trafficXAxisStrideCount(for: .sevenDays), 1)
