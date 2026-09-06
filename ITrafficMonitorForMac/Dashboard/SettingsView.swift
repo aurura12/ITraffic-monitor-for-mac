@@ -225,7 +225,8 @@ struct SettingsView: View {
 
     private var buildVersionString: String {
         let marketing = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        return "\(marketing) · build \(GeneratedBuildInfo.buildNumber) · \(GeneratedBuildInfo.buildDate)"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "\(marketing) · build \(build) · \(GeneratedBuildInfo.buildDate)"
     }
 
     private var samplingStatusText: String {

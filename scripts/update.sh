@@ -15,6 +15,7 @@ APP_BINARY="$INSTALL_APP/Contents/MacOS/ITraffic"
 PROJECT="$ROOT_DIR/ITrafficMonitorForMac.xcodeproj"
 SCHEME="ITrafficMonitorForMac"
 MIN_SYSTEM_VERSION="14.0"
+VERSION_COUNTER_FILE="${ITRAFFIC_VERSION_COUNTER_FILE:-$ROOT_DIR/.itraffic-build-number}"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -76,6 +77,38 @@ case "$MODE" in
     ;;
 esac
 
+DEFAULT_BUILD_VERSION="$(awk '$1 == "CURRENT_PROJECT_VERSION" && $3 ~ /^[0-9]+;$/ { sub(/;.*/, "", $3); print $3; exit }' "$PROJECT")"
+DEFAULT_BUILD_VERSION="${DEFAULT_BUILD_VERSION:-1}"
+
+read_numeric_version() {
+  local file="$1"
+  local value
+
+  [[ -f "$file" ]] || return 1
+  value="$(tr -d '[:space:]' < "$file")"
+  if [[ "$value" =~ ^[0-9]+$ ]]; then
+    printf '%s\n' "$value"
+    return 0
+  fi
+  return 1
+}
+
+last_build_version="$DEFAULT_BUILD_VERSION"
+if counter_version="$(read_numeric_version "$VERSION_COUNTER_FILE")"; then
+  last_build_version="$counter_version"
+fi
+
+# Pick up a version installed by an earlier checkout if the local counter file
+# does not exist yet (or is behind that installed copy).
+if command -v plutil >/dev/null 2>&1 && [[ -f "$INSTALL_APP/Contents/Info.plist" ]]; then
+  installed_build_version="$(plutil -extract CFBundleVersion raw -o - "$INSTALL_APP/Contents/Info.plist" 2>/dev/null || true)"
+  if [[ "$installed_build_version" =~ ^[0-9]+$ ]] && (( installed_build_version > last_build_version )); then
+    last_build_version="$installed_build_version"
+  fi
+fi
+
+NEXT_BUILD_VERSION=$((last_build_version + 1))
+
 mkdir -p "$DIST_DIR"
 xcodebuild \
   -project "$PROJECT" \
@@ -83,6 +116,7 @@ xcodebuild \
   -configuration "$CONFIGURATION" \
   -destination "generic/platform=macOS" \
   -derivedDataPath "$DERIVED_DATA_DIR" \
+  CURRENT_PROJECT_VERSION="$NEXT_BUILD_VERSION" \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   -quiet \
@@ -110,6 +144,9 @@ if command -v codesign >/dev/null 2>&1; then
   codesign --force --deep --sign - --timestamp=none "$INSTALL_APP"
 fi
 
+mkdir -p "$(dirname "$VERSION_COUNTER_FILE")"
+printf '%s\n' "$NEXT_BUILD_VERSION" > "$VERSION_COUNTER_FILE"
+
 open_app() {
   pkill -x "ITraffic" >/dev/null 2>&1 || true
   /usr/bin/open -n "$INSTALL_APP" --args --open-dashboard
@@ -118,7 +155,7 @@ open_app() {
 case "$MODE" in
   run)
     open_app
-    echo "ITraffic updated and launched (installed to $INSTALL_APP)"
+    echo "ITraffic updated and launched (build $NEXT_BUILD_VERSION; installed to $INSTALL_APP)"
     ;;
   --debug|debug)
     lldb -- "$APP_BINARY"
@@ -135,6 +172,6 @@ case "$MODE" in
     open_app
     sleep 2
     pgrep -x "ITraffic" >/dev/null
-    echo "ITraffic is running from $INSTALL_APP"
+    echo "ITraffic is running from $INSTALL_APP (build $NEXT_BUILD_VERSION)"
     ;;
 esac

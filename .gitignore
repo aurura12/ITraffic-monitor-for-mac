@@ -9,6 +9,9 @@ traffic-before-*.sqlite3-wal
 # Generated at build time by the "Generate Build Info" script phase
 ITrafficMonitorForMac/GeneratedBuildInfo.swift
 
+# Local app build number maintained by scripts/update.sh
+.itraffic-build-number
+
 # Local tool state (assistant memory, etc.)
 .workbuddy/
 
