@@ -17,4 +17,9 @@ grep -q -- '--telemetry' "$SCRIPT"
 grep -q -- '-destination' "$SCRIPT"
 grep -q 'updated and launched' "$SCRIPT"
 
+if grep -q 'DERIVED_DATA_DIR="$DIST_DIR/DerivedData"' "$SCRIPT"; then
+  echo "update.sh must keep Xcode's app products outside dist/" >&2
+  exit 1
+fi
+
 echo "update.sh static checks passed"
