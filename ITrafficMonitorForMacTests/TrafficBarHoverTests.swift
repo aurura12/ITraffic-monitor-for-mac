@@ -17,16 +17,24 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(trafficXAxisStrideCount(for: .thirtyDays), 5)
     }
 
-    func testTrafficXAxisLabelsStayOnTheirTickInsteadOfTheFollowingInterval() {
+    func testTrafficXAxisLabelsCenterDailyBucketsAndKeepHourlyTicks() {
         XCTAssertFalse(trafficXAxisLabelsUseIntervalCentering(for: .today))
-        XCTAssertFalse(trafficXAxisLabelsUseIntervalCentering(for: .sevenDays))
-        XCTAssertFalse(trafficXAxisLabelsUseIntervalCentering(for: .thirtyDays))
+        XCTAssertTrue(trafficXAxisLabelsUseIntervalCentering(for: .sevenDays))
+        XCTAssertTrue(trafficXAxisLabelsUseIntervalCentering(for: .thirtyDays))
     }
 
-    func testTrafficXAxisLabelOffsetMatchesTheRenderedLabelWidth() {
-        XCTAssertEqual(trafficXAxisLabelOffset(for: .today), -11)
-        XCTAssertEqual(trafficXAxisLabelOffset(for: .sevenDays), -22)
-        XCTAssertEqual(trafficXAxisLabelOffset(for: .thirtyDays), -22)
+    func testTrafficXAxisLabelOffsetUsesTheRenderedLabelWidth() {
+        let hourlyOffset = trafficXAxisLabelOffset(for: "00")
+        let wideDailyOffset = trafficXAxisLabelOffset(for: "Aug 31")
+        let shortDailyOffset = trafficXAxisLabelOffset(for: "Sep 1")
+
+        XCTAssertEqual(
+            hourlyOffset,
+            trafficXAxisLabelOffset(for: "03"),
+            accuracy: 0.1
+        )
+        XCTAssertLessThan(wideDailyOffset, shortDailyOffset)
+        XCTAssertLessThan(shortDailyOffset, hourlyOffset)
     }
 
     func testTrafficXAxisLabelsUseStableCalendarFormatting() {

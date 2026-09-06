@@ -5,6 +5,7 @@
 
 import SwiftUI
 import Charts
+import AppKit
 
 func nearestTrafficSeriesPoint(to date: Date, points: [TrafficSeriesPoint]) -> TrafficSeriesPoint? {
     points.min { lhs, rhs in
@@ -75,18 +76,18 @@ func trafficXAxisStrideCount(for timeRange: TimeRange) -> Int {
 
 func trafficXAxisLabelsUseIntervalCentering(for timeRange: TimeRange) -> Bool {
     switch timeRange {
-    case .today, .sevenDays, .thirtyDays:
+    case .today:
         return false
+    case .sevenDays, .thirtyDays:
+        return true
     }
 }
 
-func trafficXAxisLabelOffset(for timeRange: TimeRange) -> CGFloat {
-    switch timeRange {
-    case .today:
-        return -11
-    case .sevenDays, .thirtyDays:
-        return -22
-    }
+func trafficXAxisLabelOffset(for label: String) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: 11)
+    let renderedWidth = (label as NSString).size(withAttributes: [.font: font]).width
+    let axisHorizontalSpacing: CGFloat = 4
+    return -(renderedWidth / 2 + axisHorizontalSpacing)
 }
 
 struct TrafficLineChart: View {
@@ -184,9 +185,14 @@ struct TrafficLineChart: View {
                     collisionResolution: .disabled
                 ) {
                     if let date = value.as(Date.self) {
-                        Text(trafficXAxisLabel(for: date, timeRange: timeRange, calendar: .current))
+                        let label = trafficXAxisLabel(for: date, timeRange: timeRange, calendar: .current)
+                        Text(label)
                             .fixedSize(horizontal: true, vertical: false)
-                            .offset(x: trafficXAxisLabelOffset(for: timeRange))
+                            .offset(
+                                x: trafficXAxisLabelsUseIntervalCentering(for: timeRange)
+                                    ? 0
+                                    : trafficXAxisLabelOffset(for: label)
+                            )
                     }
                 }
                 AxisGridLine()
