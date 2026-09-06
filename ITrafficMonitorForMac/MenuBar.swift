@@ -42,6 +42,11 @@ enum MenuBarLayout {
     static let statusItemHeight: CGFloat = 22
 }
 
+enum MenuBarStatusItemConfiguration {
+    /// Keep the AppKit status-item identity stable across relaunches.
+    static let autosaveName = "com.foamzou.ITrafficMonitorV2.menuBar"
+}
+
 /// Compact rate format for the narrow, two-line status item.
 func formatMenuBarRate(bytes: Int) -> String {
     let kilobytes = Double(max(0, bytes)) / 1024
@@ -230,6 +235,7 @@ final class MenuBarController: NSObject {
         ))
         super.init()
 
+        statusItem.autosaveName = MenuBarStatusItemConfiguration.autosaveName
         configureStatusItem()
         configurePopover()
         refreshTodayUsage()

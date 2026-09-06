@@ -4,6 +4,13 @@ import SwiftUI
 @testable import ITraffic
 
 final class TrafficBarHoverTests: XCTestCase {
+    func testMenuBarStatusItemUsesStableIdentity() {
+        XCTAssertEqual(
+            MenuBarStatusItemConfiguration.autosaveName,
+            "com.foamzou.ITrafficMonitorV2.menuBar"
+        )
+    }
+
     func testTrafficXAxisUsesFewerLabelsForThirtyDayRange() {
         XCTAssertEqual(trafficXAxisStrideCount(for: .today), 3)
         XCTAssertEqual(trafficXAxisStrideCount(for: .sevenDays), 1)

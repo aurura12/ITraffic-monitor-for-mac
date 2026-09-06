@@ -81,7 +81,7 @@ targets:
           - "$(inherited)"
           - "@executable_path/../Frameworks"
         MARKETING_VERSION: 0.3.2
-        PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorForMac
+        PRODUCT_BUNDLE_IDENTIFIER: com.foamzou.ITrafficMonitorV2
         OTHER_LDFLAGS:
           - "-lsqlite3"
         SWIFT_VERSION: 5.0
