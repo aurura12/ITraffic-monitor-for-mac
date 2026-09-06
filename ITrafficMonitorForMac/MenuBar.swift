@@ -37,7 +37,7 @@ struct MenuBarRateText: Equatable {
 }
 
 enum MenuBarLayout {
-    /// 状态项宽度自适应两行文本内容，左右各留 2pt 的点击余量。
+    /// 状态项宽度自适应原生按钮内容，左右各留 2pt 的点击余量。
     static let statusItemHorizontalPadding: CGFloat = 4
     static let statusItemHeight: CGFloat = 22
 }
@@ -58,67 +58,6 @@ func formatMenuBarRate(bytes: Int) -> String {
     }
 
     return String(format: "%.1fG/s", megabytes / 1024)
-}
-
-final class MenuBarRateView: NSView {
-    private let downloadLabel = NSTextField(labelWithString: "↓ 0.0K/s")
-    private let uploadLabel = NSTextField(labelWithString: "↑ 0.0K/s")
-    var onClick: (() -> Void)?
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-
-        for label in [downloadLabel, uploadLabel] {
-            label.font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
-            // 两行文本左对齐：保证上下两行首字符（↑/↓）在同一列，
-            // 不受速率数值位数变化的影响；若用 .center 会因行宽不同而错位。
-            label.alignment = .left
-            label.lineBreakMode = .byClipping
-            label.textColor = .labelColor
-        }
-
-        let stack = NSStackView(views: [uploadLabel, downloadLabel])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.distribution = .fillEqually
-        stack.spacing = 0
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    func update(downloadRate: Int, uploadRate: Int) {
-        let text = MenuBarRateText(downloadRate: downloadRate, uploadRate: uploadRate)
-        downloadLabel.stringValue = text.download
-        uploadLabel.stringValue = text.upload
-    }
-
-    /// 两行文本中较宽一行的宽度，用于让状态项宽度自适应内容、不占多余菜单栏空间。
-    var neededWidth: CGFloat {
-        max(
-            downloadLabel.intrinsicContentSize.width,
-            uploadLabel.intrinsicContentSize.width
-        )
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        onClick?()
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        // 菜单栏按钮上覆盖了文本子视图，原 button action 已不生效；
-        // 让整块区域（含文本行）统一由自身响应点击，避免子 label 拦截导致弹窗打不开。
-        bounds.contains(point) ? self : nil
-    }
 }
 
 /// Today's traffic totals shown in the popover. Filled asynchronously from
@@ -210,9 +149,11 @@ struct MenuBarSummaryView: View {
 }
 
 final class MenuBarController: NSObject {
+    static let statusItemAutosaveName = "com.foamzou.ITrafficMonitorForMac.menuBar"
+
     private let statusItem: NSStatusItem
     private let popover: NSPopover
-    private let rateView: MenuBarRateView
+    private weak var statusButton: NSStatusBarButton?
     private let todayUsage = TodayUsageModel()
     private var refreshTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
@@ -220,16 +161,9 @@ final class MenuBarController: NSObject {
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         popover = NSPopover()
-        // frame 仅作初始占位，随后会被 button 的四边约束接管，
-        // 实际水平宽度由 resizeToFitContent() 按文本内容自适应设置。
-        rateView = MenuBarRateView(frame: NSRect(
-            x: 0,
-            y: 0,
-            width: MenuBarLayout.statusItemHeight,
-            height: MenuBarLayout.statusItemHeight
-        ))
         super.init()
 
+        statusItem.autosaveName = Self.statusItemAutosaveName
         configureStatusItem()
         configurePopover()
         refreshTodayUsage()
@@ -242,36 +176,47 @@ final class MenuBarController: NSObject {
 
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
-        button.image = nil
+        statusButton = button
+        let fallbackIcon = NSImage(
+            systemSymbolName: "network",
+            accessibilityDescription: AppDelegate.appDisplayName
+        )
+        fallbackIcon?.isTemplate = true
+        button.image = fallbackIcon
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleProportionallyDown
         button.title = ""
         button.isBordered = false
-        button.toolTip = AppDelegate.appDisplayName
-        rateView.translatesAutoresizingMaskIntoConstraints = false
-        button.addSubview(rateView)
-        NSLayoutConstraint.activate([
-            rateView.leadingAnchor.constraint(equalTo: button.leadingAnchor),
-            rateView.trailingAnchor.constraint(equalTo: button.trailingAnchor),
-            rateView.topAnchor.constraint(equalTo: button.topAnchor),
-            rateView.bottomAnchor.constraint(equalTo: button.bottomAnchor)
-        ])
-        rateView.onClick = { [weak self] in self?.togglePopover(nil) }
+        button.toolTip = statusItemToolTip(downloadRate: 0, uploadRate: 0)
+        button.target = self
+        button.action = #selector(togglePopover(_:))
         resizeToFitContent()
 
         SharedStore.statusDataModel.$totalInBytes
             .combineLatest(SharedStore.statusDataModel.$totalOutBytes)
             .receive(on: RunLoop.main)
             .sink { [weak self] downloadRate, uploadRate in
-                self?.rateView.update(downloadRate: downloadRate, uploadRate: uploadRate)
-                self?.resizeToFitContent()
+                self?.updateStatusButton(downloadRate: downloadRate, uploadRate: uploadRate)
             }
             .store(in: &cancellables)
     }
 
-    /// 状态项宽度跟随两行文本中较宽一行自适应，避免固定宽度在菜单栏留白。
+    private func updateStatusButton(downloadRate: Int, uploadRate: Int) {
+        guard let button = statusButton else { return }
+        button.toolTip = statusItemToolTip(downloadRate: downloadRate, uploadRate: uploadRate)
+        resizeToFitContent()
+    }
+
+    private func statusItemToolTip(downloadRate: Int, uploadRate: Int) -> String {
+        let text = MenuBarRateText(downloadRate: downloadRate, uploadRate: uploadRate)
+        return AppDelegate.appDisplayName + "\n" + text.rows.joined(separator: "  ")
+    }
+
+    /// 使用标准图标尺寸，避免拥挤的菜单栏把状态项挤到不可见区域。
     private func resizeToFitContent() {
-        let width = ceil(rateView.neededWidth) + MenuBarLayout.statusItemHorizontalPadding
-        if width != statusItem.length {
-            statusItem.length = width
+        guard statusButton != nil else { return }
+        if statusItem.length != NSStatusItem.squareLength {
+            statusItem.length = NSStatusItem.squareLength
         }
     }
 
