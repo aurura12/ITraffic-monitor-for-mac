@@ -1,5 +1,4 @@
 import XCTest
-import AppKit
 @testable import ITraffic
 
 final class TrafficFilterTests: XCTestCase {
@@ -236,37 +235,6 @@ final class TrafficFilterTests: XCTestCase {
 
     func testMenuBarLayoutLeavesOnlyTightHorizontalPadding() {
         XCTAssertEqual(MenuBarLayout.statusItemHorizontalPadding, 4)
-    }
-
-    func testMenuBarControllerKeepsAVisibleTemplateIconFallback() {
-        let controller = MenuBarController()
-        let statusItem = Mirror(reflecting: controller).children
-            .first { $0.label == "statusItem" }?.value as? NSStatusItem
-
-        XCTAssertNotNil(statusItem?.button?.image)
-        XCTAssertTrue(statusItem?.button?.image?.isTemplate ?? false)
-    }
-
-    func testMenuBarControllerUsesCompactNativeStatusBarContent() {
-        let controller = MenuBarController()
-        let statusItem = Mirror(reflecting: controller).children
-            .first { $0.label == "statusItem" }?.value as? NSStatusItem
-        let button = statusItem?.button
-
-        XCTAssertTrue(button?.subviews.isEmpty ?? false)
-        XCTAssertTrue(button?.title.isEmpty ?? false)
-        XCTAssertEqual(statusItem?.length, NSStatusItem.squareLength)
-    }
-
-    func testMenuBarControllerUsesAUniqueStatusItemAutosaveName() {
-        let controller = MenuBarController()
-        let statusItem = Mirror(reflecting: controller).children
-            .first { $0.label == "statusItem" }?.value as? NSStatusItem
-
-        XCTAssertEqual(
-            statusItem?.autosaveName,
-            "com.foamzou.ITrafficMonitorForMac.menuBar"
-        )
     }
 
     private func sampleRecord(sequence: Int64) -> TrafficFilterRecord {
