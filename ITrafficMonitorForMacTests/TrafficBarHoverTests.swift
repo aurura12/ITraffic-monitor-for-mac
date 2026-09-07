@@ -42,6 +42,29 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertLessThan(shortDailyOffset, hourlyOffset)
     }
 
+    func testTrafficBarXAxisPositionsSpanTheEntirePlot() {
+        XCTAssertEqual(
+            trafficBarXAxisPosition(for: 0, maxValue: 100),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            trafficBarXAxisPosition(for: 25, maxValue: 100),
+            0.25,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            trafficBarXAxisPosition(for: 100, maxValue: 100),
+            1,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            trafficBarXAxisPosition(for: 150, maxValue: 100),
+            1,
+            accuracy: 0.001
+        )
+    }
+
     func testTrafficXAxisLabelsUseStableCalendarFormatting() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)!

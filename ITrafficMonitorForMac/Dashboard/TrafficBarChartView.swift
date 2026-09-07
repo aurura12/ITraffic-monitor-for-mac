@@ -12,6 +12,14 @@
 
 import SwiftUI
 
+/// Normalized horizontal position for a value on the bar chart's X axis.
+/// Values outside the visible domain are clamped so log-scale end ticks stay
+/// on the plot instead of extending past its right edge.
+func trafficBarXAxisPosition(for value: Double, maxValue: Double) -> CGFloat {
+    guard value.isFinite, maxValue.isFinite, maxValue > 0 else { return 0 }
+    return CGFloat(min(max(value / maxValue, 0), 1))
+}
+
 func tooltipPosition(for pointer: CGPoint, in size: CGSize) -> CGPoint {
     let horizontalGap: CGFloat = 16
     let verticalGap: CGFloat = 10
@@ -177,30 +185,26 @@ struct TrafficBarChartView: View {
         HStack(spacing: labelToPlotSpacing) {
             Color.clear
                 .frame(width: labelWidth, height: 0)
-            VStack(spacing: 2) {
-                ZStack(alignment: .topLeading) {
-                    ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
-                        let pos = tick / maxX
-                        Rectangle()
-                            .fill(Theme.cardStroke)
-                            .frame(width: 1, height: 4)
-                            .offset(x: plotWidth * pos)
-                    }
-                }
-                .frame(width: plotWidth, height: 4, alignment: .leading)
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Theme.cardStroke)
+                    .frame(width: plotWidth, height: 1)
 
-                ZStack(alignment: .topLeading) {
-                    ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
-                        let pos = tick / maxX
-                        Text(tickLabel(tick))
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                            .fixedSize()
-                            .position(x: plotWidth * pos - plotWidth / 2, y: 7)
-                    }
+                ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
+                    let pos = trafficBarXAxisPosition(for: tick, maxValue: maxX)
+                    Rectangle()
+                        .fill(Theme.cardStroke)
+                        .frame(width: 1, height: 5)
+                        .position(x: plotWidth * pos, y: 2.5)
+
+                    Text(tickLabel(tick))
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                        .fixedSize()
+                        .position(x: plotWidth * pos, y: 13)
                 }
-                .frame(width: plotWidth, height: 14, alignment: .leading)
             }
+            .frame(width: plotWidth, height: 26, alignment: .topLeading)
         }
         .frame(width: plotWidth + leftInset, alignment: .leading)
     }
