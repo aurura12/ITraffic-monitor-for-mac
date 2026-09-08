@@ -81,8 +81,14 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(dashboardLayoutMode(for: .heatmap), .scrollingPage)
     }
 
-    func testDashboardActionsStayAtTopTrailing() {
-        XCTAssertEqual(dashboardActionsPlacement(), .topTrailing)
+    func testUsageDashboardKeepsTopSectionsAtIntrinsicHeight() {
+        XCTAssertEqual(dashboardTopSectionHeight(for: .usage), .intrinsic)
+        XCTAssertEqual(dashboardTopSectionHeight(for: .line), .flexible)
+        XCTAssertEqual(dashboardTopSectionHeight(for: .heatmap), .flexible)
+    }
+
+    func testDashboardActionsStayAtInlineTrailing() {
+        XCTAssertEqual(dashboardActionsPlacement(), .inlineTrailing)
     }
 
     func testUsageDashboardExpandsContentWidthWhileOtherChartsKeepPadding() {

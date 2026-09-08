@@ -17,6 +17,15 @@ enum DashboardLayoutMode: Equatable {
     case scrollingPage
 }
 
+enum DashboardTopSectionHeight: Equatable {
+    case intrinsic
+    case flexible
+}
+
+func dashboardTopSectionHeight(for chartMode: ChartMode) -> DashboardTopSectionHeight {
+    chartMode == .usage ? .intrinsic : .flexible
+}
+
 func dashboardLayoutMode(for chartMode: ChartMode) -> DashboardLayoutMode {
     chartMode == .usage ? .windowFillingChart : .scrollingPage
 }
@@ -26,6 +35,7 @@ struct UnifiedDashboardView: View {
     @EnvironmentObject var i18n: LocalizationManager
     @EnvironmentObject var realtimeRateStore: RealtimeRateStore
     @EnvironmentObject var proxyAttributor: ProxyAttributor
+    @State private var showExport = false
 
     private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
@@ -57,15 +67,18 @@ struct UnifiedDashboardView: View {
             .onChange(of: viewModel.timeRange) { viewModel.refreshDashboard() }
             .onChange(of: viewModel.chartMode) { viewModel.refreshDashboard() }
             .onChange(of: viewModel.barGranularity) { viewModel.refreshBarChart() }
+            .sheet(isPresented: $showExport) {
+                ExportView()
+            }
         }
     }
 
     @ViewBuilder
     private var dashboardContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            toolbar
-            statCards
-            attributionNotice
+            topSection(toolbar)
+            topSection(statCards)
+            topSection(attributionNotice)
             if dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart {
                 chartSection
                     .frame(maxHeight: .infinity, alignment: .top)
@@ -77,6 +90,16 @@ struct UnifiedDashboardView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func topSection<Content: View>(_ content: Content) -> some View {
+        switch dashboardTopSectionHeight(for: viewModel.chartMode) {
+        case .intrinsic:
+            content.fixedSize(horizontal: false, vertical: true)
+        case .flexible:
+            content
+        }
     }
 
     private var dashboardHorizontalPadding: CGFloat {
@@ -102,8 +125,27 @@ struct UnifiedDashboardView: View {
                     timeRangePicker
                 }
                 Spacer()
+                dashboardActions
             }
             chartModePicker
+        }
+    }
+
+    private var dashboardActions: some View {
+        HStack(spacing: 8) {
+            Button {
+                AppDelegate.showSettings()
+            } label: {
+                Label(i18n.text("Settings"), systemImage: "gearshape")
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                showExport = true
+            } label: {
+                Label(i18n.text("Export"), systemImage: "square.and.arrow.up")
+            }
+            .buttonStyle(.bordered)
         }
     }
 
