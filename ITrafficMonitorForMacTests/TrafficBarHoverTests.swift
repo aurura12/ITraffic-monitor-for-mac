@@ -107,6 +107,20 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testHeatmapRefreshDoesNotLoadRangeAppRanking() {
+        XCTAssertEqual(
+            DashboardRefreshPlan.operations(for: .heatmap),
+            [.heatmap, .total]
+        )
+    }
+
+    func testUsageRefreshDoesNotLoadRangeAppRanking() {
+        XCTAssertEqual(
+            DashboardRefreshPlan.operations(for: .usage),
+            [.usage, .total]
+        )
+    }
+
     func testRefreshTokenRejectsResultsFromAnOlderRequest() {
         let older = DashboardRefreshToken(
             sequence: 1,

@@ -24,7 +24,9 @@ struct UnifiedDashboardView: View {
                     statCards
                     attributionNotice
                     chartSection
-                    rankingSection
+                    if viewModel.chartMode == .line {
+                        rankingSection
+                    }
                 }
                 .padding(16)
             }

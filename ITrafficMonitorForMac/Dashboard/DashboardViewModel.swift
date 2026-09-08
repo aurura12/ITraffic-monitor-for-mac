@@ -70,9 +70,9 @@ enum DashboardRefreshPlan {
             // queued before the less visible cards below it.
             return [.series, .total, .topApps]
         case .heatmap:
-            return [.heatmap, .total, .topApps]
+            return [.heatmap, .total]
         case .usage:
-            return [.usage, .total, .topApps]
+            return [.usage, .total]
         }
     }
 }
