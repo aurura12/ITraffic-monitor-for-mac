@@ -81,6 +81,12 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(dashboardLayoutMode(for: .heatmap), .scrollingPage)
     }
 
+    func testDashboardUsesOneOuterScrollViewAcrossChartTabs() {
+        XCTAssertTrue(dashboardUsesSharedOuterScrollView(for: .usage))
+        XCTAssertTrue(dashboardUsesSharedOuterScrollView(for: .line))
+        XCTAssertTrue(dashboardUsesSharedOuterScrollView(for: .heatmap))
+    }
+
     func testUsageDashboardKeepsTopSectionsAtIntrinsicHeight() {
         XCTAssertEqual(dashboardTopSectionHeight(for: .usage), .intrinsic)
         XCTAssertEqual(dashboardTopSectionHeight(for: .line), .flexible)
@@ -89,12 +95,6 @@ final class TrafficBarHoverTests: XCTestCase {
 
     func testDashboardActionsStayAtInlineTrailing() {
         XCTAssertEqual(dashboardActionsPlacement(), .inlineTrailing)
-    }
-
-    func testUsageDashboardExpandsContentWidthWhileOtherChartsKeepPadding() {
-        XCTAssertEqual(dashboardContentWidthMode(for: .usage), .expanded)
-        XCTAssertEqual(dashboardContentWidthMode(for: .line), .padded)
-        XCTAssertEqual(dashboardContentWidthMode(for: .heatmap), .padded)
     }
 
     func testTrafficXAxisLabelsUseStableCalendarFormatting() {

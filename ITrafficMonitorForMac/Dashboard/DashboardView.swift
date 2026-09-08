@@ -13,15 +13,6 @@ func dashboardActionsPlacement() -> DashboardActionsPlacement {
     .inlineTrailing
 }
 
-enum DashboardContentWidthMode: Equatable {
-    case expanded
-    case padded
-}
-
-func dashboardContentWidthMode(for chartMode: ChartMode) -> DashboardContentWidthMode {
-    chartMode == .usage ? .expanded : .padded
-}
-
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @EnvironmentObject var i18n: LocalizationManager

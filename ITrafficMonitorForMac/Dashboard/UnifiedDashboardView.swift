@@ -30,6 +30,10 @@ func dashboardLayoutMode(for chartMode: ChartMode) -> DashboardLayoutMode {
     chartMode == .usage ? .windowFillingChart : .scrollingPage
 }
 
+func dashboardUsesSharedOuterScrollView(for _: ChartMode) -> Bool {
+    true
+}
+
 struct UnifiedDashboardView: View {
     @EnvironmentObject var viewModel: DashboardViewModel
     @EnvironmentObject var i18n: LocalizationManager
@@ -41,19 +45,22 @@ struct UnifiedDashboardView: View {
 
     var body: some View {
         NavigationStack {
-            GeometryReader { _ in
-                switch dashboardLayoutMode(for: viewModel.chartMode) {
-                case .windowFillingChart:
-                    dashboardContent
-                        .padding(.horizontal, dashboardHorizontalPadding)
-                        .padding(.top, 12)
-                        .padding(.bottom, 8)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                case .scrollingPage:
+            GeometryReader { geometry in
+                if dashboardUsesSharedOuterScrollView(for: viewModel.chartMode) {
                     ScrollView {
                         dashboardContent
                             .padding(16)
+                            .frame(
+                                maxWidth: .infinity,
+                                minHeight: dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart
+                                    ? geometry.size.height
+                                    : nil,
+                                alignment: .topLeading
+                            )
                     }
+                } else {
+                    dashboardContent
+                        .padding(16)
                 }
             }
             .navigationDestination(for: AppNavTarget.self) { target in
@@ -99,15 +106,6 @@ struct UnifiedDashboardView: View {
             content.fixedSize(horizontal: false, vertical: true)
         case .flexible:
             content
-        }
-    }
-
-    private var dashboardHorizontalPadding: CGFloat {
-        switch dashboardContentWidthMode(for: viewModel.chartMode) {
-        case .expanded:
-            return 8
-        case .padded:
-            return 16
         }
     }
 
