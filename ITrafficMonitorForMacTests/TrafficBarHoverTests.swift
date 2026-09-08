@@ -65,6 +65,31 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testLogBarXAxisUsesTheVisibleOrderOfMagnitudeRange() {
+        let domain = trafficBarLogDomain(for: [
+            log10(100_000_000),
+            log10(3_110_000_000)
+        ])
+
+        XCTAssertEqual(domain.lowerBound, 8, accuracy: 0.001)
+        XCTAssertEqual(domain.upperBound, 10, accuracy: 0.001)
+        XCTAssertEqual(
+            trafficBarXAxisPosition(for: domain.lowerBound, domain: domain),
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            trafficBarXAxisPosition(for: 9, domain: domain),
+            0.5,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            trafficBarXAxisPosition(for: domain.upperBound, domain: domain),
+            1,
+            accuracy: 0.001
+        )
+    }
+
     func testUsageBarChartPinsXAxisAtTheTopWhileRowsScroll() {
         XCTAssertEqual(trafficBarXAxisBehavior(), .topPinned)
     }

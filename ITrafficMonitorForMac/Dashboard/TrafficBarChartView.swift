@@ -16,8 +16,40 @@ import SwiftUI
 /// Values outside the visible domain are clamped so log-scale end ticks stay
 /// on the plot instead of extending past its right edge.
 func trafficBarXAxisPosition(for value: Double, maxValue: Double) -> CGFloat {
-    guard value.isFinite, maxValue.isFinite, maxValue > 0 else { return 0 }
-    return CGFloat(min(max(value / maxValue, 0), 1))
+    guard maxValue.isFinite, maxValue > 0 else { return 0 }
+    return trafficBarXAxisPosition(for: value, domain: 0...maxValue)
+}
+
+/// Returns a rounded log10 domain that contains all plotted values.
+///
+/// A log axis must not be normalized against an implicit zero origin: doing
+/// that puts every positive value close to the right edge. Rounding the
+/// domain to powers of ten keeps the axis readable while preserving the
+/// values' absolute order of magnitude.
+func trafficBarLogDomain(for values: [Double]) -> ClosedRange<Double> {
+    let finiteValues = values.filter { $0.isFinite }
+    guard let minimum = finiteValues.min(), let maximum = finiteValues.max() else {
+        return 0...1
+    }
+
+    let lowerBound = max(0, floor(minimum))
+    let upperBound = max(ceil(maximum), lowerBound + 1)
+    return lowerBound...upperBound
+}
+
+/// Normalized horizontal position for a value within an explicit axis domain.
+func trafficBarXAxisPosition(for value: Double, domain: ClosedRange<Double>) -> CGFloat {
+    let lowerBound = domain.lowerBound
+    let upperBound = domain.upperBound
+    let span = upperBound - lowerBound
+    guard value.isFinite,
+          lowerBound.isFinite,
+          upperBound.isFinite,
+          span > 0 else {
+        return 0
+    }
+
+    return CGFloat(min(max((value - lowerBound) / span, 0), 1))
 }
 
 enum TrafficBarXAxisBehavior: Equatable {
@@ -96,23 +128,27 @@ struct TrafficBarChartView: View {
         }
     }
 
-    /// X-axis tick positions in data (x) space.
-    private var ticks: [Double] {
-        guard let maxX = barValues.map(\.x).max(), maxX > 0 else { return [] }
+    /// Visible X-axis domain in data (x) space.
+    private var xDomain: ClosedRange<Double> {
         switch scaleMode {
         case .linear:
-            let step = maxX / Double(tickCount - 1)
-            return (0..<tickCount).map { Double($0) * step }
+            return 0...max(barValues.map(\.x).max() ?? 1, 1e-9)
         case .log:
-            let loExp = max(0, Int(floor(barValues.map(\.x).min() ?? 0)))
-            let hiExp = Int(ceil(maxX))
-            return (loExp...hiExp).map { Double($0) }
+            return trafficBarLogDomain(for: barValues.map(\.x))
         }
     }
 
-    /// Max value used to scale bar widths.
-    private var maxX: Double {
-        max(barValues.map(\.x).max() ?? 1, 1e-9)
+    /// X-axis tick positions in data (x) space.
+    private var ticks: [Double] {
+        switch scaleMode {
+        case .linear:
+            let step = (xDomain.upperBound - xDomain.lowerBound) / Double(tickCount - 1)
+            return (0..<tickCount).map { xDomain.lowerBound + Double($0) * step }
+        case .log:
+            let lowerExponent = Int(xDomain.lowerBound.rounded())
+            let upperExponent = Int(xDomain.upperBound.rounded())
+            return (lowerExponent...upperExponent).map(Double.init)
+        }
     }
 
     private func tickLabel(_ value: Double) -> String {
@@ -180,7 +216,7 @@ struct TrafficBarChartView: View {
     /// row height (`barPitch`) and the plot area starts at the same left inset
     /// as the X axis, so label, bar and ticks all line up.
     private func barRow(_ bar: BarValue, plotWidth: CGFloat) -> some View {
-        let ratio = bar.x / maxX
+        let ratio = trafficBarXAxisPosition(for: bar.x, domain: xDomain)
         return HStack(spacing: labelToPlotSpacing) {
             Text(bar.label)
                 .font(.system(size: 10))
@@ -212,7 +248,7 @@ struct TrafficBarChartView: View {
                     .frame(width: plotWidth, height: 1)
 
                 ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
-                    let pos = trafficBarXAxisPosition(for: tick, maxValue: maxX)
+                    let pos = trafficBarXAxisPosition(for: tick, domain: xDomain)
                     Rectangle()
                         .fill(Theme.cardStroke)
                         .frame(width: 1, height: 5)
