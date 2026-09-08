@@ -69,6 +69,21 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(trafficBarXAxisBehavior(), .topPinned)
     }
 
+    func testUsageBarsShowNewestPeriodFirst() {
+        let calendar = Calendar(identifier: .gregorian)
+        let older = calendar.date(from: DateComponents(year: 2026, month: 8, day: 1))!
+        let newer = calendar.date(from: DateComponents(year: 2026, month: 9, day: 1))!
+        let points = [
+            BarPeriodPoint(period: older, label: "2026-08", totalBytes: 100),
+            BarPeriodPoint(period: newer, label: "2026-09", totalBytes: 200)
+        ]
+
+        XCTAssertEqual(
+            trafficBarPointsNewestFirst(points).map(\.label),
+            ["2026-09", "2026-08"]
+        )
+    }
+
     func testOnlyUsageChartRemovesTheCardSurface() {
         XCTAssertFalse(chartSectionUsesCardBackground(for: .usage))
         XCTAssertTrue(chartSectionUsesCardBackground(for: .line))

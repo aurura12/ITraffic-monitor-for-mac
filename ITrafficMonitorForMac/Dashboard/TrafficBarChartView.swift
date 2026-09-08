@@ -28,6 +28,10 @@ func trafficBarXAxisBehavior() -> TrafficBarXAxisBehavior {
     .topPinned
 }
 
+func trafficBarPointsNewestFirst(_ points: [BarPeriodPoint]) -> [BarPeriodPoint] {
+    points.sorted { $0.period > $1.period }
+}
+
 func tooltipPosition(for pointer: CGPoint, in size: CGSize) -> CGPoint {
     let horizontalGap: CGFloat = 16
     let verticalGap: CGFloat = 10
@@ -79,7 +83,7 @@ struct TrafficBarChartView: View {
     }
 
     private var barValues: [BarValue] {
-        points.map { point in
+        trafficBarPointsNewestFirst(points).map { point in
             let x: Double
             switch scaleMode {
             case .linear:
