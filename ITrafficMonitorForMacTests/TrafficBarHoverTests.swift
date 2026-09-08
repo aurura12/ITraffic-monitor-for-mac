@@ -65,6 +65,32 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testUsageBarChartPinsXAxisAtTheTopWhileRowsScroll() {
+        XCTAssertEqual(trafficBarXAxisBehavior(), .topPinned)
+    }
+
+    func testOnlyUsageChartRemovesTheCardSurface() {
+        XCTAssertFalse(chartSectionUsesCardBackground(for: .usage))
+        XCTAssertTrue(chartSectionUsesCardBackground(for: .line))
+        XCTAssertTrue(chartSectionUsesCardBackground(for: .heatmap))
+    }
+
+    func testUsageChartFillsWindowWhileOtherChartsKeepPageScrolling() {
+        XCTAssertEqual(dashboardLayoutMode(for: .usage), .windowFillingChart)
+        XCTAssertEqual(dashboardLayoutMode(for: .line), .scrollingPage)
+        XCTAssertEqual(dashboardLayoutMode(for: .heatmap), .scrollingPage)
+    }
+
+    func testDashboardActionsStayAtTopTrailing() {
+        XCTAssertEqual(dashboardActionsPlacement(), .topTrailing)
+    }
+
+    func testUsageDashboardExpandsContentWidthWhileOtherChartsKeepPadding() {
+        XCTAssertEqual(dashboardContentWidthMode(for: .usage), .expanded)
+        XCTAssertEqual(dashboardContentWidthMode(for: .line), .padded)
+        XCTAssertEqual(dashboardContentWidthMode(for: .heatmap), .padded)
+    }
+
     func testTrafficXAxisLabelsUseStableCalendarFormatting() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)!

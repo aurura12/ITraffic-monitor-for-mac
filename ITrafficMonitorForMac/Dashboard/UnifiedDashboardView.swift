@@ -8,6 +8,19 @@
 
 import SwiftUI
 
+func chartSectionUsesCardBackground(for mode: ChartMode) -> Bool {
+    mode != .usage
+}
+
+enum DashboardLayoutMode: Equatable {
+    case windowFillingChart
+    case scrollingPage
+}
+
+func dashboardLayoutMode(for chartMode: ChartMode) -> DashboardLayoutMode {
+    chartMode == .usage ? .windowFillingChart : .scrollingPage
+}
+
 struct UnifiedDashboardView: View {
     @EnvironmentObject var viewModel: DashboardViewModel
     @EnvironmentObject var i18n: LocalizationManager
@@ -18,17 +31,20 @@ struct UnifiedDashboardView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    toolbar
-                    statCards
-                    attributionNotice
-                    chartSection
-                    if viewModel.chartMode == .line {
-                        rankingSection
+            GeometryReader { _ in
+                switch dashboardLayoutMode(for: viewModel.chartMode) {
+                case .windowFillingChart:
+                    dashboardContent
+                        .padding(.horizontal, dashboardHorizontalPadding)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                case .scrollingPage:
+                    ScrollView {
+                        dashboardContent
+                            .padding(16)
                     }
                 }
-                .padding(16)
             }
             .navigationDestination(for: AppNavTarget.self) { target in
                 AppDetailView(target: target)
@@ -41,6 +57,34 @@ struct UnifiedDashboardView: View {
             .onChange(of: viewModel.timeRange) { viewModel.refreshDashboard() }
             .onChange(of: viewModel.chartMode) { viewModel.refreshDashboard() }
             .onChange(of: viewModel.barGranularity) { viewModel.refreshBarChart() }
+        }
+    }
+
+    @ViewBuilder
+    private var dashboardContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            toolbar
+            statCards
+            attributionNotice
+            if dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart {
+                chartSection
+                    .frame(maxHeight: .infinity, alignment: .top)
+            } else {
+                chartSection
+            }
+            if viewModel.chartMode == .line {
+                rankingSection
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var dashboardHorizontalPadding: CGFloat {
+        switch dashboardContentWidthMode(for: viewModel.chartMode) {
+        case .expanded:
+            return 8
+        case .padded:
+            return 16
         }
     }
 
@@ -181,7 +225,21 @@ struct UnifiedDashboardView: View {
 
     // MARK: - Chart section
 
+    @ViewBuilder
     private var chartSection: some View {
+        if chartSectionUsesCardBackground(for: viewModel.chartMode) {
+            chartSectionContent
+                .background(
+                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                        .fill(Theme.cardBackground)
+                        .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).stroke(Theme.cardStroke))
+                )
+        } else {
+            chartSectionContent
+        }
+    }
+
+    private var chartSectionContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -225,15 +283,16 @@ struct UnifiedDashboardView: View {
                     )
                 }
             }
-            .frame(minHeight: 260, maxHeight: 360)
+            .frame(minHeight: 260, maxHeight: chartContentMaxHeight)
             .padding(.horizontal, Theme.cardPadding)
             .padding(.bottom, Theme.cardPadding)
         }
-        .background(
-            RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                .fill(Theme.cardBackground)
-                .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).stroke(Theme.cardStroke))
-        )
+    }
+
+    private var chartContentMaxHeight: CGFloat {
+        dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart
+            ? .infinity
+            : 360
     }
 
     private var chartTitle: String {

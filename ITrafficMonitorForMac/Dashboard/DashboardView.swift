@@ -5,6 +5,23 @@
 
 import SwiftUI
 
+enum DashboardActionsPlacement: Equatable {
+    case topTrailing
+}
+
+func dashboardActionsPlacement() -> DashboardActionsPlacement {
+    .topTrailing
+}
+
+enum DashboardContentWidthMode: Equatable {
+    case expanded
+    case padded
+}
+
+func dashboardContentWidthMode(for chartMode: ChartMode) -> DashboardContentWidthMode {
+    chartMode == .usage ? .expanded : .padded
+}
+
 struct DashboardView: View {
     @StateObject private var viewModel = DashboardViewModel()
     @EnvironmentObject var i18n: LocalizationManager
@@ -14,10 +31,9 @@ struct DashboardView: View {
         UnifiedDashboardView()
             .environmentObject(viewModel)
             .environment(\.locale, i18n.locale)
-            .safeAreaInset(edge: .bottom, alignment: .trailing) {
-                // Floating actions — .toolbar doesn't reliably render in a window
-                // created programmatically via NSHostingController, and a
-                // safeAreaInset bar keeps content from scrolling under it.
+            .safeAreaInset(edge: dashboardActionInsetEdge, alignment: .trailing) {
+                // Keep actions in the top safe area so the chart can use the
+                // full height below without a bottom action strip.
                 HStack(spacing: 8) {
                     Button {
                         AppDelegate.showSettings()
@@ -33,11 +49,19 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.bordered)
                 }
-                .padding(10)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
             }
             .sheet(isPresented: $showExport) {
                 ExportView()
             }
             .frame(minWidth: 900, minHeight: 600)
+    }
+
+    private var dashboardActionInsetEdge: VerticalEdge {
+        switch dashboardActionsPlacement() {
+        case .topTrailing:
+            return .top
+        }
     }
 }

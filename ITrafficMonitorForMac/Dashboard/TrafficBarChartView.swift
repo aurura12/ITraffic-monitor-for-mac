@@ -20,6 +20,14 @@ func trafficBarXAxisPosition(for value: Double, maxValue: Double) -> CGFloat {
     return CGFloat(min(max(value / maxValue, 0), 1))
 }
 
+enum TrafficBarXAxisBehavior: Equatable {
+    case topPinned
+}
+
+func trafficBarXAxisBehavior() -> TrafficBarXAxisBehavior {
+    .topPinned
+}
+
 func tooltipPosition(for pointer: CGPoint, in size: CGSize) -> CGPoint {
     let horizontalGap: CGFloat = 16
     let verticalGap: CGFloat = 10
@@ -125,23 +133,32 @@ struct TrafficBarChartView: View {
             let plotWidth = max(1, geo.size.width - leftInset)
             ScrollView(.vertical) {
                 ZStack(alignment: .topLeading) {
-                    VStack(spacing: 0) {
-                        ForEach(barValues) { bar in
-                            barRow(bar, plotWidth: plotWidth)
-                                .contentShape(Rectangle())
-                                .onContinuousHover(coordinateSpace: .named("bars")) { phase in
-                                    switch phase {
-                                    case .active(let location):
-                                        hoverSelection.update(activeBarID: bar.id)
-                                        hoveredLocation = location
-                                    case .ended:
-                                        if hoverSelection.activeBarID == bar.id {
-                                            hoverSelection.update(activeBarID: nil)
+                    let xAxisBehavior = trafficBarXAxisBehavior()
+                    LazyVStack(
+                        spacing: 0,
+                        pinnedViews: xAxisBehavior == .topPinned ? [.sectionHeaders] : []
+                    ) {
+                        Section {
+                            ForEach(barValues) { bar in
+                                barRow(bar, plotWidth: plotWidth)
+                                    .contentShape(Rectangle())
+                                    .onContinuousHover(coordinateSpace: .named("bars")) { phase in
+                                        switch phase {
+                                        case .active(let location):
+                                            hoverSelection.update(activeBarID: bar.id)
+                                            hoveredLocation = location
+                                        case .ended:
+                                            if hoverSelection.activeBarID == bar.id {
+                                                hoverSelection.update(activeBarID: nil)
+                                            }
                                         }
                                     }
-                                }
+                            }
+                        } header: {
+                            xAxis(plotWidth: plotWidth)
+                                .background(Color(nsColor: .windowBackgroundColor))
+                                .zIndex(1)
                         }
-                        xAxis(plotWidth: plotWidth)
                     }
 
                     if let hoveredBar = barValues.first(where: { $0.id == hoverSelection.activeBarID }) {
