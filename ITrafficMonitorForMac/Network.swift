@@ -119,8 +119,15 @@ class Network {
 /// nettop reprints its column header at the very start of every frame (for
 /// example `,bytes_in,bytes_out,`). Those fields are labels, not a process
 /// row, so they must not be reported as a row that failed to parse.
+///
+/// Match by field position rather than by substring: a process literally named
+/// `bytes_in` is still a real row.
 func isNettopHeaderLine(_ line: String) -> Bool {
-    line.contains("bytes_in") || line.contains("bytes_out")
+    guard let fields = parseNettopCSVFields(line), fields.count >= 3 else { return false }
+    let first = fields[0].trimmingCharacters(in: .whitespaces)
+    let second = fields[1].trimmingCharacters(in: .whitespaces)
+    let third = fields[2].trimmingCharacters(in: .whitespaces)
+    return first.isEmpty && second == "bytes_in" && third == "bytes_out"
 }
 
 /// Parse the small CSV subset emitted by nettop. Process names can be quoted

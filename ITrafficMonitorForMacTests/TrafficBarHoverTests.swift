@@ -355,6 +355,12 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNil(Network().parser(text: ",bytes_in,bytes_out,"))
     }
 
+    func testNettopHeaderMatchIgnoresProcessNamesContainingFieldLabels() {
+        // A process named "bytes_in" is a real row, not the header.
+        XCTAssertFalse(isNettopHeaderLine("bytes_in.1234,100,200,"))
+        XCTAssertNotNil(Network().parser(text: "bytes_in.1234,100,200,"))
+    }
+
     func testNettopParserHandlesRealFrameRowWithSpacesAndTrailingComma() {
         let entity = Network().parser(text: "Codex (Service).1084,6264839,0,")
 
