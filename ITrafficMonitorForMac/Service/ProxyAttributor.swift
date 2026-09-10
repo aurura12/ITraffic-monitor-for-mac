@@ -624,7 +624,7 @@ final class ProxyAttributor: ObservableObject {
 
     func start() {
         queue.async { [weak self] in
-            guard let self else { return }
+            guard let self, self.timer == nil else { return }
             let t = DispatchSource.makeTimerSource(queue: self.queue)
             t.schedule(deadline: .now(), repeating: .seconds(self.interval))
             t.setEventHandler { [weak self] in self?.tick() }
