@@ -1064,14 +1064,22 @@ final class ProxyAttributor: ObservableObject {
         let sem = DispatchSemaphore(value: 0)
         var statusCode: Int?
         var data: Data?
-        URLSession.shared.dataTask(with: request) { d, response, _ in
+        let task = URLSession.shared.dataTask(with: request) { d, response, _ in
             if let http = response as? HTTPURLResponse {
                 statusCode = http.statusCode
             }
             data = d
             sem.signal()
-        }.resume()
-        _ = sem.wait(timeout: .now() + 2.0)
+        }
+        task.resume()
+        // Only read the captured values once the completion has signalled, so
+        // the semaphore provides the ordering. On timeout the completion may
+        // still be in flight; cancel the request and bail without touching
+        // them, which avoids a data race and a lingering live request.
+        if sem.wait(timeout: .now() + 2.0) == .timedOut {
+            task.cancel()
+            return .failed
+        }
 
         if statusCode == 401 || statusCode == 403 {
             return .authRequired
