@@ -125,7 +125,8 @@ func isNettopHeaderLine(_ line: String) -> Bool {
 
 /// Parse the small CSV subset emitted by nettop. Process names can be quoted
 /// and contain commas, so splitting on every comma is not safe.
-func parseNettopCSVFields(_ text: String) -> [String]? {    var fields: [String] = []
+func parseNettopCSVFields(_ text: String) -> [String]? {
+    var fields: [String] = []
     var field = ""
     var quoted = false
     let characters = Array(text)
