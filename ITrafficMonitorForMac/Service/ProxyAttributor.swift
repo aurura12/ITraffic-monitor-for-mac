@@ -1207,9 +1207,10 @@ final class ProxyAttributor: ObservableObject {
         p.executableURL = URL(fileURLWithPath: executable)
         p.arguments = arguments
         let out = Pipe()
-        let err = Pipe()
         p.standardOutput = out
-        p.standardError = err
+        // Discard stderr: leaving it on an unread Pipe lets a chatty child
+        // fill the buffer and block before it ever exits.
+        p.standardError = FileHandle.nullDevice
         do {
             try p.run()
         } catch {

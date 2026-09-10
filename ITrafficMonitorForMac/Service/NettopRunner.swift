@@ -120,6 +120,12 @@ final class NettopRunner {
             self.queue.async { self.consume(data) }
         }
 
+        // Drain stderr. nettop/script error output is not parsed, but leaving
+        // the pipe unread would let a chatty child fill the buffer and block.
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            _ = handle.availableData
+        }
+
         task.terminationHandler = { [weak self] _ in
             guard let self else { return }
             self.queue.async {
@@ -189,6 +195,7 @@ final class NettopRunner {
 
     private func cleanupHandles() {
         stdoutPipe?.fileHandleForReading.readabilityHandler = nil
+        stderrPipe?.fileHandleForReading.readabilityHandler = nil
         debounceWork?.cancel()
         debounceWork = nil
     }
