@@ -144,8 +144,8 @@ final class TodayUsageModel: ObservableObject {
 }
 
 struct MenuBarSummaryView: View {
-    /// Rows shown in the live process list; the popover height is sized for it.
-    static let maxProcessRows = 5
+    /// Rows shown in the live app list; the popover height is sized for it.
+    static let maxAppRows = 5
 
     @EnvironmentObject private var i18n: LocalizationManager
     @EnvironmentObject private var perAppRates: PerAppRateStore
@@ -192,7 +192,7 @@ struct MenuBarSummaryView: View {
 
             Divider()
 
-            liveProcessesSection
+            liveAppsSection
 
             Divider()
 
@@ -208,30 +208,28 @@ struct MenuBarSummaryView: View {
         .frame(width: 320)
     }
 
-    private var liveProcessRows: [LiveProcessRow] {
-        Array(perAppRates.topProcesses.prefix(Self.maxProcessRows))
+    private var liveAppRows: [LiveAppRow] {
+        Array(perAppRates.topApps.prefix(Self.maxAppRows))
     }
 
-    /// Which processes are using the network right now — the app's headline
-    /// feature, driven live from the per-frame rates.
+    /// Which apps are using the network right now, driven live from the
+    /// per-frame rates. Rows aggregate by app, like the dashboard ranking.
     @ViewBuilder
-    private var liveProcessesSection: some View {
+    private var liveAppsSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(i18n.text("Current Processes"))
+            Text(i18n.text("Current Apps"))
                 .font(.caption)
                 .foregroundColor(.secondary)
-            if liveProcessRows.isEmpty {
+            if liveAppRows.isEmpty {
                 Text(i18n.text("No active traffic"))
                     .font(.caption)
                     .foregroundColor(.secondary)
             } else {
-                ForEach(liveProcessRows) { row in
+                ForEach(liveAppRows) { row in
                     HStack(spacing: 6) {
-                        if let icon = row.icon {
-                            Image(nsImage: icon)
-                                .resizable()
-                                .frame(width: 14, height: 14)
-                        }
+                        Image(nsImage: iconForAppKey(row.id))
+                            .resizable()
+                            .frame(width: 14, height: 14)
                         Text(row.displayName)
                             .lineLimit(1)
                             .truncationMode(.middle)
@@ -287,7 +285,7 @@ final class MenuBarController: NSObject {
         statusItem.autosaveName = MenuBarStatusItemConfiguration.autosaveName
         configureStatusItem()
         configurePopover()
-        observeLiveProcesses()
+        observeLiveApps()
         refreshTodayUsage()
         scheduleTodayUsageRefresh()
     }
@@ -346,20 +344,20 @@ final class MenuBarController: NSObject {
         )
     }
 
-    /// Keep the popover tall enough for the live process list, which grows and
+    /// Keep the popover tall enough for the live app list, which grows and
     /// shrinks as apps start and stop using the network.
-    private func observeLiveProcesses() {
-        SharedStore.perAppRateStore.$topProcesses
+    private func observeLiveApps() {
+        SharedStore.perAppRateStore.$topApps
             .receive(on: RunLoop.main)
             .sink { [weak self] rows in
-                self?.resizePopoverToFit(processRows: rows.count)
+                self?.resizePopoverToFit(appRows: rows.count)
             }
             .store(in: &cancellables)
     }
 
-    private func resizePopoverToFit(processRows: Int) {
-        let visible = min(processRows, MenuBarSummaryView.maxProcessRows)
-        // Caption plus one row per process, or the "no active traffic"
+    private func resizePopoverToFit(appRows: Int) {
+        let visible = min(appRows, MenuBarSummaryView.maxAppRows)
+        // Caption plus one row per app, or the "no active traffic"
         // placeholder, added to the base summary content.
         let listHeight = 22 + (visible == 0 ? 18 : visible * 20) + 12
         popover.contentSize = NSSize(width: 320, height: 214 + listHeight)

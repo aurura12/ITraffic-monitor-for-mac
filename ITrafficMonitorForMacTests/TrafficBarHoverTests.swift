@@ -393,7 +393,7 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(formatRatePerSecond(1024 * 1024 * 1024), "1.00 GB/s")
     }
 
-    func testPerAppRateStoreRanksLiveProcessesByCombinedRate() {
+    func testPerAppRateStoreRanksLiveAppsByCombinedRate() {
         let store = PerAppRateStore()
         store.update(
             entities: [
@@ -404,8 +404,8 @@ final class TrafficBarHoverTests: XCTestCase {
             interval: 2
         )
 
-        XCTAssertEqual(store.topProcesses.map(\.displayName), ["beta", "alpha"])
-        XCTAssertEqual(store.topProcesses.first?.inRate, 2048)
+        XCTAssertEqual(store.topApps.map(\.displayName), ["beta", "alpha"])
+        XCTAssertEqual(store.topApps.first?.inRate, 2048)
     }
 
     func testProcessHelperReturnsOutput() {
