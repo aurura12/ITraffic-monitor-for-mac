@@ -28,8 +28,11 @@ final class TrafficFilterStatsStore {
         var records: [TrafficFilterRecord] = []
 
         for lineData in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
+            // Skip an unreadable line (for example a partially written
+            // trailing record) instead of breaking, which would permanently
+            // hide every later record in the append-only file.
             guard let record = try? decoder.decode(TrafficFilterRecord.self, from: Data(lineData)) else {
-                break
+                continue
             }
             if record.sequence > lastSequence {
                 records.append(record)

@@ -126,6 +126,25 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertTrue(try store.readNewRecords().isEmpty)
     }
 
+    func testStatsStoreSkipsMalformedLineWithoutDroppingLaterRecords() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("traffic-filter-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let store = try TrafficFilterStatsStore(directory: directory)
+        try store.write(records: [sampleRecord(sequence: 1)])
+
+        // Append a corrupt line, then more valid records after it.
+        let recordsURL = directory
+            .appendingPathComponent(TrafficFilterSharedOutput.recordsFileName)
+        var data = try Data(contentsOf: recordsURL)
+        data.append(Data("{ not json }\n".utf8))
+        try data.write(to: recordsURL)
+        try store.write(records: [sampleRecord(sequence: 2), sampleRecord(sequence: 3)])
+
+        XCTAssertEqual(try store.readNewRecords().map(\.sequence), [1, 2, 3])
+    }
+
     func testTrafficTotalsReportSmallExpectedDifference() {
         let result = reconcileTrafficTotals(
             filterTotal: 1_000,
