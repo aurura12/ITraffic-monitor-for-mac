@@ -33,6 +33,71 @@ func formatBytesTotal(bytes: Int) -> String {
     return String(format: "%.2f TB", gb / 1024)
 }
 
+/// Box so the background read can hand its result back to the caller.
+private final class ProcessOutputBox {
+    var data = Data()
+}
+
+/// Runs a short-lived helper binary and returns its stdout, or nil if it could
+/// not be spawned.
+///
+/// stdout is read on a background queue because `readDataToEndOfFile()` only
+/// returns once the child closes it, so a child that hangs would otherwise
+/// block the caller forever. If the child has not exited within `timeout`
+/// seconds it is terminated (then SIGKILLed).
+func runProcessCollectingOutput(
+    executable: String,
+    arguments: [String],
+    timeout: TimeInterval = 3
+) -> String? {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = arguments
+    let stdoutPipe = Pipe()
+    process.standardOutput = stdoutPipe
+    process.standardError = FileHandle.nullDevice
+    do {
+        try process.run()
+    } catch {
+        return nil
+    }
+
+    let box = ProcessOutputBox()
+    let readDone = DispatchSemaphore(value: 0)
+    DispatchQueue.global(qos: .utility).async {
+        box.data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        readDone.signal()
+    }
+
+    if readDone.wait(timeout: .now() + timeout) == .timedOut {
+        process.terminate()
+        if readDone.wait(timeout: .now() + 1) == .timedOut {
+            kill(process.processIdentifier, SIGKILL)
+        }
+        return nil
+    }
+    process.waitUntilExit()
+    return String(data: box.data, encoding: .utf8)
+}
+
+/// Waits for an already-running process to exit, terminating (then SIGKILLing)
+/// it if it overruns `timeout`. Returns true when it exited on its own.
+@discardableResult
+func waitForProcessExit(_ process: Process, timeout: TimeInterval) -> Bool {
+    guard process.isRunning else { return true }
+    let semaphore = DispatchSemaphore(value: 0)
+    process.terminationHandler = { _ in semaphore.signal() }
+    if semaphore.wait(timeout: .now() + timeout) == .success {
+        return true
+    }
+    process.terminate()
+    if semaphore.wait(timeout: .now() + 1) == .success {
+        return false
+    }
+    kill(process.processIdentifier, SIGKILL)
+    return false
+}
+
 /// Local epoch-day basis: local midnight of 1970-01-01. Consistent with
 /// `dayIndex(for:calendar:)` so stored `day` values round-trip exactly.
 private let epochDayZero = Calendar.current.startOfDay(for: Date(timeIntervalSince1970: 0))

@@ -1203,22 +1203,9 @@ final class ProxyAttributor: ObservableObject {
     }
 
     private func runProcess(_ executable: String, _ arguments: [String]) -> String? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: executable)
-        p.arguments = arguments
-        let out = Pipe()
-        p.standardOutput = out
-        // Discard stderr: leaving it on an unread Pipe lets a chatty child
-        // fill the buffer and block before it ever exits.
-        p.standardError = FileHandle.nullDevice
-        do {
-            try p.run()
-        } catch {
-            return nil
-        }
-        let output = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        return String(data: output, encoding: .utf8)
+        // Bounded so a stuck helper (for example lsof under heavy load) cannot
+        // block the proxy queue indefinitely.
+        return runProcessCollectingOutput(executable: executable, arguments: arguments)
     }
 
     /// Builds a local-port -> owning-pid map for exactly the sockets the proxy

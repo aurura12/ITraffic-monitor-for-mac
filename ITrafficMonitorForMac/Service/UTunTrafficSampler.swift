@@ -152,72 +152,65 @@ final class UTunTrafficSampler: ObservableObject {
     }
 
     private func sample() {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
-        task.arguments = ["-ib"]
-        let pipe = Pipe()
-        task.standardOutput = pipe
-        task.standardError = FileHandle.nullDevice
-        do {
-            try task.run()
-            // Drain stdout before waiting. Reading to EOF is what lets the
-            // child make progress, so wait-then-read can deadlock once the
-            // pipe buffer fills. stderr is discarded rather than left as an
-            // undrained pipe for the same reason.
-            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            task.waitUntilExit()
-            let current = parseUTunInterfaceCounters(output)
-            let currentExternal = parseExternalInterfaceCounters(output)
-            guard current != nil || currentExternal != nil else {
-                publishStatus(.unavailable)
-                publishExternalStatus(.unavailable)
-                return
-            }
-            var utunDelta: UTunTrafficCounters?
-            if let current {
-                if let previous {
-                    utunDelta = interfaceCounterDelta(previous: previous, current: current)
-                }
-                self.previous = current
-            }
-            if let currentExternal {
-                let delta = previousExternal.map {
-                    interfaceCounterDelta(previous: $0, current: currentExternal)
-                } ?? nil
-                previousExternal = currentExternal
-                if delta != nil { publishExternalStatus(.active) }
-                if let delta {
-                    publishReferenceSample(TrafficReferenceSample(
-                        externalDelta: delta,
-                        utunDelta: utunDelta ?? nil,
-                        sampledAt: Date()
-                    ))
-                }
-            } else {
-                publishExternalStatus(.unavailable)
-            }
-            if let utunDelta {
-                publishStatus(.active)
-                stateLock.lock()
-                let accumulated = pendingDelta ?? UTunTrafficCounters(inBytes: 0, outBytes: 0)
-                pendingDelta = UTunTrafficCounters(
-                    inBytes: accumulated.inBytes + utunDelta.inBytes,
-                    outBytes: accumulated.outBytes + utunDelta.outBytes
-                )
-                stateLock.unlock()
-                if currentExternal == nil {
-                    publishReferenceSample(TrafficReferenceSample(
-                        externalDelta: nil,
-                        utunDelta: utunDelta,
-                        sampledAt: Date()
-                    ))
-                }
-            }
-        } catch {
-            // The free sampler is optional. nettop and proxy attribution keep
-            // working when macOS denies netstat's interface counters.
+        // Bounded: a stuck netstat must not wedge the sampler queue. A nil
+        // result also covers spawn failures, which happen when macOS denies
+        // netstat's interface counters.
+        guard let output = runProcessCollectingOutput(
+            executable: "/usr/sbin/netstat",
+            arguments: ["-ib"],
+            timeout: 2
+        ) else {
             publishStatus(.unavailable)
             publishExternalStatus(.unavailable)
+            return
+        }
+
+        let current = parseUTunInterfaceCounters(output)
+        let currentExternal = parseExternalInterfaceCounters(output)
+        guard current != nil || currentExternal != nil else {
+            publishStatus(.unavailable)
+            publishExternalStatus(.unavailable)
+            return
+        }
+        var utunDelta: UTunTrafficCounters?
+        if let current {
+            if let previous {
+                utunDelta = interfaceCounterDelta(previous: previous, current: current)
+            }
+            self.previous = current
+        }
+        if let currentExternal {
+            let delta = previousExternal.map {
+                interfaceCounterDelta(previous: $0, current: currentExternal)
+            } ?? nil
+            previousExternal = currentExternal
+            if delta != nil { publishExternalStatus(.active) }
+            if let delta {
+                publishReferenceSample(TrafficReferenceSample(
+                    externalDelta: delta,
+                    utunDelta: utunDelta ?? nil,
+                    sampledAt: Date()
+                ))
+            }
+        } else {
+            publishExternalStatus(.unavailable)
+        }
+        if let utunDelta {
+            publishStatus(.active)
+            stateLock.lock()
+            let accumulated = pendingDelta ?? UTunTrafficCounters(inBytes: 0, outBytes: 0)
+            pendingDelta = UTunTrafficCounters(
+                inBytes: accumulated.inBytes + utunDelta.inBytes,
+                outBytes: accumulated.outBytes + utunDelta.outBytes
+            )
+            stateLock.unlock()
+            if currentExternal == nil {
+                publishReferenceSample(TrafficReferenceSample(
+                    externalDelta: nil,
+                    utunDelta: utunDelta,
+                    sampledAt: Date()
+                ))
+            }
         }
     }
 

@@ -83,7 +83,9 @@ final class NettopRunner {
             self.process?.terminationHandler = nil
             if let process = self.process, process.isRunning {
                 process.terminate()
-                process.waitUntilExit()
+                // Bounded: a nettop that ignores SIGTERM must not hang quit,
+                // which reaches here synchronously from applicationWillTerminate.
+                waitForProcessExit(process, timeout: 1)
             }
             self.cleanupHandles()
             self.stdinPipe = nil
