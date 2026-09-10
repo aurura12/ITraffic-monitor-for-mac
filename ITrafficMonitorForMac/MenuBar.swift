@@ -144,7 +144,11 @@ final class TodayUsageModel: ObservableObject {
 }
 
 struct MenuBarSummaryView: View {
+    /// Rows shown in the live process list; the popover height is sized for it.
+    static let maxProcessRows = 5
+
     @EnvironmentObject private var i18n: LocalizationManager
+    @EnvironmentObject private var perAppRates: PerAppRateStore
     @ObservedObject var todayUsage: TodayUsageModel
 
     let onOpenDashboard: () -> Void
@@ -188,6 +192,10 @@ struct MenuBarSummaryView: View {
 
             Divider()
 
+            liveProcessesSection
+
+            Divider()
+
             HStack(spacing: 8) {
                 Button(i18n.text("Open Dashboard"), action: onOpenDashboard)
                     .keyboardShortcut(.defaultAction)
@@ -198,6 +206,47 @@ struct MenuBarSummaryView: View {
         }
         .padding(16)
         .frame(width: 320)
+    }
+
+    private var liveProcessRows: [LiveProcessRow] {
+        Array(perAppRates.topProcesses.prefix(Self.maxProcessRows))
+    }
+
+    /// Which processes are using the network right now — the app's headline
+    /// feature, driven live from the per-frame rates.
+    @ViewBuilder
+    private var liveProcessesSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(i18n.text("Current Processes"))
+                .font(.caption)
+                .foregroundColor(.secondary)
+            if liveProcessRows.isEmpty {
+                Text(i18n.text("No active traffic"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(liveProcessRows) { row in
+                    HStack(spacing: 6) {
+                        if let icon = row.icon {
+                            Image(nsImage: icon)
+                                .resizable()
+                                .frame(width: 14, height: 14)
+                        }
+                        Text(row.displayName)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 8)
+                        Text("↓ " + formatRatePerSecond(row.inRate))
+                            .foregroundColor(Theme.download)
+                            .monospacedDigit()
+                        Text("↑ " + formatRatePerSecond(row.outRate))
+                            .foregroundColor(Theme.upload)
+                            .monospacedDigit()
+                    }
+                    .font(.system(size: 11))
+                }
+            }
+        }
     }
 
     private func usageRow(title: String, bytes: Int, color: Color, symbol: String) -> some View {
@@ -238,6 +287,7 @@ final class MenuBarController: NSObject {
         statusItem.autosaveName = MenuBarStatusItemConfiguration.autosaveName
         configureStatusItem()
         configurePopover()
+        observeLiveProcesses()
         refreshTodayUsage()
         scheduleTodayUsageRefresh()
     }
@@ -294,6 +344,25 @@ final class MenuBarController: NSObject {
             )
             .withGlobalEnvironmentObjects()
         )
+    }
+
+    /// Keep the popover tall enough for the live process list, which grows and
+    /// shrinks as apps start and stop using the network.
+    private func observeLiveProcesses() {
+        SharedStore.perAppRateStore.$topProcesses
+            .receive(on: RunLoop.main)
+            .sink { [weak self] rows in
+                self?.resizePopoverToFit(processRows: rows.count)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func resizePopoverToFit(processRows: Int) {
+        let visible = min(processRows, MenuBarSummaryView.maxProcessRows)
+        // Caption plus one row per process, or the "no active traffic"
+        // placeholder, added to the base summary content.
+        let listHeight = 22 + (visible == 0 ? 18 : visible * 20) + 12
+        popover.contentSize = NSSize(width: 320, height: 214 + listHeight)
     }
 
     /// Query the current local day's total from the history database.

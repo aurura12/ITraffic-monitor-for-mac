@@ -364,6 +364,29 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(entity?.outBytes, 0)
     }
 
+    func testRateFormatterUsesFullUnitLadder() {
+        XCTAssertEqual(formatRatePerSecond(0), "0 B/s")
+        XCTAssertEqual(formatRatePerSecond(512), "512 B/s")
+        XCTAssertEqual(formatRatePerSecond(1024), "1.0 KB/s")
+        XCTAssertEqual(formatRatePerSecond(1024 * 1024), "1.0 MB/s")
+        XCTAssertEqual(formatRatePerSecond(1024 * 1024 * 1024), "1.00 GB/s")
+    }
+
+    func testPerAppRateStoreRanksLiveProcessesByCombinedRate() {
+        let store = PerAppRateStore()
+        store.update(
+            entities: [
+                ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 2048, outBytes: 0),
+                ProcessEntity(pid: 4_000_002, name: "beta", inBytes: 4096, outBytes: 4096),
+                ProcessEntity(pid: 4_000_003, name: "idle", inBytes: 0, outBytes: 0)
+            ],
+            interval: 2
+        )
+
+        XCTAssertEqual(store.topProcesses.map(\.displayName), ["beta", "alpha"])
+        XCTAssertEqual(store.topProcesses.first?.inRate, 2048)
+    }
+
     func testHelperProcessUsesParentAppNameInsteadOfTruncatedProcessName() {
         let name = preferredDisplayName(
             applicationName: "WeChat",

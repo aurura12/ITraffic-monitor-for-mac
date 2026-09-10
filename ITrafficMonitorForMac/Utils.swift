@@ -20,6 +20,18 @@ func formatBytes(bytes: Int) -> String {
     return String(format:"%.1f MB/s", kbyte / 1024)
 }
 
+/// Rate formatter for live per-second values, with a full unit ladder:
+/// "0 B/s", "512 B/s", "12.3 KB/s", "1.2 MB/s", "3.40 GB/s".
+func formatRatePerSecond(_ bytesPerSecond: Double) -> String {
+    let value = max(0, bytesPerSecond)
+    if value < 1024 { return String(format: "%.0f B/s", value) }
+    let kb = value / 1024
+    if kb < 1024 { return String(format: "%.1f KB/s", kb) }
+    let mb = kb / 1024
+    if mb < 1024 { return String(format: "%.1f MB/s", mb) }
+    return String(format: "%.2f GB/s", mb / 1024)
+}
+
 /// Total-bytes formatter (no rate suffix): "512 B", "12.3 KB", "1.2 MB", "3.4 GB".
 func formatBytesTotal(bytes: Int) -> String {
     let b = Double(bytes)
