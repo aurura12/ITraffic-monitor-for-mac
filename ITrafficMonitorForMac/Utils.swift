@@ -51,12 +51,13 @@ private final class ProcessOutputBox {
 }
 
 /// Runs a short-lived helper binary and returns its stdout, or nil if it could
-/// not be spawned.
+/// not be spawned or overran `timeout`.
 ///
 /// stdout is read on a background queue because `readDataToEndOfFile()` only
-/// returns once the child closes it, so a child that hangs would otherwise
-/// block the caller forever. If the child has not exited within `timeout`
-/// seconds it is terminated (then SIGKILLed).
+/// returns once the child closes it. The deadline, however, is tied to process
+/// *exit*, not to stdout EOF: a child that closes stdout but keeps running must
+/// still be terminated. On timeout the child is terminated, then SIGKILLed if
+/// needed, and reaped.
 func runProcessCollectingOutput(
     executable: String,
     arguments: [String],
@@ -80,15 +81,25 @@ func runProcessCollectingOutput(
         box.data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
         readDone.signal()
     }
+    let exitDone = DispatchSemaphore(value: 0)
+    DispatchQueue.global(qos: .utility).async {
+        process.waitUntilExit()
+        exitDone.signal()
+    }
 
-    if readDone.wait(timeout: .now() + timeout) == .timedOut {
+    if exitDone.wait(timeout: .now() + timeout) == .timedOut {
         process.terminate()
-        if readDone.wait(timeout: .now() + 1) == .timedOut {
+        if exitDone.wait(timeout: .now() + 1) == .timedOut {
             kill(process.processIdentifier, SIGKILL)
+            _ = exitDone.wait(timeout: .now() + 1)
         }
+        // Let the reader observe EOF and make sure the child is reaped.
+        _ = readDone.wait(timeout: .now() + 1)
+        process.waitUntilExit()
         return nil
     }
-    process.waitUntilExit()
+    // The child exited; its stdout is closed, so this returns promptly.
+    _ = readDone.wait(timeout: .now() + 1)
     return String(data: box.data, encoding: .utf8)
 }
 
@@ -97,16 +108,20 @@ func runProcessCollectingOutput(
 @discardableResult
 func waitForProcessExit(_ process: Process, timeout: TimeInterval) -> Bool {
     guard process.isRunning else { return true }
-    let semaphore = DispatchSemaphore(value: 0)
-    process.terminationHandler = { _ in semaphore.signal() }
-    if semaphore.wait(timeout: .now() + timeout) == .success {
+    let exited = DispatchSemaphore(value: 0)
+    DispatchQueue.global(qos: .utility).async {
+        process.waitUntilExit()
+        exited.signal()
+    }
+    if exited.wait(timeout: .now() + timeout) == .success {
         return true
     }
     process.terminate()
-    if semaphore.wait(timeout: .now() + 1) == .success {
+    if exited.wait(timeout: .now() + 1) == .success {
         return false
     }
     kill(process.processIdentifier, SIGKILL)
+    _ = exited.wait(timeout: .now() + 1)
     return false
 }
 

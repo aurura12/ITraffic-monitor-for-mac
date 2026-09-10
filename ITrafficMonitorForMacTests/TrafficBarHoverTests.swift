@@ -408,6 +408,32 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(store.topProcesses.first?.inRate, 2048)
     }
 
+    func testProcessHelperReturnsOutput() {
+        let output = runProcessCollectingOutput(
+            executable: "/bin/echo",
+            arguments: ["hello"],
+            timeout: 2
+        )
+
+        XCTAssertEqual(output?.trimmingCharacters(in: .whitespacesAndNewlines), "hello")
+    }
+
+    func testProcessHelperTimesOutWhenStdoutClosesButChildKeepsRunning() {
+        // The child closes stdout immediately and then execs a long sleep. A
+        // deadline tied to stdout EOF would settle instantly and then block
+        // forever in waitUntilExit; the deadline must follow the process.
+        let start = Date()
+        let output = runProcessCollectingOutput(
+            executable: "/bin/sh",
+            arguments: ["-c", "exec 1>&-; exec sleep 30"],
+            timeout: 0.5
+        )
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertNil(output)
+        XCTAssertLessThan(elapsed, 10)
+    }
+
     func testHelperProcessUsesParentAppNameInsteadOfTruncatedProcessName() {
         let name = preferredDisplayName(
             applicationName: "WeChat",
