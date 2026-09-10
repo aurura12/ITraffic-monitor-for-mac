@@ -19,14 +19,14 @@ final class PerAppRateStore: ObservableObject {
 
     /// Aggregate one frame's entities into rates (bytes/sec) keyed by appKey.
     /// Call on the main thread.
-    func update(entities: [ProcessEntity], interval: Int) {
+    func update(entities: [ProcessEntity], interval: TimeInterval) {
         guard interval > 0 else { return }
         var d: [String: RatePair] = [:]
         for e in entities where e.inBytes > 0 || e.outBytes > 0 {
             let r = d[e.appKey] ?? RatePair(inRate: 0, outRate: 0)
             d[e.appKey] = RatePair(
-                inRate: r.inRate + Double(e.inBytes) / Double(interval),
-                outRate: r.outRate + Double(e.outBytes) / Double(interval)
+                inRate: r.inRate + Double(e.inBytes) / interval,
+                outRate: r.outRate + Double(e.outBytes) / interval
             )
         }
         latest = d

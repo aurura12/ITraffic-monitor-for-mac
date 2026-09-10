@@ -16,8 +16,8 @@ class Network {
 
     private lazy var runner: NettopRunner = {
         let r = NettopRunner(interval: interval)
-        r.onFrame = { [weak self] lines in
-            self?.handleFrame(lines)
+        r.onFrame = { [weak self] lines, seconds in
+            self?.handleFrame(lines, interval: seconds)
         }
         r.onRestart = {
             SharedStore.trafficSamplingDiagnostics.markNettopRestart()
@@ -33,7 +33,7 @@ class Network {
         runner.stop()
     }
 
-    private func handleFrame(_ lines: [String]) {
+    private func handleFrame(_ lines: [String], interval seconds: TimeInterval) {
         let capturedAt = Date()
         let sampleID = UUID().uuidString
         var totalInBytes = 0
@@ -68,15 +68,17 @@ class Network {
             rawOutBytes: totalOutBytes
         )
 
-        // parser stores raw delta bytes; convert to bytes/sec for the status bar.
-        let inRate  = totalInBytes / interval
-        let outRate = totalOutBytes / interval
+        // parser stores raw delta bytes; convert to bytes/sec for the status
+        // bar using the frame's measured interval, not a fixed constant.
+        let safeSeconds = max(seconds, 0.001)
+        let inRate  = Int(Double(totalInBytes) / safeSeconds)
+        let outRate = Int(Double(totalOutBytes) / safeSeconds)
 
         DispatchQueue.main.async {
             self.statusDataModel.update(totalInBytes: inRate, totalOutBytes: outRate)
             self.viewModel.updateData(newItems: entities)
             SharedStore.realtimeRateStore.append(inRate: Double(inRate), outRate: Double(outRate))
-            SharedStore.perAppRateStore.update(entities: entities, interval: self.interval)
+            SharedStore.perAppRateStore.update(entities: entities, interval: safeSeconds)
         }
     }
 

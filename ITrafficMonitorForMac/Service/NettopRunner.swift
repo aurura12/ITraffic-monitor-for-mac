@@ -19,8 +19,9 @@
 import Foundation
 
 final class NettopRunner {
-    /// Called once per nettop refresh with one frame's CSV lines (header dropped).
-    var onFrame: (([String]) -> Void)?
+    /// Called once per nettop refresh with one frame's CSV lines (header
+    /// dropped) and the seconds elapsed since the previous flush.
+    var onFrame: (([String], TimeInterval) -> Void)?
     /// Called when a running nettop process terminates and sampling may have a gap.
     var onRestart: (() -> Void)?
 
@@ -39,6 +40,7 @@ final class NettopRunner {
     private var restartWork: DispatchWorkItem?
     private var droppedFirstFrame = false
     private var shouldRestart = false
+    private var lastFrameAt: Date?
     private let processConfigurator: (Process, Int) -> Void
 
     init(
@@ -115,6 +117,7 @@ final class NettopRunner {
         self.lineBuffer.removeAll(keepingCapacity: true)
         self.frameLines.removeAll(keepingCapacity: true)
         self.droppedFirstFrame = false
+        self.lastFrameAt = nil
 
         stdout.fileHandleForReading.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -187,12 +190,20 @@ final class NettopRunner {
         let frame = frameLines
         frameLines.removeAll(keepingCapacity: true)
 
+        let now = Date()
+        let measured = lastFrameAt.map { now.timeIntervalSince($0) } ?? Double(interval)
+        lastFrameAt = now
+        // Frames are nominally `interval` seconds apart, but the read-idle
+        // debounce can merge or split them. Allow a 2x swing before clamping
+        // so a burst or a stalled read cannot skew the reported rate.
+        let seconds = min(max(measured, Double(interval) / 2), Double(interval) * 2)
+
         // First frame after spawn contains cumulative-since-boot values, not delta.
         guard droppedFirstFrame else {
             droppedFirstFrame = true
             return
         }
-        onFrame?(frame)
+        onFrame?(frame, seconds)
     }
 
     private func cleanupHandles() {
