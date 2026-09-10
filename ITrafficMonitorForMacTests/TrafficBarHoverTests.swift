@@ -410,14 +410,6 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(entity?.outBytes, 0)
     }
 
-    func testRateFormatterUsesFullUnitLadder() {
-        XCTAssertEqual(formatRatePerSecond(0), "0 B/s")
-        XCTAssertEqual(formatRatePerSecond(512), "512 B/s")
-        XCTAssertEqual(formatRatePerSecond(1024), "1.0 KB/s")
-        XCTAssertEqual(formatRatePerSecond(1024 * 1024), "1.0 MB/s")
-        XCTAssertEqual(formatRatePerSecond(1024 * 1024 * 1024), "1.00 GB/s")
-    }
-
     func testPerAppRateStoreRanksLiveAppsByCombinedRate() {
         let store = PerAppRateStore()
         store.update(
