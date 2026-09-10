@@ -349,6 +349,21 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNil(Network().parser(text: "\"My, Browser.42,100,200"))
     }
 
+    func testNettopParserRejectsNonNumericFieldsInsteadOfCoercingToZero() {
+        // A row with a non-numeric byte field or PID must be rejected so it is
+        // counted as dropped, not kept with a zeroed field.
+        XCTAssertNil(Network().parser(text: "Foo.123,abc,200,"))
+        XCTAssertNil(Network().parser(text: "Foo.123,100,xyz,"))
+        XCTAssertNil(Network().parser(text: "Foo.bar,100,200,"))
+    }
+
+    func testNettopParserClampsNegativeByteDeltaToZero() {
+        let entity = Network().parser(text: "Foo.123,-5,200,")
+
+        XCTAssertEqual(entity?.inBytes, 0)
+        XCTAssertEqual(entity?.outBytes, 200)
+    }
+
     func testNettopHeaderLineIsRecognizedAndNotADataRow() {
         XCTAssertTrue(isNettopHeaderLine(",bytes_in,bytes_out,"))
         XCTAssertFalse(isNettopHeaderLine("Codex (Service).1084,6264839,0,"))

@@ -95,20 +95,29 @@ class Network {
         if item.count < 3 {
             return nil
         }
-        // Store raw delta bytes; rate is computed once at the aggregation point.
-        let inBytes  = max(0, Int(item[1].trimmingCharacters(in: .whitespaces)) ?? 0)
-        let outBytes = max(0, Int(item[2].trimmingCharacters(in: .whitespaces)) ?? 0)
-
-        let nameAndPid = item[0].split(separator: ".")
-        guard nameAndPid.count >= 2 else {
+        // Store raw delta bytes; rate is computed once at the aggregation
+        // point. Reject a row whose fields are not numbers instead of coercing
+        // them to 0, so malformed input is counted rather than silently kept.
+        guard let parsedIn = Int(item[1].trimmingCharacters(in: .whitespaces)),
+              let parsedOut = Int(item[2].trimmingCharacters(in: .whitespaces)) else {
             return nil
         }
-        let pid = nameAndPid[nameAndPid.count - 1]
+        // nettop can report a negative delta when a counter resets; clamp that
+        // to 0 rather than dropping the row's other direction.
+        let inBytes = max(0, parsedIn)
+        let outBytes = max(0, parsedOut)
+
+        let nameAndPid = item[0].split(separator: ".")
+        guard nameAndPid.count >= 2,
+              let pid = Int(nameAndPid[nameAndPid.count - 1]) else {
+            return nil
+        }
         var name = nameAndPid
         name.removeLast()
+        guard !name.isEmpty else { return nil }
 
         return ProcessEntity(
-            pid: Int(pid) ?? 0,
+            pid: pid,
             name: name.joined(separator: "."),
             inBytes: inBytes,
             outBytes: outBytes
