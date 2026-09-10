@@ -349,6 +349,21 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNil(Network().parser(text: "\"My, Browser.42,100,200"))
     }
 
+    func testNettopHeaderLineIsRecognizedAndNotADataRow() {
+        XCTAssertTrue(isNettopHeaderLine(",bytes_in,bytes_out,"))
+        XCTAssertFalse(isNettopHeaderLine("Codex (Service).1084,6264839,0,"))
+        XCTAssertNil(Network().parser(text: ",bytes_in,bytes_out,"))
+    }
+
+    func testNettopParserHandlesRealFrameRowWithSpacesAndTrailingComma() {
+        let entity = Network().parser(text: "Codex (Service).1084,6264839,0,")
+
+        XCTAssertEqual(entity?.name, "Codex (Service)")
+        XCTAssertEqual(entity?.pid, 1084)
+        XCTAssertEqual(entity?.inBytes, 6_264_839)
+        XCTAssertEqual(entity?.outBytes, 0)
+    }
+
     func testHelperProcessUsesParentAppNameInsteadOfTruncatedProcessName() {
         let name = preferredDisplayName(
             applicationName: "WeChat",

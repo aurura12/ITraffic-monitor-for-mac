@@ -154,6 +154,11 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                if sampling.snapshot.droppedNettopRows > 0 {
+                    Text(i18n.text("Skipped nettop rows") + ": \(sampling.snapshot.droppedNettopRows)")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
                 diagnosticCounterRow(
                     title: i18n.text("nettop delta"),
                     value: sampling.snapshot.latestNettopDelta

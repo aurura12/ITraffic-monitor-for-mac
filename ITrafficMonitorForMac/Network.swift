@@ -38,8 +38,15 @@ class Network {
         let sampleID = UUID().uuidString
         var totalInBytes = 0
         var totalOutBytes = 0
+        var droppedRows = 0
         let rawEntities: [ProcessEntity] = lines.compactMap { line -> ProcessEntity? in
-            guard let entity = parser(text: line) else { return nil }
+            // The column header is reprinted every frame; it is not a row that
+            // failed to parse.
+            if isNettopHeaderLine(line) { return nil }
+            guard let entity = parser(text: line) else {
+                droppedRows += 1
+                return nil
+            }
             totalInBytes += entity.inBytes
             totalOutBytes += entity.outBytes
             return entity
@@ -50,6 +57,7 @@ class Network {
             outBytes: totalOutBytes,
             capturedAt: capturedAt
         )
+        SharedStore.trafficSamplingDiagnostics.recordDroppedNettopRows(droppedRows)
 
         // Re-attribute only bytes already present in this raw nettop frame.
         // The proxy attributor is a bounded allocator: it cannot add bytes or
@@ -108,10 +116,16 @@ class Network {
     }
 }
 
+/// nettop reprints its column header at the very start of every frame (for
+/// example `,bytes_in,bytes_out,`). Those fields are labels, not a process
+/// row, so they must not be reported as a row that failed to parse.
+func isNettopHeaderLine(_ line: String) -> Bool {
+    line.contains("bytes_in") || line.contains("bytes_out")
+}
+
 /// Parse the small CSV subset emitted by nettop. Process names can be quoted
 /// and contain commas, so splitting on every comma is not safe.
-func parseNettopCSVFields(_ text: String) -> [String]? {
-    var fields: [String] = []
+func parseNettopCSVFields(_ text: String) -> [String]? {    var fields: [String] = []
     var field = ""
     var quoted = false
     let characters = Array(text)

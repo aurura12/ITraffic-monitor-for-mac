@@ -13,6 +13,9 @@ struct TrafficSamplingSnapshot: Equatable {
     var latestNettopDelta: UTunTrafficCounters?
     var latestExternalDelta: UTunTrafficCounters?
     var latestUTunDelta: UTunTrafficCounters?
+    /// Cumulative nettop rows that could not be parsed, so their bytes are
+    /// missing from the recorded totals.
+    var droppedNettopRows: Int = 0
 }
 
 final class TrafficSamplingDiagnostics: ObservableObject {
@@ -32,6 +35,15 @@ final class TrafficSamplingDiagnostics: ObservableObject {
     func markNettopRestart() {
         update { snapshot in
             snapshot.nettopStatus = nextNettopSamplingStatus(snapshot.nettopStatus, event: .restart)
+        }
+    }
+
+    /// Counts nettop rows that failed to parse. Their bytes never enter the
+    /// totals, so a non-zero value means recorded traffic is understated.
+    func recordDroppedNettopRows(_ count: Int) {
+        guard count > 0 else { return }
+        update { snapshot in
+            snapshot.droppedNettopRows += count
         }
     }
 
