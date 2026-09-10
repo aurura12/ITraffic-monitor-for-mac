@@ -1,4 +1,5 @@
 import XCTest
+import AppKit
 import CoreGraphics
 import SwiftUI
 @testable import ITraffic
@@ -9,6 +10,26 @@ final class TrafficBarHoverTests: XCTestCase {
             MenuBarStatusItemConfiguration.autosaveName,
             "com.foamzou.ITrafficMonitorV2.menuBar"
         )
+    }
+
+    func testMenuBarPopoverOmitsCurrentAppsSection() {
+        SharedStore.perAppRateStore.topApps = [
+            LiveAppRow(
+                id: "com.example.current-app",
+                displayName: "Current App",
+                inRate: 1,
+                outRate: 1
+            )
+        ]
+        defer { SharedStore.perAppRateStore.clear() }
+
+        let controller = MenuBarController()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let popover = Mirror(reflecting: controller).children
+            .compactMap { $0.value as? NSPopover }
+            .first
+
+        XCTAssertEqual(popover?.contentSize, NSSize(width: 320, height: 214))
     }
 
     func testDashboardLaunchFlagIsOptIn() {

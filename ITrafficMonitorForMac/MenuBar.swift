@@ -144,11 +144,7 @@ final class TodayUsageModel: ObservableObject {
 }
 
 struct MenuBarSummaryView: View {
-    /// Rows shown in the live app list; the popover height is sized for it.
-    static let maxAppRows = 5
-
     @EnvironmentObject private var i18n: LocalizationManager
-    @EnvironmentObject private var perAppRates: PerAppRateStore
     @ObservedObject var todayUsage: TodayUsageModel
 
     let onOpenDashboard: () -> Void
@@ -192,10 +188,6 @@ struct MenuBarSummaryView: View {
 
             Divider()
 
-            liveAppsSection
-
-            Divider()
-
             HStack(spacing: 8) {
                 Button(i18n.text("Open Dashboard"), action: onOpenDashboard)
                     .keyboardShortcut(.defaultAction)
@@ -206,45 +198,6 @@ struct MenuBarSummaryView: View {
         }
         .padding(16)
         .frame(width: 320)
-    }
-
-    private var liveAppRows: [LiveAppRow] {
-        Array(perAppRates.topApps.prefix(Self.maxAppRows))
-    }
-
-    /// Which apps are using the network right now, driven live from the
-    /// per-frame rates. Rows aggregate by app, like the dashboard ranking.
-    @ViewBuilder
-    private var liveAppsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(i18n.text("Current Apps"))
-                .font(.caption)
-                .foregroundColor(.secondary)
-            if liveAppRows.isEmpty {
-                Text(i18n.text("No active traffic"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } else {
-                ForEach(liveAppRows) { row in
-                    HStack(spacing: 6) {
-                        Image(nsImage: iconForAppKey(row.id))
-                            .resizable()
-                            .frame(width: 14, height: 14)
-                        Text(row.displayName)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                        Spacer(minLength: 8)
-                        Text("↓ " + formatRatePerSecond(row.inRate))
-                            .foregroundColor(Theme.download)
-                            .monospacedDigit()
-                        Text("↑ " + formatRatePerSecond(row.outRate))
-                            .foregroundColor(Theme.upload)
-                            .monospacedDigit()
-                    }
-                    .font(.system(size: 11))
-                }
-            }
-        }
     }
 
     private func usageRow(title: String, bytes: Int, color: Color, symbol: String) -> some View {
@@ -285,7 +238,6 @@ final class MenuBarController: NSObject {
         statusItem.autosaveName = MenuBarStatusItemConfiguration.autosaveName
         configureStatusItem()
         configurePopover()
-        observeLiveApps()
         refreshTodayUsage()
         scheduleTodayUsageRefresh()
     }
@@ -342,25 +294,6 @@ final class MenuBarController: NSObject {
             )
             .withGlobalEnvironmentObjects()
         )
-    }
-
-    /// Keep the popover tall enough for the live app list, which grows and
-    /// shrinks as apps start and stop using the network.
-    private func observeLiveApps() {
-        SharedStore.perAppRateStore.$topApps
-            .receive(on: RunLoop.main)
-            .sink { [weak self] rows in
-                self?.resizePopoverToFit(appRows: rows.count)
-            }
-            .store(in: &cancellables)
-    }
-
-    private func resizePopoverToFit(appRows: Int) {
-        let visible = min(appRows, MenuBarSummaryView.maxAppRows)
-        // Caption plus one row per app, or the "no active traffic"
-        // placeholder, added to the base summary content.
-        let listHeight = 22 + (visible == 0 ? 18 : visible * 20) + 12
-        popover.contentSize = NSSize(width: 320, height: 214 + listHeight)
     }
 
     /// Query the current local day's total from the history database.
