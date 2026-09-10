@@ -21,6 +21,13 @@ class Network {
         }
         r.onRestart = {
             SharedStore.trafficSamplingDiagnostics.markNettopRestart()
+            // Sampling may not resume (a restart can keep failing), so drop the
+            // now-stale live values rather than showing the last frame's rates.
+            DispatchQueue.main.async {
+                SharedStore.perAppRateStore.clear()
+                SharedStore.listViewModel.clear()
+                SharedStore.statusDataModel.update(totalInBytes: 0, totalOutBytes: 0)
+            }
         }
         return r
     }()

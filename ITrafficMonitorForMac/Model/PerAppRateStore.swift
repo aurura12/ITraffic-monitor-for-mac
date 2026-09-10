@@ -60,4 +60,11 @@ final class PerAppRateStore: ObservableObject {
             }
             .sorted { $0.totalRate > $1.totalRate }
     }
+
+    /// Drop the live values, e.g. when sampling stops, so the UI does not keep
+    /// showing the last frame's rates.
+    func clear() {
+        latest = [:]
+        topApps = []
+    }
 }

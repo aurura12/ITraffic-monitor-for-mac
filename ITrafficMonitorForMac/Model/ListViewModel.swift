@@ -38,6 +38,12 @@ class ListViewModel: ObservableObject {
         items = sort(items: items)
     }
     
+    /// Drop all rows, e.g. when sampling stops, so the list does not keep
+    /// showing processes that are no longer being measured.
+    func clear() {
+        items = []
+    }
+
     func sort(items: [ProcessEntity]) -> [ProcessEntity] {
         return items.sorted {  (lhs:ProcessEntity, rhs:ProcessEntity) in
             let lTotalBytes = lhs.inBytes + lhs.outBytes

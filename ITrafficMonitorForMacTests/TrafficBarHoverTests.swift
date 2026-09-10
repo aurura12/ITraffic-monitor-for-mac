@@ -412,6 +412,32 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(store.topApps.first?.inRate, 2048)
     }
 
+    func testPerAppRateStoreClearDropsLiveValues() {
+        let store = PerAppRateStore()
+        store.update(
+            entities: [ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 2048, outBytes: 0)],
+            interval: 2
+        )
+        XCTAssertFalse(store.topApps.isEmpty)
+
+        store.clear()
+
+        XCTAssertTrue(store.topApps.isEmpty)
+        XCTAssertTrue(store.latest.isEmpty)
+    }
+
+    func testListViewModelClearDropsRows() {
+        let viewModel = ListViewModel()
+        viewModel.updateData(newItems: [
+            ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 1, outBytes: 0)
+        ])
+        XCTAssertFalse(viewModel.items.isEmpty)
+
+        viewModel.clear()
+
+        XCTAssertTrue(viewModel.items.isEmpty)
+    }
+
     func testProcessHelperReturnsOutput() {
         let output = runProcessCollectingOutput(
             executable: "/bin/echo",
