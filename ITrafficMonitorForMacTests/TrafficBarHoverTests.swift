@@ -1,5 +1,4 @@
 import XCTest
-import AppKit
 import CoreGraphics
 import SwiftUI
 @testable import ITraffic
@@ -10,26 +9,6 @@ final class TrafficBarHoverTests: XCTestCase {
             MenuBarStatusItemConfiguration.autosaveName,
             "com.foamzou.ITrafficMonitorV2.menuBar"
         )
-    }
-
-    func testMenuBarPopoverOmitsCurrentAppsSection() {
-        SharedStore.perAppRateStore.topApps = [
-            LiveAppRow(
-                id: "com.example.current-app",
-                displayName: "Current App",
-                inRate: 1,
-                outRate: 1
-            )
-        ]
-        defer { SharedStore.perAppRateStore.clear() }
-
-        let controller = MenuBarController()
-        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-        let popover = Mirror(reflecting: controller).children
-            .compactMap { $0.value as? NSPopover }
-            .first
-
-        XCTAssertEqual(popover?.contentSize, NSSize(width: 320, height: 214))
     }
 
     func testDashboardLaunchFlagIsOptIn() {
@@ -410,19 +389,21 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(entity?.outBytes, 0)
     }
 
-    func testPerAppRateStoreRanksLiveAppsByCombinedRate() {
+    func testPerAppRateStoreAggregatesRatesByAppKey() {
         let store = PerAppRateStore()
         store.update(
             entities: [
-                ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 2048, outBytes: 0),
-                ProcessEntity(pid: 4_000_002, name: "beta", inBytes: 4096, outBytes: 4096),
+                ProcessEntity(pid: 4_000_001, name: "node", inBytes: 2048, outBytes: 0),
+                ProcessEntity(pid: 4_000_002, name: "node", inBytes: 2048, outBytes: 1024),
                 ProcessEntity(pid: 4_000_003, name: "idle", inBytes: 0, outBytes: 0)
             ],
             interval: 2
         )
 
-        XCTAssertEqual(store.topApps.map(\.displayName), ["beta", "alpha"])
-        XCTAssertEqual(store.topApps.first?.inRate, 2048)
+        // Both "node" rows share an appKey, and the idle row is dropped.
+        XCTAssertEqual(store.latest.count, 1)
+        XCTAssertEqual(store.latest["node"]?.inRate, 2048)
+        XCTAssertEqual(store.latest["node"]?.outRate, 512)
     }
 
     func testPerAppRateStoreClearDropsLiveValues() {
@@ -431,11 +412,10 @@ final class TrafficBarHoverTests: XCTestCase {
             entities: [ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 2048, outBytes: 0)],
             interval: 2
         )
-        XCTAssertFalse(store.topApps.isEmpty)
+        XCTAssertFalse(store.latest.isEmpty)
 
         store.clear()
 
-        XCTAssertTrue(store.topApps.isEmpty)
         XCTAssertTrue(store.latest.isEmpty)
     }
 
