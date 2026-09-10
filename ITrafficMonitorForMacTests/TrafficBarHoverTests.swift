@@ -406,6 +406,32 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(store.latest["node"]?.outRate, 512)
     }
 
+    func testPerAppRateStorePicksBusiestAppByCombinedRate() {
+        let store = PerAppRateStore()
+        store.update(
+            entities: [
+                ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 2048, outBytes: 0),
+                ProcessEntity(pid: 4_000_002, name: "beta", inBytes: 4096, outBytes: 4096),
+                ProcessEntity(pid: 4_000_003, name: "idle", inBytes: 0, outBytes: 0)
+            ],
+            interval: 2
+        )
+
+        XCTAssertEqual(store.topApp?.displayName, "beta")
+        XCTAssertEqual(store.topApp?.inRate, 2048)
+        XCTAssertEqual(store.topApp?.outRate, 2048)
+    }
+
+    func testPerAppRateStoreTopAppIsNilWithoutTraffic() {
+        let store = PerAppRateStore()
+        store.update(
+            entities: [ProcessEntity(pid: 4_000_001, name: "idle", inBytes: 0, outBytes: 0)],
+            interval: 2
+        )
+
+        XCTAssertNil(store.topApp)
+    }
+
     func testPerAppRateStoreClearDropsLiveValues() {
         let store = PerAppRateStore()
         store.update(
@@ -413,10 +439,12 @@ final class TrafficBarHoverTests: XCTestCase {
             interval: 2
         )
         XCTAssertFalse(store.latest.isEmpty)
+        XCTAssertNotNil(store.topApp)
 
         store.clear()
 
         XCTAssertTrue(store.latest.isEmpty)
+        XCTAssertNil(store.topApp)
     }
 
     func testListViewModelClearDropsRows() {

@@ -145,6 +145,7 @@ final class TodayUsageModel: ObservableObject {
 
 struct MenuBarSummaryView: View {
     @EnvironmentObject private var i18n: LocalizationManager
+    @EnvironmentObject private var perAppRates: PerAppRateStore
     @ObservedObject var todayUsage: TodayUsageModel
 
     let onOpenDashboard: () -> Void
@@ -188,6 +189,10 @@ struct MenuBarSummaryView: View {
 
             Divider()
 
+            busiestAppRow
+
+            Divider()
+
             HStack(spacing: 8) {
                 Button(i18n.text("Open Dashboard"), action: onOpenDashboard)
                     .keyboardShortcut(.defaultAction)
@@ -198,6 +203,35 @@ struct MenuBarSummaryView: View {
         }
         .padding(16)
         .frame(width: 320)
+    }
+
+    /// The app using the most bandwidth right now. A single row keeps the
+    /// popover a fixed size.
+    @ViewBuilder
+    private var busiestAppRow: some View {
+        HStack(spacing: 6) {
+            Text(i18n.text("Top App"))
+                .foregroundColor(.secondary)
+            Spacer(minLength: 8)
+            if let top = perAppRates.topApp {
+                Image(nsImage: iconForAppKey(top.appKey))
+                    .resizable()
+                    .frame(width: 14, height: 14)
+                Text(top.displayName)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text("↓ " + formatBytes(bytes: Int(top.inRate)))
+                    .foregroundColor(Theme.download)
+                    .monospacedDigit()
+                Text("↑ " + formatBytes(bytes: Int(top.outRate)))
+                    .foregroundColor(Theme.upload)
+                    .monospacedDigit()
+            } else {
+                Text(i18n.text("No active traffic"))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .font(.system(size: 11))
     }
 
     private func usageRow(title: String, bytes: Int, color: Color, symbol: String) -> some View {
@@ -284,7 +318,8 @@ final class MenuBarController: NSObject {
     private func configurePopover() {
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 320, height: 214)
+        // Base summary content plus the fixed one-line busiest-app row.
+        popover.contentSize = NSSize(width: 320, height: 268)
         popover.contentViewController = NSHostingController(
             rootView: MenuBarSummaryView(
                 todayUsage: todayUsage,
