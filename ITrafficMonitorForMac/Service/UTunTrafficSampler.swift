@@ -157,11 +157,15 @@ final class UTunTrafficSampler: ObservableObject {
         task.arguments = ["-ib"]
         let pipe = Pipe()
         task.standardOutput = pipe
-        task.standardError = Pipe()
+        task.standardError = FileHandle.nullDevice
         do {
             try task.run()
-            task.waitUntilExit()
+            // Drain stdout before waiting. Reading to EOF is what lets the
+            // child make progress, so wait-then-read can deadlock once the
+            // pipe buffer fills. stderr is discarded rather than left as an
+            // undrained pipe for the same reason.
             let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            task.waitUntilExit()
             let current = parseUTunInterfaceCounters(output)
             let currentExternal = parseExternalInterfaceCounters(output)
             guard current != nil || currentExternal != nil else {
