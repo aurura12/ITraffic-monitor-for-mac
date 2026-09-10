@@ -669,7 +669,10 @@ final class TrafficDatabase {
     /// Top apps by total (in+out) within [start, end).
     func topApps(start: Int, end: Int, limit: Int = 20, completion: @escaping ([AppTrafficRow]) -> Void) {
         dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
+            guard let self, let db = self.db else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             let names = self.displayNameMap()
             var rows: [AppTrafficRow] = []
             var stmt: OpaquePointer?
@@ -701,7 +704,10 @@ final class TrafficDatabase {
     /// Daily totals for a range (or a single app when appKey != nil).
     func dailyTraffic(start: Int, end: Int, appKey: String? = nil, completion: @escaping ([DayTrafficRow]) -> Void) {
         dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
+            guard let self, let db = self.db else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             var rows: [DayTrafficRow] = []
             var stmt: OpaquePointer?
             var sql = "SELECT day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ?"
@@ -730,7 +736,10 @@ final class TrafficDatabase {
     /// Sum of all traffic within [start, end).
     func totalTraffic(start: Int, end: Int, completion: @escaping (TrafficTotal) -> Void) {
         dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
+            guard let self, let db = self.db else {
+                DispatchQueue.main.async { completion(TrafficTotal(inBytes: 0, outBytes: 0)) }
+                return
+            }
             var inBytes = 0, outBytes = 0
             var stmt: OpaquePointer?
             let sql = "SELECT SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ?;"
@@ -782,7 +791,10 @@ final class TrafficDatabase {
     /// Per-app daily totals within [start, end). One row per (app_key, day).
     func trafficMatrix(start: Int, end: Int, completion: @escaping ([TrafficMatrixRow]) -> Void) {
         dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
+            guard let self, let db = self.db else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             let names = self.displayNameMap()
             var rows: [TrafficMatrixRow] = []
             var stmt: OpaquePointer?
@@ -815,7 +827,10 @@ final class TrafficDatabase {
     func trafficSeries(start: Int, end: Int, granularity: TimeSeriesGranularity,
                        completion: @escaping ([TrafficSeriesPoint]) -> Void) {
         dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
+            guard let self, let db = self.db else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             var rows: [TrafficSeriesPoint] = []
             var stmt: OpaquePointer?
             let sql: String
@@ -863,7 +878,10 @@ final class TrafficDatabase {
     func topAppsWithPeak(start: Int, end: Int, limit: Int = 20,
                          completion: @escaping ([AppPeakTrafficRow]) -> Void) {
         dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
+            guard let self, let db = self.db else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             let names = self.displayNameMap()
             var rows: [AppPeakTrafficRow] = []
             var stmt: OpaquePointer?
@@ -913,7 +931,10 @@ final class TrafficDatabase {
     func exportRows(start: Int, end: Int, granularity: ExportGranularity,
                     completion: @escaping ([ExportTrafficRow]) -> Void) {
         dbQueue.async { [weak self] in
-            guard let self, let db = self.db else { return }
+            guard let self, let db = self.db else {
+                DispatchQueue.main.async { completion([]) }
+                return
+            }
             let names = self.displayNameMap()
             let rows: [ExportTrafficRow]
             switch granularity {
