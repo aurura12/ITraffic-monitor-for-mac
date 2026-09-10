@@ -93,9 +93,10 @@ func runProcessCollectingOutput(
             kill(process.processIdentifier, SIGKILL)
             _ = exitDone.wait(timeout: .now() + 1)
         }
-        // Let the reader observe EOF and make sure the child is reaped.
+        // Let the reader observe EOF. The background waiter owns the Process
+        // and reaps it if it ever exits; waiting on it here would block the
+        // caller forever on a child that cannot be killed.
         _ = readDone.wait(timeout: .now() + 1)
-        process.waitUntilExit()
         return nil
     }
     // The child exited; its stdout is closed, so this returns promptly.
