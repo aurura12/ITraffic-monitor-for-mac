@@ -357,6 +357,10 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNil(Network().parser(text: "Foo.bar,100,200,"))
     }
 
+    func testNettopParserRejectsNegativePid() {
+        XCTAssertNil(Network().parser(text: "Foo.-1,100,200,"))
+    }
+
     func testNettopParserClampsNegativeByteDeltaToZero() {
         let entity = Network().parser(text: "Foo.123,-5,200,")
 

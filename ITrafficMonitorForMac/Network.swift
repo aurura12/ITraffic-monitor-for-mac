@@ -109,7 +109,8 @@ class Network {
 
         let nameAndPid = item[0].split(separator: ".")
         guard nameAndPid.count >= 2,
-              let pid = Int(nameAndPid[nameAndPid.count - 1]) else {
+              let pid = Int(nameAndPid[nameAndPid.count - 1]),
+              pid >= 0 else {
             return nil
         }
         var name = nameAndPid
