@@ -11,6 +11,29 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testMenuBarPopoverKeepsItsConfiguredHeightAfterInstallingContent() {
+        let controller = MenuBarController()
+        let popover = Mirror(reflecting: controller).children
+            .first { $0.label == "popover" }?.value as? NSPopover
+
+        guard let popover else {
+            XCTFail("MenuBarController should retain its popover")
+            return
+        }
+
+        guard let view = popover.contentViewController?.view else {
+            XCTFail("MenuBarController should install a content view")
+            return
+        }
+
+        XCTAssertEqual(popover.contentSize.width, CGFloat(320), accuracy: 0.1)
+        XCTAssertEqual(
+            popover.contentSize.height,
+            ceil(view.fittingSize.height),
+            accuracy: 0.1
+        )
+    }
+
     func testDashboardLaunchFlagIsOptIn() {
         XCTAssertTrue(shouldOpenDashboardAtLaunch(arguments: ["ITraffic", "--open-dashboard"]))
         XCTAssertFalse(shouldOpenDashboardAtLaunch(arguments: ["ITraffic"]))

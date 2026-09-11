@@ -324,9 +324,7 @@ final class MenuBarController: NSObject {
     private func configurePopover() {
         popover.behavior = .transient
         popover.animates = true
-        // Base summary content plus the fixed one-line busiest-app row.
-        popover.contentSize = NSSize(width: 320, height: 268)
-        popover.contentViewController = NSHostingController(
+        let contentViewController = NSHostingController(
             rootView: MenuBarSummaryView(
                 todayUsage: todayUsage,
                 onOpenDashboard: { [weak self] in self?.openDashboard() },
@@ -334,6 +332,16 @@ final class MenuBarController: NSObject {
                 onQuit: { [weak self] in self?.quit() }
             )
             .withGlobalEnvironmentObjects()
+        )
+        popover.contentViewController = contentViewController
+
+        // Keep the popover frame in sync with the SwiftUI view. A stale
+        // hard-coded height leaves the hosting view bottom-aligned and clips
+        // the header when the popover is shown again after another window was
+        // opened.
+        popover.contentSize = NSSize(
+            width: 320,
+            height: ceil(contentViewController.view.fittingSize.height)
         )
     }
 
