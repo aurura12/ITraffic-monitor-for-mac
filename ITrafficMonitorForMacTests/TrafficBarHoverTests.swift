@@ -422,6 +422,16 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(store.topApp?.outRate, 2048)
     }
 
+    func testMenuBarDoesNotExposeTheBusiestAppTitle() {
+        let localization = LocalizationManager.shared
+        let originalLanguage = localization.language
+        defer { localization.language = originalLanguage }
+
+        localization.language = .zhHans
+
+        XCTAssertEqual(localization.text("Top App"), "Top App")
+    }
+
     func testPerAppRateStoreTopAppIsNilWithoutTraffic() {
         let store = PerAppRateStore()
         store.update(

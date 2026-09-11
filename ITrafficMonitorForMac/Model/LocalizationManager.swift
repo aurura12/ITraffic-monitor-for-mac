@@ -69,7 +69,6 @@ final class LocalizationManager: ObservableObject {
         // Ranges / granularity
         "Today": "今天",
         "Today's Usage": "今日用量",
-        "Top App": "流量最大的应用",
         "7 Days": "7 天",
         "30 Days": "30 天",
         "90 Days": "90 天",

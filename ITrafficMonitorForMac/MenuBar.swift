@@ -205,27 +205,33 @@ struct MenuBarSummaryView: View {
         .frame(width: 320)
     }
 
-    /// The app using the most bandwidth right now. A single row keeps the
-    /// popover a fixed size.
+    /// The app using the most bandwidth right now, with its rates aligned to
+    /// the trailing edge of the row.
     @ViewBuilder
     private var busiestAppRow: some View {
         HStack(spacing: 6) {
-            Text(i18n.text("Top App"))
-                .foregroundColor(.secondary)
-            Spacer(minLength: 8)
             if let top = perAppRates.topApp {
-                Image(nsImage: iconForAppKey(top.appKey))
-                    .resizable()
-                    .frame(width: 14, height: 14)
-                Text(top.displayName)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text("↓ " + formatBytes(bytes: Int(top.inRate)))
-                    .foregroundColor(Theme.download)
-                    .monospacedDigit()
-                Text("↑ " + formatBytes(bytes: Int(top.outRate)))
-                    .foregroundColor(Theme.upload)
-                    .monospacedDigit()
+                HStack(spacing: 6) {
+                    Image(nsImage: iconForAppKey(top.appKey))
+                        .resizable()
+                        .frame(width: 14, height: 14)
+                    Text(top.displayName)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 6) {
+                    Text("↓ " + formatBytes(bytes: Int(top.inRate)))
+                        .foregroundColor(Theme.download)
+                        .monospacedDigit()
+                    Text("↑ " + formatBytes(bytes: Int(top.outRate)))
+                        .foregroundColor(Theme.upload)
+                        .monospacedDigit()
+                }
+                .fixedSize(horizontal: true, vertical: false)
             } else {
                 Text(i18n.text("No active traffic"))
                     .foregroundColor(.secondary)
