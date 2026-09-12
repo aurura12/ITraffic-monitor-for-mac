@@ -47,6 +47,12 @@ enum MenuBarStatusItemConfiguration {
     static let autosaveName = "com.foamzou.ITrafficMonitorV2.menuBar"
 }
 
+enum MenuBarPopoverConfiguration {
+    /// Do not leave a transient status-item popover stranded on screen if the
+    /// user clicks elsewhere without explicitly closing it.
+    static let autoDismissInterval: TimeInterval = 5
+}
+
 /// Compact rate format for the narrow, two-line status item.
 func formatMenuBarRate(bytes: Int) -> String {
     let kilobytes = Double(max(0, bytes)) / 1024
@@ -68,7 +74,6 @@ func formatMenuBarRate(bytes: Int) -> String {
 final class MenuBarRateView: NSView {
     private let downloadLabel = NSTextField(labelWithString: "↓ 0.0K/s")
     private let uploadLabel = NSTextField(labelWithString: "↑ 0.0K/s")
-    var onClick: (() -> Void)?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -115,14 +120,11 @@ final class MenuBarRateView: NSView {
         )
     }
 
-    override func mouseDown(with event: NSEvent) {
-        onClick?()
-    }
-
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // 菜单栏按钮上覆盖了文本子视图，原 button action 已不生效；
-        // 让整块区域（含文本行）统一由自身响应点击，避免子 label 拦截导致弹窗打不开。
-        bounds.contains(point) ? self : nil
+        // This view only renders the live rates. Let the enclosing
+        // NSStatusBarButton receive the click so its target/action remains
+        // reliable when the popover is already visible.
+        nil
     }
 }
 
@@ -260,6 +262,7 @@ final class MenuBarController: NSObject {
     private let rateView: MenuBarRateView
     private let todayUsage = TodayUsageModel()
     private var refreshTimer: Timer?
+    private var popoverDismissTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
 
     override init() {
@@ -284,6 +287,7 @@ final class MenuBarController: NSObject {
 
     deinit {
         refreshTimer?.invalidate()
+        popoverDismissTimer?.invalidate()
     }
 
     private func configureStatusItem() {
@@ -292,6 +296,8 @@ final class MenuBarController: NSObject {
         button.title = ""
         button.isBordered = false
         button.toolTip = AppDelegate.appDisplayName
+        button.target = self
+        button.action = #selector(togglePopover(_:))
         rateView.translatesAutoresizingMaskIntoConstraints = false
         button.addSubview(rateView)
         NSLayoutConstraint.activate([
@@ -300,7 +306,6 @@ final class MenuBarController: NSObject {
             rateView.topAnchor.constraint(equalTo: button.topAnchor),
             rateView.bottomAnchor.constraint(equalTo: button.bottomAnchor)
         ])
-        rateView.onClick = { [weak self] in self?.togglePopover(nil) }
         resizeToFitContent()
 
         SharedStore.statusDataModel.$totalInBytes
@@ -345,6 +350,27 @@ final class MenuBarController: NSObject {
         )
     }
 
+    private func schedulePopoverAutoDismiss() {
+        popoverDismissTimer?.invalidate()
+
+        let timer = Timer(
+            timeInterval: MenuBarPopoverConfiguration.autoDismissInterval,
+            repeats: false
+        ) { [weak self] _ in
+            guard let self else { return }
+            self.popoverDismissTimer = nil
+            guard self.popover.isShown else { return }
+            self.popover.performClose(nil)
+        }
+        popoverDismissTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func cancelPopoverAutoDismiss() {
+        popoverDismissTimer?.invalidate()
+        popoverDismissTimer = nil
+    }
+
     /// Query the current local day's total from the history database.
     private func refreshTodayUsage() {
         let day = dayIndex(for: Date(), calendar: .current)
@@ -366,25 +392,30 @@ final class MenuBarController: NSObject {
     @objc private func togglePopover(_ sender: Any?) {
         guard let button = statusItem.button else { return }
         if popover.isShown {
+            cancelPopoverAutoDismiss()
             popover.performClose(sender)
         } else {
             refreshTodayUsage()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
+            schedulePopoverAutoDismiss()
         }
     }
 
     private func openDashboard() {
+        cancelPopoverAutoDismiss()
         popover.performClose(nil)
         AppDelegate.showDashboard()
     }
 
     private func openSettings() {
+        cancelPopoverAutoDismiss()
         popover.performClose(nil)
         AppDelegate.showSettings()
     }
 
     private func quit() {
+        cancelPopoverAutoDismiss()
         popover.performClose(nil)
         NSApp.terminate(nil)
     }

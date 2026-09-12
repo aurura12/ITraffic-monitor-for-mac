@@ -34,6 +34,24 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testMenuBarPopoverUsesTransientBehaviorAndHasAnAutoDismissFallback() {
+        let controller = MenuBarController()
+        let popover = Mirror(reflecting: controller).children
+            .first { $0.label == "popover" }?.value as? NSPopover
+
+        XCTAssertEqual(popover?.behavior, .transient)
+        XCTAssertEqual(MenuBarPopoverConfiguration.autoDismissInterval, 5)
+    }
+
+    func testMenuBarRateOverlayLeavesStatusButtonInChargeOfClicks() {
+        let controller = MenuBarController()
+        let statusItem = Mirror(reflecting: controller).children
+            .first { $0.label == "statusItem" }?.value as? NSStatusItem
+
+        XCTAssertTrue(statusItem?.button?.target as AnyObject? === controller)
+        XCTAssertEqual(statusItem?.button?.action.map(NSStringFromSelector), "togglePopover:")
+    }
+
     func testDashboardLaunchFlagIsOptIn() {
         XCTAssertTrue(shouldOpenDashboardAtLaunch(arguments: ["ITraffic", "--open-dashboard"]))
         XCTAssertFalse(shouldOpenDashboardAtLaunch(arguments: ["ITraffic"]))
