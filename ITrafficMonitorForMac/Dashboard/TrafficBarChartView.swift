@@ -52,6 +52,27 @@ func trafficBarXAxisPosition(for value: Double, domain: ClosedRange<Double>) -> 
     return CGFloat(min(max((value - lowerBound) / span, 0), 1))
 }
 
+/// Rendered width of an X-axis tick label at the 9pt axis font size.
+func trafficBarXAxisTickLabelWidth(_ label: String) -> CGFloat {
+    let font = NSFont.systemFont(ofSize: 9)
+    return (label as NSString).size(withAttributes: [.font: font]).width
+}
+
+/// Centre x for an X-axis tick label, clamped so the text stays inside the
+/// plot area. Labels are centred on their tick, which would push the last
+/// label half past the right edge (and the first half past the left) where
+/// the enclosing ScrollView clips it.
+func trafficBarXAxisTickLabelCenter(
+    for position: CGFloat,
+    plotWidth: CGFloat,
+    labelWidth: CGFloat
+) -> CGFloat {
+    guard plotWidth > 0, labelWidth > 0 else { return 0 }
+    guard plotWidth > labelWidth else { return plotWidth / 2 }
+    let halfLabel = labelWidth / 2
+    return min(max(plotWidth * position, halfLabel), plotWidth - halfLabel)
+}
+
 enum TrafficBarXAxisBehavior: Equatable {
     case topPinned
 }
@@ -249,16 +270,24 @@ struct TrafficBarChartView: View {
 
                 ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
                     let pos = trafficBarXAxisPosition(for: tick, domain: xDomain)
+                    let label = tickLabel(tick)
                     Rectangle()
                         .fill(Theme.cardStroke)
                         .frame(width: 1, height: 5)
                         .position(x: plotWidth * pos, y: 2.5)
 
-                    Text(tickLabel(tick))
+                    Text(label)
                         .font(.system(size: 9))
                         .foregroundColor(.secondary)
                         .fixedSize()
-                        .position(x: plotWidth * pos, y: 13)
+                        .position(
+                            x: trafficBarXAxisTickLabelCenter(
+                                for: pos,
+                                plotWidth: plotWidth,
+                                labelWidth: trafficBarXAxisTickLabelWidth(label)
+                            ),
+                            y: 13
+                        )
                 }
             }
             .frame(width: plotWidth, height: 26, alignment: .topLeading)

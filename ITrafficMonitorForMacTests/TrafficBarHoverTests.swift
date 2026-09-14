@@ -135,6 +135,44 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(trafficBarXAxisBehavior(), .topPinned)
     }
 
+    func testUsageBarXAxisEdgeLabelsAreClampedInsideThePlotArea() {
+        let labelWidth: CGFloat = 40
+        let plotWidth: CGFloat = 300
+
+        // Interior ticks keep their centred position.
+        XCTAssertEqual(
+            trafficBarXAxisTickLabelCenter(for: 0.5, plotWidth: plotWidth, labelWidth: labelWidth),
+            plotWidth / 2,
+            accuracy: 0.001
+        )
+        // The last label is pulled in by half its width instead of overflowing
+        // the plot edge and being clipped by the scrolling container.
+        XCTAssertEqual(
+            trafficBarXAxisTickLabelCenter(for: 1, plotWidth: plotWidth, labelWidth: labelWidth),
+            plotWidth - labelWidth / 2,
+            accuracy: 0.001
+        )
+        // The first label is pushed in the same way.
+        XCTAssertEqual(
+            trafficBarXAxisTickLabelCenter(for: 0, plotWidth: plotWidth, labelWidth: labelWidth),
+            labelWidth / 2,
+            accuracy: 0.001
+        )
+    }
+
+    func testUsageBarXAxisLabelCenterFallsBackWhenPlotIsNarrowerThanTheLabel() {
+        XCTAssertEqual(
+            trafficBarXAxisTickLabelCenter(for: 1, plotWidth: 20, labelWidth: 40),
+            10,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            trafficBarXAxisTickLabelCenter(for: 1, plotWidth: 0, labelWidth: 40),
+            0,
+            accuracy: 0.001
+        )
+    }
+
     func testUsageBarsShowNewestPeriodFirst() {
         let calendar = Calendar(identifier: .gregorian)
         let older = calendar.date(from: DateComponents(year: 2026, month: 8, day: 1))!
