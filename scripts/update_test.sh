@@ -17,19 +17,19 @@ grep -q -- '--logs' "$SCRIPT"
 grep -q -- '--telemetry' "$SCRIPT"
 grep -q -- '--open-dashboard' "$SCRIPT"
 grep -q -- '-destination' "$SCRIPT"
-grep -q 'updated and launched' "$SCRIPT"
+grep -q '已更新并启动' "$SCRIPT"
 grep -q 'CURRENT_PROJECT_VERSION=' "$SCRIPT"
 grep -q 'ITRAFFIC_VERSION_COUNTER_FILE' "$SCRIPT"
 grep -q 'NEXT_BUILD_VERSION' "$SCRIPT"
 grep -q 'CFBundleVersion' "$SETTINGS"
 if grep -q 'GeneratedBuildInfo.buildNumber' "$SETTINGS"; then
-  echo "SettingsView must display the bundle build version" >&2
+  echo "SettingsView 必须显示 bundle 的 build 版本" >&2
   exit 1
 fi
 
 if grep -q 'DERIVED_DATA_DIR="$DIST_DIR/DerivedData"' "$SCRIPT"; then
-  echo "update.sh must keep Xcode's app products outside dist/" >&2
+  echo "update.sh 必须把 Xcode 的 app 产物放在 dist/ 之外" >&2
   exit 1
 fi
 
-echo "update.sh static checks passed"
+echo "update.sh 静态检查通过"

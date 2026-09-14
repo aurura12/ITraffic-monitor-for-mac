@@ -22,16 +22,16 @@ usage() {
   cat >&2 <<'USAGE'
 usage: ./scripts/update.sh [run|--debug|--logs|--telemetry|--verify|--clean]
 
-  run          Build the Release app and launch it (default)
-  --debug      Build Debug and attach LLDB
-  --logs       Build Release, launch, and stream app logs
-  --telemetry  Build Release, launch, and stream iTraffic subsystem logs
-  --verify     Build Release, launch, and verify the process is running
-  --clean      Remove this script's build/output directories, then run
+  run          构建 Release 版本并启动（默认）
+  --debug      构建 Debug 版本并挂载 LLDB
+  --logs       构建 Release，启动后流式输出应用日志
+  --telemetry  构建 Release，启动后流式输出 iTraffic 子系统日志
+  --verify     构建 Release，启动后校验进程是否在运行
+  --clean      删除本脚本的构建/输出目录，然后重新执行
 
-environment:
+环境变量:
   ITRAFFIC_XCODEBUILD_TIMEOUT_SECONDS
-               Maximum build time in seconds (default: 900)
+               构建的最长耗时，单位秒（默认 900）
 USAGE
 }
 
@@ -49,7 +49,7 @@ case "$MODE" in
 esac
 
 if ! [[ "$XCODEBUILD_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ITRAFFIC_XCODEBUILD_TIMEOUT_SECONDS must be a positive integer (seconds)." >&2
+  echo "ITRAFFIC_XCODEBUILD_TIMEOUT_SECONDS 必须是正整数（单位：秒）。" >&2
   exit 2
 fi
 
@@ -68,13 +68,13 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     }
     BEGIN { exit(version(current) >= version(minimum) ? 0 : 1) }
   '; then
-    echo "This app requires macOS $MIN_SYSTEM_VERSION or newer (found $current_version)." >&2
+    echo "本应用需要 macOS $MIN_SYSTEM_VERSION 或更高版本（当前为 $current_version）。" >&2
     exit 1
   fi
 fi
 
 command -v xcodebuild >/dev/null 2>&1 || {
-  echo "xcodebuild was not found. Install Xcode command line tools first." >&2
+  echo "未找到 xcodebuild，请先安装 Xcode 命令行工具。" >&2
   exit 1
 }
 
@@ -156,14 +156,14 @@ terminate_process_tree() {
 
 cleanup_build_process() {
   if [[ -n "$BUILD_PID" ]] && kill -0 "$BUILD_PID" 2>/dev/null; then
-    echo "Stopping the interrupted xcodebuild process (pid $BUILD_PID)..." >&2
+    echo "正在终止被中断的 xcodebuild 进程（pid $BUILD_PID）..." >&2
     terminate_process_tree "$BUILD_PID"
   fi
   BUILD_PID=""
 }
 
 mkdir -p "$DIST_DIR"
-log_step "Building $CONFIGURATION app (build $NEXT_BUILD_VERSION; timeout ${XCODEBUILD_TIMEOUT_SECONDS}s)"
+log_step "正在构建 $CONFIGURATION 版本（build $NEXT_BUILD_VERSION；超时 ${XCODEBUILD_TIMEOUT_SECONDS}s）"
 xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
@@ -182,7 +182,7 @@ LAST_PROGRESS_SECONDS=0
 while kill -0 "$BUILD_PID" 2>/dev/null; do
   elapsed_seconds=$((SECONDS - BUILD_STARTED_SECONDS))
   if (( elapsed_seconds >= XCODEBUILD_TIMEOUT_SECONDS )); then
-    echo "xcodebuild timed out after ${XCODEBUILD_TIMEOUT_SECONDS}s; stopping its process tree." >&2
+    echo "xcodebuild 已超时 ${XCODEBUILD_TIMEOUT_SECONDS}s，正在结束其进程树。" >&2
     terminate_process_tree "$BUILD_PID"
     wait "$BUILD_PID" 2>/dev/null || true
     BUILD_PID=""
@@ -191,7 +191,7 @@ while kill -0 "$BUILD_PID" 2>/dev/null; do
   fi
 
   if (( elapsed_seconds > 0 && elapsed_seconds % 10 == 0 && elapsed_seconds != LAST_PROGRESS_SECONDS )); then
-    echo "    xcodebuild still running (${elapsed_seconds}s elapsed)" >&2
+    echo "    xcodebuild 仍在运行（已耗时 ${elapsed_seconds}s）" >&2
     LAST_PROGRESS_SECONDS="$elapsed_seconds"
   fi
   sleep 1
@@ -206,34 +206,34 @@ fi
 BUILD_PID=""
 trap - INT TERM
 if (( build_status != 0 )); then
-  echo "xcodebuild failed with exit code $build_status." >&2
+  echo "xcodebuild 失败，退出码 $build_status。" >&2
   exit "$build_status"
 fi
-echo "    xcodebuild completed successfully."
+echo "    xcodebuild 构建完成。"
 
 PRODUCT_APP="$DERIVED_DATA_DIR/Build/Products/$CONFIGURATION/ITraffic.app"
 if [[ ! -d "$PRODUCT_APP" ]]; then
-  echo "Build succeeded but the app bundle was not found: $PRODUCT_APP" >&2
+  echo "构建成功，但未找到 app bundle：$PRODUCT_APP" >&2
   exit 1
 fi
 
-log_step "Copying the built app to dist/"
+log_step "正在复制构建产物到 dist/"
 rm -rf "$APP_BUNDLE"
 ditto "$PRODUCT_APP" "$APP_BUNDLE"
 
 if command -v codesign >/dev/null 2>&1; then
-  echo "    Applying an ad hoc signature to the dist bundle."
+  echo "    正在对 dist bundle 做 ad hoc 签名。"
   codesign --force --deep --sign - --timestamp=none "$APP_BUNDLE"
 fi
 
 # Install the app into /Applications so Finder's Applications folder shows
 # the freshly built version, then launch that copy.
-log_step "Installing the app to $INSTALL_APP"
+log_step "正在安装应用到 $INSTALL_APP"
 rm -rf "$INSTALL_APP"
 ditto "$APP_BUNDLE" "$INSTALL_APP"
 
 if command -v codesign >/dev/null 2>&1; then
-  echo "    Applying an ad hoc signature to the installed bundle."
+  echo "    正在对已安装的 bundle 做 ad hoc 签名。"
   codesign --force --deep --sign - --timestamp=none "$INSTALL_APP"
 fi
 
@@ -247,9 +247,9 @@ open_app() {
 
 case "$MODE" in
   run)
-    log_step "Launching the installed app"
+    log_step "正在启动已安装的应用"
     open_app
-    echo "ITraffic updated and launched (build $NEXT_BUILD_VERSION; installed to $INSTALL_APP)"
+    echo "ITraffic 已更新并启动（build $NEXT_BUILD_VERSION；已安装到 $INSTALL_APP）"
     ;;
   --debug|debug)
     lldb -- "$APP_BINARY"
@@ -266,6 +266,6 @@ case "$MODE" in
     open_app
     sleep 2
     pgrep -x "ITraffic" >/dev/null
-    echo "ITraffic is running from $INSTALL_APP (build $NEXT_BUILD_VERSION)"
+    echo "ITraffic 正在从 $INSTALL_APP 运行（build $NEXT_BUILD_VERSION）"
     ;;
 esac
