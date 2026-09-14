@@ -16,6 +16,7 @@ PROJECT="$ROOT_DIR/ITrafficMonitorForMac.xcodeproj"
 SCHEME="ITrafficMonitorForMac"
 MIN_SYSTEM_VERSION="14.0"
 VERSION_COUNTER_FILE="${ITRAFFIC_VERSION_COUNTER_FILE:-$ROOT_DIR/.itraffic-build-number}"
+XCODEBUILD_TIMEOUT_SECONDS="${ITRAFFIC_XCODEBUILD_TIMEOUT_SECONDS:-900}"
 
 usage() {
   cat >&2 <<'USAGE'
@@ -27,6 +28,10 @@ usage: ./scripts/update.sh [run|--debug|--logs|--telemetry|--verify|--clean]
   --telemetry  Build Release, launch, and stream iTraffic subsystem logs
   --verify     Build Release, launch, and verify the process is running
   --clean      Remove this script's build/output directories, then run
+
+environment:
+  ITRAFFIC_XCODEBUILD_TIMEOUT_SECONDS
+               Maximum build time in seconds (default: 900)
 USAGE
 }
 
@@ -42,6 +47,11 @@ case "$MODE" in
     exit 2
     ;;
 esac
+
+if ! [[ "$XCODEBUILD_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ITRAFFIC_XCODEBUILD_TIMEOUT_SECONDS must be a positive integer (seconds)." >&2
+  exit 2
+fi
 
 if [[ "$MODE" == "clean" || "$MODE" == "--clean" ]]; then
   rm -rf "$DERIVED_DATA_DIR" "$APP_BUNDLE" "$INSTALL_APP"
@@ -109,7 +119,51 @@ fi
 
 NEXT_BUILD_VERSION=$((last_build_version + 1))
 
+log_step() {
+  printf '\n==> %s\n' "$1"
+}
+
+BUILD_PID=""
+PROCESS_TREE_PIDS=()
+
+collect_process_tree() {
+  local pid="$1"
+  local child_pid
+
+  PROCESS_TREE_PIDS+=("$pid")
+  if command -v pgrep >/dev/null 2>&1; then
+    while read -r child_pid; do
+      [[ "$child_pid" =~ ^[0-9]+$ ]] || continue
+      collect_process_tree "$child_pid"
+    done < <(pgrep -P "$pid" 2>/dev/null || true)
+  fi
+}
+
+terminate_process_tree() {
+  local root_pid="$1"
+  local pid
+
+  PROCESS_TREE_PIDS=()
+  collect_process_tree "$root_pid"
+  for pid in "${PROCESS_TREE_PIDS[@]}"; do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  for pid in "${PROCESS_TREE_PIDS[@]}"; do
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+}
+
+cleanup_build_process() {
+  if [[ -n "$BUILD_PID" ]] && kill -0 "$BUILD_PID" 2>/dev/null; then
+    echo "Stopping the interrupted xcodebuild process (pid $BUILD_PID)..." >&2
+    terminate_process_tree "$BUILD_PID"
+  fi
+  BUILD_PID=""
+}
+
 mkdir -p "$DIST_DIR"
+log_step "Building $CONFIGURATION app (build $NEXT_BUILD_VERSION; timeout ${XCODEBUILD_TIMEOUT_SECONDS}s)"
 xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
@@ -119,8 +173,43 @@ xcodebuild \
   CURRENT_PROJECT_VERSION="$NEXT_BUILD_VERSION" \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
-  -quiet \
-  build
+  build &
+BUILD_PID=$!
+trap 'exit_status=$?; cleanup_build_process; exit "$exit_status"' INT TERM
+
+BUILD_STARTED_SECONDS=$SECONDS
+LAST_PROGRESS_SECONDS=0
+while kill -0 "$BUILD_PID" 2>/dev/null; do
+  elapsed_seconds=$((SECONDS - BUILD_STARTED_SECONDS))
+  if (( elapsed_seconds >= XCODEBUILD_TIMEOUT_SECONDS )); then
+    echo "xcodebuild timed out after ${XCODEBUILD_TIMEOUT_SECONDS}s; stopping its process tree." >&2
+    terminate_process_tree "$BUILD_PID"
+    wait "$BUILD_PID" 2>/dev/null || true
+    BUILD_PID=""
+    trap - INT TERM
+    exit 124
+  fi
+
+  if (( elapsed_seconds > 0 && elapsed_seconds % 10 == 0 && elapsed_seconds != LAST_PROGRESS_SECONDS )); then
+    echo "    xcodebuild still running (${elapsed_seconds}s elapsed)" >&2
+    LAST_PROGRESS_SECONDS="$elapsed_seconds"
+  fi
+  sleep 1
+done
+
+build_status=0
+if wait "$BUILD_PID"; then
+  build_status=0
+else
+  build_status=$?
+fi
+BUILD_PID=""
+trap - INT TERM
+if (( build_status != 0 )); then
+  echo "xcodebuild failed with exit code $build_status." >&2
+  exit "$build_status"
+fi
+echo "    xcodebuild completed successfully."
 
 PRODUCT_APP="$DERIVED_DATA_DIR/Build/Products/$CONFIGURATION/ITraffic.app"
 if [[ ! -d "$PRODUCT_APP" ]]; then
@@ -128,19 +217,23 @@ if [[ ! -d "$PRODUCT_APP" ]]; then
   exit 1
 fi
 
+log_step "Copying the built app to dist/"
 rm -rf "$APP_BUNDLE"
 ditto "$PRODUCT_APP" "$APP_BUNDLE"
 
 if command -v codesign >/dev/null 2>&1; then
+  echo "    Applying an ad hoc signature to the dist bundle."
   codesign --force --deep --sign - --timestamp=none "$APP_BUNDLE"
 fi
 
 # Install the app into /Applications so Finder's Applications folder shows
 # the freshly built version, then launch that copy.
+log_step "Installing the app to $INSTALL_APP"
 rm -rf "$INSTALL_APP"
 ditto "$APP_BUNDLE" "$INSTALL_APP"
 
 if command -v codesign >/dev/null 2>&1; then
+  echo "    Applying an ad hoc signature to the installed bundle."
   codesign --force --deep --sign - --timestamp=none "$INSTALL_APP"
 fi
 
@@ -154,6 +247,7 @@ open_app() {
 
 case "$MODE" in
   run)
+    log_step "Launching the installed app"
     open_app
     echo "ITraffic updated and launched (build $NEXT_BUILD_VERSION; installed to $INSTALL_APP)"
     ;;
