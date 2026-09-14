@@ -522,8 +522,8 @@ final class TrafficBarHoverTests: XCTestCase {
 
     func testProcessHelperTimesOutWhenStdoutClosesButChildKeepsRunning() {
         // The child closes stdout immediately and then execs a long sleep. A
-        // deadline tied to stdout EOF would settle instantly and then block
-        // forever in waitUntilExit; the deadline must follow the process.
+        // deadline tied to stdout EOF would settle instantly; the deadline
+        // must follow the process without blocking a permanent waiter.
         let start = Date()
         let output = runProcessCollectingOutput(
             executable: "/bin/sh",
@@ -534,6 +534,34 @@ final class TrafficBarHoverTests: XCTestCase {
 
         XCTAssertNil(output)
         XCTAssertLessThan(elapsed, 10)
+    }
+
+    func testProcessHelperRejectsOversizedOutputAndReturnsPromptly() {
+        let start = Date()
+        let output = runProcessCollectingOutput(
+            executable: "/usr/bin/yes",
+            arguments: ["output"],
+            timeout: 2,
+            maximumOutputBytes: 4 * 1024
+        )
+        let elapsed = Date().timeIntervalSince(start)
+
+        XCTAssertNil(output)
+        XCTAssertLessThan(elapsed, 10)
+    }
+
+    func testProcessHelperRepeatedNormalExitReturnsCompleteOutput() {
+        for _ in 0..<100 {
+            let output = runProcessCollectingOutput(
+                executable: "/bin/echo",
+                arguments: ["hello"],
+                timeout: 2
+            )
+            XCTAssertEqual(
+                output?.trimmingCharacters(in: .whitespacesAndNewlines),
+                "hello"
+            )
+        }
     }
 
     func testHelperProcessUsesParentAppNameInsteadOfTruncatedProcessName() {

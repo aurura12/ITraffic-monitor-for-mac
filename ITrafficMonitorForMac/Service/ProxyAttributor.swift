@@ -1091,8 +1091,6 @@ final class ProxyAttributor: ObservableObject {
     }
 
     private func fetchUnixSocket(_ socketPath: String, path: String, secret: String) -> FetchResult {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
         var args = [
             "-sS", "--max-time", "2",
             "--unix-socket", socketPath,
@@ -1102,31 +1100,23 @@ final class ProxyAttributor: ObservableObject {
             args += ["-H", "Authorization: Bearer \(secret)"]
         }
         args += ["-w", "\\n__ITRAFFIC_STATUS__:%{http_code}", "http://localhost\(path)"]
-        process.arguments = args
-
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = FileHandle.nullDevice
-        do {
-            try process.run()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard let text = String(data: data, encoding: .utf8),
-                  let response = parseUnixSocketCurlOutput(text) else {
-                return .failed
-            }
-            if response.statusCode == 401 || response.statusCode == 403 {
-                return .authRequired
-            }
-            guard response.statusCode == 200,
-                  let body = response.body.data(using: .utf8),
-                  let conns = decodeConnections(body) else {
-                return .failed
-            }
-            return .ok(conns)
-        } catch {
+        guard let text = runProcessCollectingOutput(
+            executable: "/usr/bin/curl",
+            arguments: args,
+            timeout: 2.5
+        ),
+        let response = parseUnixSocketCurlOutput(text) else {
             return .failed
         }
+        if response.statusCode == 401 || response.statusCode == 403 {
+            return .authRequired
+        }
+        guard response.statusCode == 200,
+              let body = response.body.data(using: .utf8),
+              let conns = decodeConnections(body) else {
+            return .failed
+        }
+        return .ok(conns)
     }
 
     /// Decodes both the Clash shape (metadata.sourcePort / upload / download)
