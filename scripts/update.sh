@@ -68,7 +68,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     }
     BEGIN { exit(version(current) >= version(minimum) ? 0 : 1) }
   '; then
-    echo "本应用需要 macOS $MIN_SYSTEM_VERSION 或更高版本（当前为 $current_version）。" >&2
+    echo "本应用需要 macOS $MIN_SYSTEM_VERSION 或更高版本（当前为 ${current_version}）。" >&2
     exit 1
   fi
 fi
@@ -156,14 +156,14 @@ terminate_process_tree() {
 
 cleanup_build_process() {
   if [[ -n "$BUILD_PID" ]] && kill -0 "$BUILD_PID" 2>/dev/null; then
-    echo "正在终止被中断的 xcodebuild 进程（pid $BUILD_PID）..." >&2
+    echo "正在终止被中断的 xcodebuild 进程（pid ${BUILD_PID}）..." >&2
     terminate_process_tree "$BUILD_PID"
   fi
   BUILD_PID=""
 }
 
 mkdir -p "$DIST_DIR"
-log_step "正在构建 $CONFIGURATION 版本（build $NEXT_BUILD_VERSION；超时 ${XCODEBUILD_TIMEOUT_SECONDS}s）"
+log_step "正在构建 $CONFIGURATION 版本（build ${NEXT_BUILD_VERSION}；超时 ${XCODEBUILD_TIMEOUT_SECONDS}s）"
 xcodebuild \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
@@ -206,7 +206,7 @@ fi
 BUILD_PID=""
 trap - INT TERM
 if (( build_status != 0 )); then
-  echo "xcodebuild 失败，退出码 $build_status。" >&2
+  echo "xcodebuild 失败，退出码 ${build_status}。" >&2
   exit "$build_status"
 fi
 echo "    xcodebuild 构建完成。"
@@ -249,7 +249,7 @@ case "$MODE" in
   run)
     log_step "正在启动已安装的应用"
     open_app
-    echo "ITraffic 已更新并启动（build $NEXT_BUILD_VERSION；已安装到 $INSTALL_APP）"
+    echo "ITraffic 已更新并启动（build ${NEXT_BUILD_VERSION}；已安装到 ${INSTALL_APP}）"
     ;;
   --debug|debug)
     lldb -- "$APP_BINARY"
@@ -266,6 +266,6 @@ case "$MODE" in
     open_app
     sleep 2
     pgrep -x "ITraffic" >/dev/null
-    echo "ITraffic 正在从 $INSTALL_APP 运行（build $NEXT_BUILD_VERSION）"
+    echo "ITraffic 正在从 ${INSTALL_APP} 运行（build ${NEXT_BUILD_VERSION}）"
     ;;
 esac
