@@ -297,6 +297,8 @@ struct UnifiedDashboardView: View {
                 if viewModel.chartMode == .usage {
                     barScalePicker
                     barGranularityPicker
+                } else if viewModel.chartMode == .heatmap {
+                    heatmapLegend
                 } else {
                     legend
                 }
@@ -372,6 +374,29 @@ struct UnifiedDashboardView: View {
             Circle().fill(color).frame(width: 6, height: 6)
             Text(label)
                 .font(.system(size: 11))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private var heatmapLegend: some View {
+        HStack(spacing: 4) {
+            Text(i18n.text("No traffic"))
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+            RoundedRectangle(cornerRadius: 2)
+                .fill(Color.secondary.opacity(0.12))
+                .frame(width: 10, height: 10)
+            Text(i18n.text("Less"))
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+            ForEach(0..<4, id: \.self) { index in
+                let opacities: [Double] = [0.38, 0.56, 0.76, 1.0]
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.heatmap.opacity(opacities[index]))
+                    .frame(width: 10, height: 10)
+            }
+            Text(i18n.text("More"))
+                .font(.system(size: 10))
                 .foregroundColor(.secondary)
         }
     }

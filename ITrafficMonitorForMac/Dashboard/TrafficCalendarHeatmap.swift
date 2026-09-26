@@ -248,8 +248,15 @@ struct TrafficCalendarHeatmap: View {
     }
 
     private func cellColor(_ bytes: Int) -> Color {
-        let ratio = Double(bytes) / Double(max(maxBytes, 1))
-        return Theme.heatmap.opacity(0.22 + 0.78 * ratio)
+        guard bytes > 0 else {
+            return Color.secondary.opacity(0.12)
+        }
+
+        // A logarithmic scale keeps ordinary days visible when one day has a
+        // much larger total. Sqrt adds separation among the lower values.
+        let ratio = log1p(Double(bytes)) / log1p(Double(max(maxBytes, 1)))
+        let intensity = sqrt(min(max(ratio, 0), 1))
+        return Theme.heatmap.opacity(0.30 + 0.70 * intensity)
     }
 
     private func tooltip(cell: CalendarDayCell) -> some View {
