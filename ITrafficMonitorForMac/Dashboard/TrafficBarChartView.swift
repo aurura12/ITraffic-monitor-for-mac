@@ -119,6 +119,10 @@ struct TrafficBarChartView: View {
     private let labelToPlotSpacing: CGFloat = 8
     /// Number of X-axis ticks (grid lines + labels).
     private let tickCount = 5
+    /// Trailing gutter kept for the vertical scroll indicator. The indicator is
+    /// drawn as an overlay on the ScrollView's right edge, so without this the
+    /// last X-axis tick label and the tail of the longest bars sit underneath it.
+    private let scrollIndicatorInset: CGFloat = 14
 
     @State private var hoverSelection = BarHoverSelection()
     @State private var hoveredLocation: CGPoint = .zero
@@ -191,7 +195,10 @@ struct TrafficBarChartView: View {
 
     private var chart: some View {
         GeometryReader { geo in
-            let plotWidth = max(1, geo.size.width - leftInset)
+            // Subtract the scroll-indicator gutter up front so bars, grid lines
+            // and tick labels all stop short of the overlay scroller.
+            let contentWidth = max(leftInset + 1, geo.size.width - scrollIndicatorInset)
+            let plotWidth = max(1, contentWidth - leftInset)
             ScrollView(.vertical) {
                 ZStack(alignment: .topLeading) {
                     let xAxisBehavior = trafficBarXAxisBehavior()
@@ -228,6 +235,7 @@ struct TrafficBarChartView: View {
                             .allowsHitTesting(false)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .coordinateSpace(name: "bars")
             }
         }
