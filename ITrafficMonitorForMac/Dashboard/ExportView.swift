@@ -107,9 +107,17 @@ struct ExportView: View {
         do {
             switch format {
             case .csv:
-                data = try Self.csvData(rows: rows)
+                if TrafficPresentationFeatures.perAppBreakdown {
+                    data = try Self.csvData(rows: rows)
+                } else {
+                    data = Self.totalCSVData(rows: rows)
+                }
             case .json:
-                data = try Self.jsonData(rows: rows)
+                if TrafficPresentationFeatures.perAppBreakdown {
+                    data = try Self.jsonData(rows: rows)
+                } else {
+                    data = try Self.totalJSONData(rows: rows)
+                }
             }
         } catch {
             isExporting = false
@@ -133,6 +141,52 @@ struct ExportView: View {
     }
 
     // MARK: - Serialization
+
+    private struct TotalExportRow {
+        let period: Date
+        let inBytes: Int
+        let outBytes: Int
+        var totalBytes: Int { inBytes + outBytes }
+    }
+
+    private static func totalRows(from rows: [ExportTrafficRow]) -> [TotalExportRow] {
+        var totalsByPeriod: [Date: (inBytes: Int, outBytes: Int)] = [:]
+        for row in rows {
+            var total = totalsByPeriod[row.period] ?? (0, 0)
+            total.inBytes += row.inBytes
+            total.outBytes += row.outBytes
+            totalsByPeriod[row.period] = total
+        }
+        return totalsByPeriod.map { period, total in
+            TotalExportRow(period: period, inBytes: total.inBytes, outBytes: total.outBytes)
+        }
+        .sorted { $0.period < $1.period }
+    }
+
+    private static func totalCSVData(rows: [ExportTrafficRow]) -> Data {
+        var csv = "period,in_bytes,out_bytes,total_bytes\n"
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        for row in totalRows(from: rows) {
+            csv += "\(csvField(fmt.string(from: row.period))),\(row.inBytes),\(row.outBytes),\(row.totalBytes)\n"
+        }
+        return Data(csv.utf8)
+    }
+
+    private static func totalJSONData(rows: [ExportTrafficRow]) throws -> Data {
+        struct Record: Encodable {
+            let period: Date
+            let inBytes: Int
+            let outBytes: Int
+            let totalBytes: Int
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(totalRows(from: rows).map {
+            Record(period: $0.period, inBytes: $0.inBytes, outBytes: $0.outBytes, totalBytes: $0.totalBytes)
+        })
+    }
 
     private static func csvData(rows: [ExportTrafficRow]) throws -> Data {
         var csv = "period,app,display_name,in_bytes,out_bytes\n"

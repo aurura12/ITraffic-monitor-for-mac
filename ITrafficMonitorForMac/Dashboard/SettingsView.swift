@@ -105,39 +105,41 @@ struct SettingsView: View {
                 set: { launchAtLogin.setEnabled($0) }
             ))
 
-            Section {
-                Toggle(i18n.text("Enable proxy attribution"), isOn: $proxyEnabled)
-                    .onChange(of: proxyEnabled) { proxy.reconfigure() }
-                Picker(i18n.text("Proxy type"), selection: $proxyTypeRaw) {
-                    Text(i18n.text("Auto detect")).tag("auto")
-                    Text(i18n.text("Clash")).tag("clash")
-                    Text(i18n.text("Surge")).tag("surge")
-                    Text(i18n.text("Off")).tag("off")
-                }
-                .onChange(of: proxyTypeRaw) { proxy.reconfigure() }
-                TextField(i18n.text("API base URL"), text: $proxyBaseURL)
-                    .onChange(of: proxyBaseURL) { proxy.reconfigure() }
-                SecureField(i18n.text("Secret"), text: $proxySecret)
-                    .onChange(of: proxySecret) { proxy.reconfigure() }
-                HStack {
-                    Text(proxyStatusText)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Button(i18n.text("Redetect")) {
-                        proxy.reconfigure()
+            if TrafficPresentationFeatures.perAppBreakdown {
+                Section {
+                    Toggle(i18n.text("Enable proxy attribution"), isOn: $proxyEnabled)
+                        .onChange(of: proxyEnabled) { proxy.reconfigure() }
+                    Picker(i18n.text("Proxy type"), selection: $proxyTypeRaw) {
+                        Text(i18n.text("Auto detect")).tag("auto")
+                        Text(i18n.text("Clash")).tag("clash")
+                        Text(i18n.text("Surge")).tag("surge")
+                        Text(i18n.text("Off")).tag("off")
                     }
-                    .controlSize(.small)
+                    .onChange(of: proxyTypeRaw) { proxy.reconfigure() }
+                    TextField(i18n.text("API base URL"), text: $proxyBaseURL)
+                        .onChange(of: proxyBaseURL) { proxy.reconfigure() }
+                    SecureField(i18n.text("Secret"), text: $proxySecret)
+                        .onChange(of: proxySecret) { proxy.reconfigure() }
+                    HStack {
+                        Text(proxyStatusText)
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button(i18n.text("Redetect")) {
+                            proxy.reconfigure()
+                        }
+                        .controlSize(.small)
+                    }
+                    Text(proxyDiagnosticSummary(proxy.diagnostic))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                } header: {
+                    Text(i18n.text("Proxy attribution"))
+                } footer: {
+                    Text(i18n.text("Only same-frame confirmed proxy bytes are reassigned; unmatched bytes stay with Clash."))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                Text(proxyDiagnosticSummary(proxy.diagnostic))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .textSelection(.enabled)
-            } header: {
-                Text(i18n.text("Proxy attribution"))
-            } footer: {
-                Text(i18n.text("Only same-frame confirmed proxy bytes are reassigned; unmatched bytes stay with Clash."))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
 
             Section(i18n.text("Traffic metric")) {
@@ -176,29 +178,31 @@ struct SettingsView: View {
                     .foregroundColor(.secondary)
             }
 
-            Section(i18n.text("Diagnostic Logs")) {
-                Text(diagnostics.logURL.path)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .textSelection(.enabled)
-                HStack {
-                    Button(i18n.text("Show in Finder")) {
-                        diagnostics.revealInFinder()
+            if TrafficPresentationFeatures.perAppBreakdown {
+                Section(i18n.text("Diagnostic Logs")) {
+                    Text(diagnostics.logURL.path)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                    HStack {
+                        Button(i18n.text("Show in Finder")) {
+                            diagnostics.revealInFinder()
+                        }
+                        Button(i18n.text("Export") + "…") {
+                            let panel = NSSavePanel()
+                            panel.nameFieldStringValue = "proxy-diagnostics.log"
+                            guard panel.runModal() == .OK, let destination = panel.url else { return }
+                            try? diagnostics.export(to: destination)
+                        }
+                        Button(i18n.text("Clear")) {
+                            diagnostics.clear()
+                        }
+                        .foregroundColor(.red)
                     }
-                    Button(i18n.text("Export") + "…") {
-                        let panel = NSSavePanel()
-                        panel.nameFieldStringValue = "proxy-diagnostics.log"
-                        guard panel.runModal() == .OK, let destination = panel.url else { return }
-                        try? diagnostics.export(to: destination)
-                    }
-                    Button(i18n.text("Clear")) {
-                        diagnostics.clear()
-                    }
-                    .foregroundColor(.red)
+                    Text(i18n.text("Proxy attribution diagnostics are retained locally (up to 16 MB)."))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                Text(i18n.text("Proxy attribution diagnostics are retained locally (up to 16 MB)."))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)

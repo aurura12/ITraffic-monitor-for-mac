@@ -189,11 +189,11 @@ struct MenuBarSummaryView: View {
                     .fontWeight(.semibold)
             }
 
-            Divider()
-
-            busiestAppRow
-
-            Divider()
+            if TrafficPresentationFeatures.perAppBreakdown {
+                Divider()
+                busiestAppRow
+                Divider()
+            }
 
             HStack(spacing: 8) {
                 Button(i18n.text("Open Dashboard"), action: onOpenDashboard)

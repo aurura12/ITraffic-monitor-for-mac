@@ -64,7 +64,9 @@ struct UnifiedDashboardView: View {
                 }
             }
             .navigationDestination(for: AppNavTarget.self) { target in
-                AppDetailView(target: target)
+                if TrafficPresentationFeatures.perAppBreakdown {
+                    AppDetailView(target: target)
+                }
             }
             // Give the root its own title so popping back from an app's detail
             // view restores the window title instead of leaving the app's name.
@@ -85,14 +87,16 @@ struct UnifiedDashboardView: View {
         VStack(alignment: .leading, spacing: 16) {
             topSection(toolbar)
             topSection(statCards)
-            topSection(attributionNotice)
+            if TrafficPresentationFeatures.perAppBreakdown {
+                topSection(attributionNotice)
+            }
             if dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart {
                 chartSection
                     .frame(maxHeight: .infinity, alignment: .top)
             } else {
                 chartSection
             }
-            if viewModel.chartMode == .line {
+            if TrafficPresentationFeatures.perAppBreakdown && viewModel.chartMode == .line {
                 rankingSection
             }
         }
