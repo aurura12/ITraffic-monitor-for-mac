@@ -9,6 +9,38 @@
 
 import SwiftUI
 
+/// Opacity for heatmap levels 0...4. Level 0 (no traffic) is drawn separately
+/// in a neutral gray; the remaining four match the dashboard legend swatches.
+let heatmapLevelOpacities: [Double] = [0.0, 0.38, 0.56, 0.76, 1.0]
+
+/// Ascending upper bounds `[q25, q50, q75, max]` of the non-zero per-day totals.
+///
+/// The heatmap colors a day into one of four levels using these bounds.
+/// Bucketing by quartiles spreads the four palette levels over equally sized
+/// groups of active days, so the whole range stays visible even when one day
+/// spikes far above the rest — normalizing by a single `max` (the previous
+/// behavior) flattens every ordinary day into nearly the same shade.
+func heatmapThresholds(for totals: [Int]) -> [Int] {
+    let positive = totals.filter { $0 > 0 }.sorted()
+    guard let maximum = positive.last else { return [] }
+
+    func boundary(_ fraction: Double) -> Int {
+        let rank = Int((fraction * Double(positive.count)).rounded(.up)) - 1
+        return positive[min(max(rank, 0), positive.count - 1)]
+    }
+
+    return [boundary(0.25), boundary(0.50), boundary(0.75), maximum]
+}
+
+/// Maps a day's total bytes to a level in `0...4`, where 0 means "no traffic".
+func heatmapLevel(forBytes bytes: Int, thresholds: [Int]) -> Int {
+    guard bytes > 0, !thresholds.isEmpty else { return 0 }
+    for (index, upper) in thresholds.enumerated() where bytes <= upper {
+        return index + 1
+    }
+    return thresholds.count
+}
+
 func heatmapTooltipPosition(for pointer: CGPoint, in size: CGSize) -> CGPoint {
     let horizontalGap: CGFloat = 16
     let verticalGap: CGFloat = 10
@@ -28,7 +60,8 @@ func heatmapTooltipPosition(for pointer: CGPoint, in size: CGSize) -> CGPoint {
 
 struct TrafficCalendarHeatmap: View {
     let cells: [CalendarDayCell]
-    let maxBytes: Int
+    /// Ascending byte thresholds from `heatmapThresholds(for:)`.
+    let thresholds: [Int]
     let emptyText: String
     let calendar: Calendar
 
@@ -248,15 +281,11 @@ struct TrafficCalendarHeatmap: View {
     }
 
     private func cellColor(_ bytes: Int) -> Color {
-        guard bytes > 0 else {
+        let level = heatmapLevel(forBytes: bytes, thresholds: thresholds)
+        guard level > 0 else {
             return Color.secondary.opacity(0.12)
         }
-
-        // A logarithmic scale keeps ordinary days visible when one day has a
-        // much larger total. Sqrt adds separation among the lower values.
-        let ratio = log1p(Double(bytes)) / log1p(Double(max(maxBytes, 1)))
-        let intensity = sqrt(min(max(ratio, 0), 1))
-        return Theme.heatmap.opacity(0.30 + 0.70 * intensity)
+        return Theme.heatmap.opacity(heatmapLevelOpacities[level])
     }
 
     private func tooltip(cell: CalendarDayCell) -> some View {

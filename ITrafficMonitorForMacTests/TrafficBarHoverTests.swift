@@ -404,6 +404,46 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertNotEqual(normal.x, 200)
     }
 
+    func testHeatmapThresholdsAreQuartilesOfNonZeroDays() {
+        let totals = [0, 0, 10, 20, 30, 40, 50, 60, 70, 80]
+
+        let thresholds = heatmapThresholds(for: totals)
+
+        // Non-zero days sorted: 10...80 (8 values); q25/50/75 are the 2nd,
+        // 4th and 6th, so the four levels get two days each.
+        XCTAssertEqual(thresholds, [20, 40, 60, 80])
+        XCTAssertEqual(heatmapLevel(forBytes: 10, thresholds: thresholds), 1)
+        XCTAssertEqual(heatmapLevel(forBytes: 30, thresholds: thresholds), 2)
+        XCTAssertEqual(heatmapLevel(forBytes: 50, thresholds: thresholds), 3)
+        XCTAssertEqual(heatmapLevel(forBytes: 80, thresholds: thresholds), 4)
+    }
+
+    func testHeatmapLevelKeepsContrastWhenOneDaySpikes() {
+        // A single huge outlier must not flatten the ordinary days: each
+        // quarter of the active days still lands in a distinct level.
+        let totals = [100, 200, 300, 400, 500_000_000]
+        let thresholds = heatmapThresholds(for: totals)
+
+        // thresholds == [200, 300, 400, 500_000_000]
+        XCTAssertEqual(heatmapLevel(forBytes: 100, thresholds: thresholds), 1)
+        XCTAssertEqual(heatmapLevel(forBytes: 300, thresholds: thresholds), 2)
+        XCTAssertEqual(heatmapLevel(forBytes: 400, thresholds: thresholds), 3)
+        XCTAssertEqual(heatmapLevel(forBytes: 500_000_000, thresholds: thresholds), 4)
+    }
+
+    func testHeatmapLevelIsZeroForEmptyAndNoTraffic() {
+        XCTAssertEqual(heatmapThresholds(for: [0, 0, 0]), [])
+        XCTAssertEqual(heatmapLevel(forBytes: 0, thresholds: [1, 2, 3, 4]), 0)
+        XCTAssertEqual(heatmapLevel(forBytes: 5, thresholds: []), 0)
+    }
+
+    func testHeatmapLegendMatchesCellLevelOpacities() {
+        XCTAssertEqual(heatmapLevelOpacities.count, 5)
+        for level in 1..<heatmapLevelOpacities.count {
+            XCTAssertLessThan(heatmapLevelOpacities[level - 1], heatmapLevelOpacities[level])
+        }
+    }
+
     func testUnixSocketCurlOutputParsesStatusAndBody() {
         let output = "{\"connections\":[]}\n__ITRAFFIC_STATUS__:200\n"
 

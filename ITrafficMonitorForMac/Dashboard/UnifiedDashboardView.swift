@@ -317,7 +317,7 @@ struct UnifiedDashboardView: View {
                 case .heatmap:
                     TrafficCalendarHeatmap(
                         cells: viewModel.calendarCells,
-                        maxBytes: viewModel.calendarMaxBytes,
+                        thresholds: viewModel.calendarHeatmapThresholds,
                         emptyText: i18n.text("No recorded traffic in this range."),
                         calendar: calendar(for: i18n)
                     )
@@ -389,10 +389,9 @@ struct UnifiedDashboardView: View {
             Text(i18n.text("Less"))
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
-            ForEach(0..<4, id: \.self) { index in
-                let opacities: [Double] = [0.38, 0.56, 0.76, 1.0]
+            ForEach(1..<heatmapLevelOpacities.count, id: \.self) { level in
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Theme.heatmap.opacity(opacities[index]))
+                    .fill(Theme.heatmap.opacity(heatmapLevelOpacities[level]))
                     .frame(width: 10, height: 10)
             }
             Text(i18n.text("More"))

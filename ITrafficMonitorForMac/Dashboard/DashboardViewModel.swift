@@ -205,7 +205,7 @@ class DashboardViewModel: ObservableObject {
     @Published var rangeTotal: TrafficTotal = .init(inBytes: 0, outBytes: 0)
     @Published var rangeTopApps: [AppPeakTrafficRow] = []
     @Published var calendarCells: [CalendarDayCell] = []
-    @Published var calendarMaxBytes = 1
+    @Published var calendarHeatmapThresholds: [Int] = []
     @Published var barPoints: [BarPeriodPoint] = []
 
     private let recorder = SharedStore.recorder
@@ -328,7 +328,7 @@ class DashboardViewModel: ObservableObject {
             }
             let dense = self.densifyCalendar(rows: rows, interval: interval)
             self.calendarCells = dense
-            self.calendarMaxBytes = max(dense.map(\.totalBytes).max() ?? 1, 1)
+            self.calendarHeatmapThresholds = heatmapThresholds(for: dense.map(\.totalBytes))
         }
     }
 
