@@ -17,7 +17,11 @@ func formatBytes(bytes: Int) -> String {
     if kbyte < 1024 {
         return String(format:"%.1f KB/s", kbyte)
     }
-    return String(format:"%.1f MB/s", kbyte / 1024)
+    let mbyte = kbyte / 1024
+    if mbyte < 1024 {
+        return String(format:"%.1f MB/s", mbyte)
+    }
+    return String(format:"%.1f GB/s", mbyte / 1024)
 }
 
 /// Total-bytes formatter (no rate suffix): "512 B", "12.3 KB", "1.2 MB", "3.4 GB".
