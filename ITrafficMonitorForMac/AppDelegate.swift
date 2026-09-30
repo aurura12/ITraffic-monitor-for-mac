@@ -107,9 +107,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         SharedStore.utunTrafficSampler.start()
 
-        // Pierce Clash/Surge proxies so proxied traffic is attributed to the
-        // real apps. No-ops when no proxy is detected.
-        SharedStore.proxyAttributor.start()
+        // Proxy attribution only affects the per-app breakdown; totals come
+        // from raw nettop bytes and are conserved either way. While per-app
+        // presentation is hidden, skip the Clash/Surge API + lsof polling.
+        if TrafficPresentationFeatures.perAppBreakdown {
+            SharedStore.proxyAttributor.start()
+        }
 
         // The app is menu-bar-first. The full dashboard remains available from
         // the status item popover and the application menu.
