@@ -30,41 +30,23 @@ final class LocalizationManager: ObservableObject {
     /// English (the key itself), so missing entries degrade gracefully.
     private let zh: [String: String] = [
         // Tab labels
-        "Overview": "总览",
-        "Trends": "趋势",
-        "Monthly Top": "月度排行",
-        "Realtime": "实时",
         "Heatmap": "热力图",
-        "Apps": "应用",
-        "Processes": "进程",
         "Export": "导出",
         "Settings": "设置",
         "Open Dashboard": "打开仪表盘",
         "Quit": "退出",
-        "Idle": "空闲",
         "Search apps": "搜索应用",
 
         // Overview
-        "This Week": "本周",
-        "This Month": "本月",
-        "Month Projection": "月末预估",
         "Last 7 Days": "最近 7 天",
-        "Monthly Top Apps": "本月 Top 应用",
-        "No data yet — traffic is being recorded.": "暂无数据——正在记录流量",
 
         // Trends
         "Range": "范围",
         "No recorded traffic in this range.": "该范围内暂无流量记录",
 
-        // Monthly Top
-        "Traffic by app — this month": "本月各应用流量",
-        "No data recorded this month yet.": "本月暂无流量记录",
-
         // Realtime
-        "Total network rate — last ~10 minutes": "总网络速率——最近约 10 分钟",
         "↓ Download": "↓ 下载",
         "↑ Upload": "↑ 上传",
-        "Collecting samples…": "正在采样…",
 
         // Ranges / granularity
         "Today": "今天",
@@ -155,8 +137,6 @@ final class LocalizationManager: ObservableObject {
         // Proxy attribution
         "Proxy attribution": "代理归属",
         "Enable proxy attribution": "启用代理归属",
-        "Foreground App Fallback": "前台应用兜底",
-        "Attribute residual proxied traffic to the frontmost app": "把无法归属的代理流量兜底给当前前台应用",
         "Proxy type": "代理类型",
         "Auto detect": "自动检测",
         "Clash": "Clash",
@@ -190,12 +170,6 @@ final class LocalizationManager: ObservableObject {
         "Skipped nettop rows": "已跳过的 nettop 行",
 
         // Network Extension / calibration status
-        "Authorizing…": "授权中…",
-        "Enabled": "已启用",
-        "Fallback": "回退模式",
-        "Error": "错误",
-        "Waiting": "等待中",
-        "Active": "已激活",
         "Unavailable": "不可用",
     ]
 
