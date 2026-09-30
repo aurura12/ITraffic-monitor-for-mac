@@ -328,7 +328,9 @@ final class MenuBarController: NSObject {
 
     private func configurePopover() {
         popover.behavior = .transient
-        popover.animates = true
+        // The popover is already built at launch; avoid adding an opening
+        // animation to every status-item click.
+        popover.animates = false
         let contentViewController = NSHostingController(
             rootView: MenuBarSummaryView(
                 todayUsage: todayUsage,
@@ -395,10 +397,10 @@ final class MenuBarController: NSObject {
             cancelPopoverAutoDismiss()
             popover.performClose(sender)
         } else {
-            refreshTodayUsage()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
             schedulePopoverAutoDismiss()
+            refreshTodayUsage()
         }
     }
 

@@ -91,9 +91,14 @@ class Network {
 
         DispatchQueue.main.async {
             self.statusDataModel.update(totalInBytes: inRate, totalOutBytes: outRate)
-            self.viewModel.updateData(newItems: entities)
             SharedStore.realtimeRateStore.append(inRate: Double(inRate), outRate: Double(outRate))
-            SharedStore.perAppRateStore.update(entities: entities, interval: safeSeconds)
+            // These models only feed the currently hidden per-app UI. Their
+            // per-process identity lookups can otherwise stall the main thread
+            // while the user opens the status-item popover.
+            if TrafficPresentationFeatures.perAppBreakdown {
+                self.viewModel.updateData(newItems: entities)
+                SharedStore.perAppRateStore.update(entities: entities, interval: safeSeconds)
+            }
         }
     }
 
