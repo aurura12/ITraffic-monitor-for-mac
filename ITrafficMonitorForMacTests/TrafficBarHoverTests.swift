@@ -49,7 +49,7 @@ final class TrafficBarHoverTests: XCTestCase {
             .first { $0.label == "statusItem" }?.value as? NSStatusItem
 
         XCTAssertTrue(statusItem?.button?.target as AnyObject? === controller)
-        XCTAssertEqual(statusItem?.button?.action.map(NSStringFromSelector), "togglePopover:")
+        XCTAssertEqual(statusItem?.button?.action.map(NSStringFromSelector), "handleStatusItemClick:")
     }
 
     func testDashboardLaunchFlagIsOptIn() {

@@ -37,6 +37,11 @@ final class LocalizationManager: ObservableObject {
         "Quit": "退出",
         "Search apps": "搜索应用",
 
+        // Status-item context menu
+        "Pause Monitoring": "暂停监控",
+        "Resume Monitoring": "继续监控",
+        "Paused": "已暂停",
+
         // Overview
         "Last 7 Days": "最近 7 天",
 

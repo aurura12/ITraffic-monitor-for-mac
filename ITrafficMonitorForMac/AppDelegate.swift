@@ -104,6 +104,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         self.network = Network()
+        menuBarController?.network = self.network
         self.network.startListenNetwork()
         SharedStore.utunTrafficSampler.onReferenceSample = { sample in
             SharedStore.trafficSamplingDiagnostics.recordReferenceSample(sample)

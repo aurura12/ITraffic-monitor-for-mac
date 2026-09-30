@@ -74,6 +74,9 @@ func formatMenuBarRate(bytes: Int) -> String {
 final class MenuBarRateView: NSView {
     private let downloadLabel = NSTextField(labelWithString: "↓ 0.0K/s")
     private let uploadLabel = NSTextField(labelWithString: "↑ 0.0K/s")
+    /// While monitoring is paused no frames arrive, so the live-rate updates are
+    /// suppressed and the item shows a static paused marker instead of stale 0s.
+    private var isPaused = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -107,9 +110,23 @@ final class MenuBarRateView: NSView {
     }
 
     func update(downloadRate: Int, uploadRate: Int) {
+        guard !isPaused else { return }
         let text = MenuBarRateText(downloadRate: downloadRate, uploadRate: uploadRate)
         downloadLabel.stringValue = text.download
         uploadLabel.stringValue = text.upload
+    }
+
+    /// Swap the live rates for a paused marker and back. Mirrors the two-line
+    /// layout so the status item keeps a stable height.
+    func setPaused(_ paused: Bool) {
+        isPaused = paused
+        if paused {
+            uploadLabel.stringValue = "⏸"
+            downloadLabel.stringValue = L("Paused")
+        } else {
+            downloadLabel.stringValue = "↓ 0.0K/s"
+            uploadLabel.stringValue = "↑ 0.0K/s"
+        }
     }
 
     /// 两行文本中较宽一行的宽度，用于让状态项宽度自适应内容、不占多余菜单栏空间。
@@ -264,6 +281,11 @@ final class MenuBarController: NSObject {
     private var refreshTimer: Timer?
     private var popoverDismissTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+    /// Set by AppDelegate once sampling is wired up. Wrapped weakly: the
+    /// delegate owns the Network instance.
+    weak var network: Network?
+    /// Whether the user paused sampling from the status-item context menu.
+    private(set) var isMonitoringPaused = false
 
     override init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -297,7 +319,10 @@ final class MenuBarController: NSObject {
         button.isBordered = false
         button.toolTip = AppDelegate.appDisplayName
         button.target = self
-        button.action = #selector(togglePopover(_:))
+        button.action = #selector(handleStatusItemClick(_:))
+        // Distinguish the two mouse buttons: left opens the popover, right (or
+        // control-click) opens the context menu.
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         rateView.translatesAutoresizingMaskIntoConstraints = false
         button.addSubview(rateView)
         NSLayoutConstraint.activate([
@@ -389,6 +414,79 @@ final class MenuBarController: NSObject {
             guard let self, self.popover.isShown else { return }
             self.refreshTodayUsage()
         }
+    }
+
+    /// Route a status-item click by mouse button: secondary (right click or
+    /// control-click) shows the context menu, primary toggles the popover.
+    @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
+        let event = NSApp.currentEvent
+        let isSecondary = event?.type == .rightMouseUp
+            || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true)
+        if isSecondary {
+            showContextMenu()
+        } else {
+            togglePopover(sender)
+        }
+    }
+
+    /// Pop the status item's menu at the button. Assigning `statusItem.menu`
+    /// makes the next click display the menu instead of sending the action, so
+    /// we attach it, simulate the click, then detach it to keep the primary
+    /// click wired to the popover.
+    private func showContextMenu() {
+        cancelPopoverAutoDismiss()
+        if popover.isShown { popover.performClose(nil) }
+
+        let menu = makeContextMenu()
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    private func makeContextMenu() -> NSMenu {
+        let menu = NSMenu()
+        addItem(to: menu, title: L("Open Dashboard"), action: #selector(menuOpenDashboard))
+        addItem(to: menu, title: L("Settings"), action: #selector(menuOpenSettings))
+        menu.addItem(.separator())
+        addItem(
+            to: menu,
+            title: isMonitoringPaused ? L("Resume Monitoring") : L("Pause Monitoring"),
+            action: #selector(menuToggleMonitoring)
+        )
+        menu.addItem(.separator())
+        addItem(to: menu, title: L("Quit"), action: #selector(menuQuit))
+        return menu
+    }
+
+    @discardableResult
+    private func addItem(to menu: NSMenu, title: String, action: Selector) -> NSMenuItem {
+        let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
+    @objc private func menuOpenDashboard() { openDashboard() }
+
+    @objc private func menuOpenSettings() { openSettings() }
+
+    @objc private func menuQuit() { quit() }
+
+    /// Stop or resume nettop sampling. Pausing halts both the live rates and
+    /// history recording; the ledger simply gains no samples while paused.
+    @objc private func menuToggleMonitoring() {
+        isMonitoringPaused.toggle()
+        if isMonitoringPaused {
+            network?.stopListenNetwork()
+            // Drop the now-frozen live values so the UI does not show the last
+            // frame's rates as if they were current.
+            SharedStore.perAppRateStore.clear()
+            SharedStore.listViewModel.clear()
+            SharedStore.statusDataModel.update(totalInBytes: 0, totalOutBytes: 0)
+        } else {
+            network?.startListenNetwork()
+        }
+        rateView.setPaused(isMonitoringPaused)
+        resizeToFitContent()
     }
 
     @objc private func togglePopover(_ sender: Any?) {
