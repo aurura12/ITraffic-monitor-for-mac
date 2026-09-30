@@ -13,13 +13,6 @@ import SQLite3
 /// SQLITE_TRANSIENT is a C macro; Swift exposes it as this unsafe bitcast.
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
-struct AppTrafficRow {
-    let appKey: String
-    let displayName: String
-    let inBytes: Int
-    let outBytes: Int
-}
-
 struct DayTrafficRow {
     let day: Int      // local days since 1970-01-01
     let inBytes: Int
@@ -27,14 +20,6 @@ struct DayTrafficRow {
 }
 
 struct TrafficTotal {
-    let inBytes: Int
-    let outBytes: Int
-}
-
-struct TrafficMatrixRow {
-    let appKey: String
-    let displayName: String
-    let day: Int
     let inBytes: Int
     let outBytes: Int
 }
@@ -73,12 +58,6 @@ struct BarPeriodPoint: Identifiable {
     let label: String   // language-neutral category label, e.g. "2026-08", "2026-Q3"
     let totalBytes: Int
     var id: String { label }
-}
-
-struct TrafficPoint {
-    let date: Date
-    let inRate: Double
-    let outRate: Double
 }
 
 enum TimeSeriesGranularity {
@@ -666,41 +645,6 @@ final class TrafficDatabase {
         return map
     }
 
-    /// Top apps by total (in+out) within [start, end).
-    func topApps(start: Int, end: Int, limit: Int = 20, completion: @escaping ([AppTrafficRow]) -> Void) {
-        dbQueue.async { [weak self] in
-            guard let self, let db = self.db else {
-                DispatchQueue.main.async { completion([]) }
-                return
-            }
-            let names = self.displayNameMap()
-            var rows: [AppTrafficRow] = []
-            var stmt: OpaquePointer?
-            let sql = """
-            SELECT app_key, SUM(in_bytes), SUM(out_bytes)
-            FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ?
-            GROUP BY app_key ORDER BY (SUM(in_bytes)+SUM(out_bytes)) DESC LIMIT ?;
-            """
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-                completion([]); return
-            }
-            sqlite3_bind_int64(stmt, 1, Int64(start))
-            sqlite3_bind_int64(stmt, 2, Int64(end))
-            sqlite3_bind_int64(stmt, 3, Int64(limit))
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                let key = String(cString: sqlite3_column_text(stmt, 0))
-                rows.append(AppTrafficRow(
-                    appKey: key,
-                    displayName: names[key] ?? key,
-                    inBytes: Int(sqlite3_column_int64(stmt, 1)),
-                    outBytes: Int(sqlite3_column_int64(stmt, 2))
-                ))
-            }
-            sqlite3_finalize(stmt)
-            DispatchQueue.main.async { completion(rows) }
-        }
-    }
-
     /// Daily totals for a range (or a single app when appKey != nil).
     func dailyTraffic(start: Int, end: Int, appKey: String? = nil, completion: @escaping ([DayTrafficRow]) -> Void) {
         dbQueue.async { [weak self] in
@@ -785,41 +729,6 @@ final class TrafficDatabase {
             }
             sqlite3_finalize(stmt)
             DispatchQueue.main.async { completion(TrafficTotal(inBytes: inBytes, outBytes: outBytes)) }
-        }
-    }
-
-    /// Per-app daily totals within [start, end). One row per (app_key, day).
-    func trafficMatrix(start: Int, end: Int, completion: @escaping ([TrafficMatrixRow]) -> Void) {
-        dbQueue.async { [weak self] in
-            guard let self, let db = self.db else {
-                DispatchQueue.main.async { completion([]) }
-                return
-            }
-            let names = self.displayNameMap()
-            var rows: [TrafficMatrixRow] = []
-            var stmt: OpaquePointer?
-            let sql = """
-            SELECT app_key, day, SUM(in_bytes), SUM(out_bytes)
-            FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ?
-            GROUP BY app_key, day ORDER BY app_key, day;
-            """
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-                completion([]); return
-            }
-            sqlite3_bind_int64(stmt, 1, Int64(start))
-            sqlite3_bind_int64(stmt, 2, Int64(end))
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                let key = String(cString: sqlite3_column_text(stmt, 0))
-                rows.append(TrafficMatrixRow(
-                    appKey: key,
-                    displayName: names[key] ?? key,
-                    day: Int(sqlite3_column_int64(stmt, 1)),
-                    inBytes: Int(sqlite3_column_int64(stmt, 2)),
-                    outBytes: Int(sqlite3_column_int64(stmt, 3))
-                ))
-            }
-            sqlite3_finalize(stmt)
-            DispatchQueue.main.async { completion(rows) }
         }
     }
 

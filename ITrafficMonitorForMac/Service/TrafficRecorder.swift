@@ -185,16 +185,8 @@ final class TrafficRecorder {
 
     // MARK: - Query passthrough
 
-    func topApps(start: Int, end: Int, limit: Int = 20, completion: @escaping ([AppTrafficRow]) -> Void) {
-        database.topApps(start: start, end: end, limit: limit, completion: completion)
-    }
-
     func totalTraffic(start: Int, end: Int, completion: @escaping (TrafficTotal) -> Void) {
         database.totalTraffic(start: start, end: end, completion: completion)
-    }
-
-    func trafficMatrix(start: Int, end: Int, completion: @escaping ([TrafficMatrixRow]) -> Void) {
-        database.trafficMatrix(start: start, end: end, completion: completion)
     }
 
     func dailyTraffic(start: Int, end: Int, appKey: String? = nil, completion: @escaping ([DayTrafficRow]) -> Void) {
