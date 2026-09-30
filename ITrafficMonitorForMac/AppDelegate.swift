@@ -52,8 +52,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 )
             )
             window.title = L("Settings")
-            window.setContentSize(NSSize(width: 380, height: 340))
-            window.styleMask = [.titled, .closable]
+            window.setContentSize(NSSize(width: 380, height: 520))
+            window.minSize = NSSize(width: 380, height: 340)
+            // The settings form is taller than a fixed window, so let it resize
+            // instead of forcing every section to scroll in a cramped frame.
+            window.styleMask = [.titled, .closable, .resizable]
             window.isReleasedWhenClosed = false
             window.center()
             settingsWindow = window
