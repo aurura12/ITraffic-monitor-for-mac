@@ -232,7 +232,10 @@ class DashboardViewModel: ObservableObject {
         )
         let interval = token.timeRange.interval(calendar: calendar)
 
-        for operation in DashboardRefreshPlan.operations(for: token.chartMode) {
+        // `.topApps` only feeds the per-app ranking UI, which is hidden while
+        // `perAppBreakdown` is false, so skip its DB query at the call site.
+        for operation in DashboardRefreshPlan.operations(for: token.chartMode)
+            where operation != .topApps || TrafficPresentationFeatures.perAppBreakdown {
             switch operation {
             case .series:
                 recorder.trafficSeries(
