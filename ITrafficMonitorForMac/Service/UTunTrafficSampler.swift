@@ -4,7 +4,6 @@
 //
 
 import Foundation
-import Combine
 
 struct UTunTrafficCounters: Equatable {
     let inBytes: Int
@@ -38,12 +37,6 @@ func nextNettopSamplingStatus(
     case .frame: return .active
     case .restart: return .restarting
     }
-}
-
-enum UTunSamplerStatus: Equatable {
-    case waiting
-    case active
-    case unavailable
 }
 
 func parseUTunInterfaceCounters(_ output: String) -> UTunInterfaceCounters? {
@@ -101,9 +94,7 @@ func interfaceCounterDelta(previous: UTunInterfaceCounters, current: UTunInterfa
     )
 }
 
-final class UTunTrafficSampler: ObservableObject {
-    @Published private(set) var status: UTunSamplerStatus = .waiting
-    @Published private(set) var externalStatus: UTunSamplerStatus = .waiting
+final class UTunTrafficSampler {
     var onReferenceSample: ((TrafficReferenceSample) -> Void)?
     private let queue = DispatchQueue(label: "utun-traffic-sampler", qos: .utility)
     private let stateLock = NSLock()
@@ -156,16 +147,12 @@ final class UTunTrafficSampler: ObservableObject {
             arguments: ["-ib"],
             timeout: 2
         ) else {
-            publishStatus(.unavailable)
-            publishExternalStatus(.unavailable)
             return
         }
 
         let current = parseUTunInterfaceCounters(output)
         let currentExternal = parseExternalInterfaceCounters(output)
         guard current != nil || currentExternal != nil else {
-            publishStatus(.unavailable)
-            publishExternalStatus(.unavailable)
             return
         }
         var utunDelta: UTunTrafficCounters?
@@ -180,7 +167,6 @@ final class UTunTrafficSampler: ObservableObject {
                 interfaceCounterDelta(previous: $0, current: currentExternal)
             } ?? nil
             previousExternal = currentExternal
-            if delta != nil { publishExternalStatus(.active) }
             if let delta {
                 publishReferenceSample(TrafficReferenceSample(
                     externalDelta: delta,
@@ -188,11 +174,8 @@ final class UTunTrafficSampler: ObservableObject {
                     sampledAt: Date()
                 ))
             }
-        } else {
-            publishExternalStatus(.unavailable)
         }
         if let utunDelta {
-            publishStatus(.active)
             stateLock.lock()
             let accumulated = pendingDelta ?? UTunTrafficCounters(inBytes: 0, outBytes: 0)
             pendingDelta = UTunTrafficCounters(
@@ -207,18 +190,6 @@ final class UTunTrafficSampler: ObservableObject {
                     sampledAt: Date()
                 ))
             }
-        }
-    }
-
-    private func publishStatus(_ newStatus: UTunSamplerStatus) {
-        DispatchQueue.main.async { [weak self] in
-            self?.status = newStatus
-        }
-    }
-
-    private func publishExternalStatus(_ newStatus: UTunSamplerStatus) {
-        DispatchQueue.main.async { [weak self] in
-            self?.externalStatus = newStatus
         }
     }
 
