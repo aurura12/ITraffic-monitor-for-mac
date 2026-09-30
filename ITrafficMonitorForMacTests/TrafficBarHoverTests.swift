@@ -52,6 +52,49 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(statusItem?.button?.action.map(NSStringFromSelector), "handleStatusItemClick:")
     }
 
+    func testMenuBarDisplayModeFallsBackToBothForUnknownValues() {
+        XCTAssertEqual(MenuBarDisplayMode(rawValue: "nonsense"), nil)
+        // `current` must never return nil for a missing/legacy stored value.
+        let previous = UserDefaults.standard.string(forKey: MenuBarDisplayMode.defaultsKey)
+        defer {
+            if let previous {
+                UserDefaults.standard.set(previous, forKey: MenuBarDisplayMode.defaultsKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: MenuBarDisplayMode.defaultsKey)
+            }
+        }
+        UserDefaults.standard.set("nonsense", forKey: MenuBarDisplayMode.defaultsKey)
+        XCTAssertEqual(MenuBarDisplayMode.current, .both)
+    }
+
+    func testMenuBarRateViewShowsOnlyTheSelectedRows() {
+        let view = MenuBarRateView(frame: .zero)
+        let children = Mirror(reflecting: view).children
+        let upload = children.first { $0.label == "uploadLabel" }?.value as? NSTextField
+        let download = children.first { $0.label == "downloadLabel" }?.value as? NSTextField
+        let icon = children.first { $0.label == "iconView" }?.value as? NSImageView
+
+        view.apply(mode: .both)
+        XCTAssertEqual(upload?.isHidden, false)
+        XCTAssertEqual(download?.isHidden, false)
+        XCTAssertEqual(icon?.isHidden, true)
+
+        view.apply(mode: .downloadOnly)
+        XCTAssertEqual(upload?.isHidden, true)
+        XCTAssertEqual(download?.isHidden, false)
+        XCTAssertEqual(icon?.isHidden, true)
+
+        view.apply(mode: .uploadOnly)
+        XCTAssertEqual(upload?.isHidden, false)
+        XCTAssertEqual(download?.isHidden, true)
+        XCTAssertEqual(icon?.isHidden, true)
+
+        view.apply(mode: .iconOnly)
+        XCTAssertEqual(upload?.isHidden, true)
+        XCTAssertEqual(download?.isHidden, true)
+        XCTAssertEqual(icon?.isHidden, false)
+    }
+
     func testDashboardLaunchFlagIsOptIn() {
         XCTAssertTrue(shouldOpenDashboardAtLaunch(arguments: ["ITraffic", "--open-dashboard"]))
         XCTAssertFalse(shouldOpenDashboardAtLaunch(arguments: ["ITraffic"]))

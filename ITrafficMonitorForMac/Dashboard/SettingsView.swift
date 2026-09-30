@@ -54,6 +54,7 @@ struct SettingsView: View {
     @EnvironmentObject var i18n: LocalizationManager
     @AppStorage("appLanguage") private var languageRaw = AppLanguage.system.rawValue
     @AppStorage("appAppearance") private var appearanceRaw = "system"
+    @AppStorage(MenuBarDisplayMode.defaultsKey) private var menuBarDisplayModeRaw = MenuBarDisplayMode.both.rawValue
 
     @AppStorage("proxyAttributionEnabled") private var proxyEnabled = true
     @AppStorage("proxyAttributionType") private var proxyTypeRaw = "auto"
@@ -98,6 +99,15 @@ struct SettingsView: View {
                 Text(i18n.text("Follow System")).tag("system")
                 Text(i18n.text("Light")).tag("light")
                 Text(i18n.text("Dark")).tag("dark")
+            }
+            Picker(i18n.text("Menu Bar Display"), selection: $menuBarDisplayModeRaw) {
+                Text(i18n.text("Download + Upload")).tag(MenuBarDisplayMode.both.rawValue)
+                Text(i18n.text("Download only")).tag(MenuBarDisplayMode.downloadOnly.rawValue)
+                Text(i18n.text("Upload only")).tag(MenuBarDisplayMode.uploadOnly.rawValue)
+                Text(i18n.text("Icon only")).tag(MenuBarDisplayMode.iconOnly.rawValue)
+            }
+            .onChange(of: menuBarDisplayModeRaw) { _, _ in
+                NotificationCenter.default.post(name: .menuBarDisplayModeDidChange, object: nil)
             }
 
             Toggle(i18n.text("Launch at login"), isOn: Binding(

@@ -53,6 +53,27 @@ enum MenuBarPopoverConfiguration {
     static let autoDismissInterval: TimeInterval = 5
 }
 
+/// What the menu-bar status item renders. Persisted in UserDefaults and
+/// switched from Settings; MenuBarController re-applies it on change.
+enum MenuBarDisplayMode: String, CaseIterable {
+    case both
+    case downloadOnly
+    case uploadOnly
+    case iconOnly
+
+    static let defaultsKey = "menuBarDisplayMode"
+
+    static var current: MenuBarDisplayMode {
+        MenuBarDisplayMode(rawValue: UserDefaults.standard.string(forKey: defaultsKey) ?? "") ?? .both
+    }
+}
+
+extension Notification.Name {
+    /// Posted when the user changes the menu-bar display mode in Settings so
+    /// the AppKit status item can re-render without an app restart.
+    static let menuBarDisplayModeDidChange = Notification.Name("menuBarDisplayModeDidChange")
+}
+
 /// Compact rate format for the narrow, two-line status item.
 func formatMenuBarRate(bytes: Int) -> String {
     let kilobytes = Double(max(0, bytes)) / 1024
@@ -74,9 +95,23 @@ func formatMenuBarRate(bytes: Int) -> String {
 final class MenuBarRateView: NSView {
     private let downloadLabel = NSTextField(labelWithString: "↓ 0.0K/s")
     private let uploadLabel = NSTextField(labelWithString: "↑ 0.0K/s")
+    private let iconView: NSImageView = {
+        let view = NSImageView()
+        view.imageScaling = .scaleProportionallyDown
+        view.contentTintColor = .labelColor
+        return view
+    }()
+
+    /// What the item currently renders (two-line rates, a single direction, or
+    /// an icon-only marker). Mirrors the persisted menu-bar display mode.
+    private var mode: MenuBarDisplayMode = .both
     /// While monitoring is paused no frames arrive, so the live-rate updates are
     /// suppressed and the item shows a static paused marker instead of stale 0s.
     private var isPaused = false
+    /// Last rates, cached so a mode switch can re-render immediately instead of
+    /// waiting for the next nettop frame.
+    private var downloadRateValue = 0
+    private var uploadRateValue = 0
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -89,8 +124,9 @@ final class MenuBarRateView: NSView {
             label.lineBreakMode = .byClipping
             label.textColor = .labelColor
         }
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
 
-        let stack = NSStackView(views: [uploadLabel, downloadLabel])
+        let stack = NSStackView(views: [uploadLabel, downloadLabel, iconView])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.distribution = .fillEqually
@@ -103,6 +139,8 @@ final class MenuBarRateView: NSView {
             stack.topAnchor.constraint(equalTo: topAnchor),
             stack.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
+
+        apply(mode: MenuBarDisplayMode.current)
     }
 
     required init?(coder: NSCoder) {
@@ -110,31 +148,75 @@ final class MenuBarRateView: NSView {
     }
 
     func update(downloadRate: Int, uploadRate: Int) {
-        guard !isPaused else { return }
-        let text = MenuBarRateText(downloadRate: downloadRate, uploadRate: uploadRate)
-        downloadLabel.stringValue = text.download
-        uploadLabel.stringValue = text.upload
+        downloadRateValue = downloadRate
+        uploadRateValue = uploadRate
+        render()
     }
 
-    /// Swap the live rates for a paused marker and back. Mirrors the two-line
-    /// layout so the status item keeps a stable height.
+    /// Swap the live rates for a paused marker and back.
     func setPaused(_ paused: Bool) {
         isPaused = paused
-        if paused {
-            uploadLabel.stringValue = "⏸"
-            downloadLabel.stringValue = L("Paused")
-        } else {
-            downloadLabel.stringValue = "↓ 0.0K/s"
-            uploadLabel.stringValue = "↑ 0.0K/s"
-        }
+        render()
     }
 
-    /// 两行文本中较宽一行的宽度，用于让状态项宽度自适应内容、不占多余菜单栏空间。
+    /// Switch the rendering mode (two-line / single direction / icon only).
+    func apply(mode: MenuBarDisplayMode) {
+        self.mode = mode
+        render()
+    }
+
+    private func render() {
+        let isIconMode = (mode == .iconOnly)
+        uploadLabel.isHidden = isIconMode || mode == .downloadOnly
+        downloadLabel.isHidden = isIconMode || mode == .uploadOnly
+        iconView.isHidden = !isIconMode
+        updateIconImage()
+
+        guard !isPaused else {
+            if !isIconMode {
+                switch mode {
+                case .uploadOnly:
+                    uploadLabel.stringValue = pausedText
+                case .downloadOnly:
+                    downloadLabel.stringValue = pausedText
+                default:
+                    uploadLabel.stringValue = "⏸"
+                    downloadLabel.stringValue = L("Paused")
+                }
+            }
+            return
+        }
+
+        let text = MenuBarRateText(downloadRate: downloadRateValue, uploadRate: uploadRateValue)
+        uploadLabel.stringValue = text.upload
+        downloadLabel.stringValue = text.download
+    }
+
+    private var pausedText: String { "⏸ " + L("Paused") }
+
+    private func updateIconImage() {
+        let symbol = isPaused ? "pause.circle" : "arrow.up.arrow.down"
+        let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: AppDelegate.appDisplayName)?
+            .withSymbolConfiguration(configuration)
+        image?.isTemplate = true
+        iconView.image = image
+    }
+
+    /// Width of the widest currently visible row, so the status item only claims
+    /// the menu-bar space its current mode actually needs.
     var neededWidth: CGFloat {
-        max(
-            downloadLabel.intrinsicContentSize.width,
-            uploadLabel.intrinsicContentSize.width
-        )
+        var width: CGFloat = 0
+        if !uploadLabel.isHidden {
+            width = max(width, uploadLabel.intrinsicContentSize.width)
+        }
+        if !downloadLabel.isHidden {
+            width = max(width, downloadLabel.intrinsicContentSize.width)
+        }
+        if !iconView.isHidden {
+            width = max(width, max(iconView.intrinsicContentSize.width, iconView.image?.size.width ?? 0))
+        }
+        return width
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
@@ -310,6 +392,7 @@ final class MenuBarController: NSObject {
     deinit {
         refreshTimer?.invalidate()
         popoverDismissTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
     }
 
     private func configureStatusItem() {
@@ -341,6 +424,20 @@ final class MenuBarController: NSObject {
                 self?.resizeToFitContent()
             }
             .store(in: &cancellables)
+
+        // The display mode is a Settings toggle; re-render and re-fit the item
+        // in place when it changes instead of requiring a relaunch.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(menuBarDisplayModeDidChange),
+            name: .menuBarDisplayModeDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func menuBarDisplayModeDidChange() {
+        rateView.apply(mode: MenuBarDisplayMode.current)
+        resizeToFitContent()
     }
 
     /// 状态项宽度跟随两行文本中较宽一行自适应，避免固定宽度在菜单栏留白。
