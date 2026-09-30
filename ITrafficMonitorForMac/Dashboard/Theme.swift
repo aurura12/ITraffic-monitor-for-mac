@@ -32,12 +32,6 @@ enum Theme {
     /// Heatmap cell color (blue-purple; intensity is controlled via opacity).
     static let heatmap = Color(red: 0.45, green: 0.52, blue: 0.95)
 
-    /// Primary text on cards (adapts to light/dark).
-    static let textPrimary = Color.primary
-
-    /// Secondary/muted text.
-    static let textSecondary = Color.secondary
-
     /// Standard corner radius for dashboard cards.
     static let cornerRadius: CGFloat = 12
 

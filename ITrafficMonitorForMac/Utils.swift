@@ -433,23 +433,6 @@ func iconForAppKey(_ key: String) -> NSImage {
     return icon
 }
 
-/// Compact unit format for list rows: "55K", "9.1M", "1.2G", "—" for 0.
-/// `/s` is dropped — sampling cadence is implicit in the list context.
-func formatBytesCompact(bytes: Int) -> String {
-    if bytes <= 0 { return "—" }
-    let kb = Double(bytes) / 1024
-    if kb < 0.05 { return "—" }
-    if kb < 1000 {
-        return kb < 10 ? String(format: "%.1fK", kb) : String(format: "%.0fK", kb)
-    }
-    let mb = kb / 1024
-    if mb < 1000 {
-        return mb < 10 ? String(format: "%.1fM", mb) : String(format: "%.0fM", mb)
-    }
-    let gb = mb / 1024
-    return gb < 10 ? String(format: "%.1fG", gb) : String(format: "%.0fG", gb)
-}
-
 struct AppInfo {
     var icon: NSImage
     var name: String?

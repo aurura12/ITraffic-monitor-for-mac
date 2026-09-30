@@ -28,8 +28,4 @@ class RealtimeRateStore: ObservableObject {
         }
         samples.append(sample)
     }
-
-    func clear() {
-        samples.removeAll()
-    }
 }
