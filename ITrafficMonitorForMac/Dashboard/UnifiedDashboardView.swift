@@ -172,20 +172,29 @@ struct UnifiedDashboardView: View {
 
     // MARK: - Stat cards
 
+    /// Titles for the range-scoped Download/Upload/Total cards. Outside Line
+    /// mode the time-range picker is hidden, so append the active range to make
+    /// the scope of the totals explicit.
+    private func rangeScopedCardTitle(_ key: String) -> String {
+        viewModel.chartMode == .line
+            ? i18n.text(key)
+            : i18n.text(key) + " · " + i18n.text(viewModel.timeRange.labelKey)
+    }
+
     private var statCards: some View {
         HStack(spacing: 12) {
             StatCard(
-                title: i18n.text("Download"),
+                title: rangeScopedCardTitle("Download"),
                 value: formatBytesTotal(bytes: viewModel.rangeTotal.inBytes),
                 accent: Theme.download
             )
             StatCard(
-                title: i18n.text("Upload"),
+                title: rangeScopedCardTitle("Upload"),
                 value: formatBytesTotal(bytes: viewModel.rangeTotal.outBytes),
                 accent: Theme.upload
             )
             StatCard(
-                title: i18n.text("Total"),
+                title: rangeScopedCardTitle("Total"),
                 value: formatBytesTotal(bytes: viewModel.rangeTotal.inBytes + viewModel.rangeTotal.outBytes),
                 accent: Theme.total
             )
