@@ -105,6 +105,8 @@ struct TrafficLineChart: View {
     let timeRange: TimeRange
     let emptyText: String
 
+    @EnvironmentObject var i18n: LocalizationManager
+
     @State private var hoveredDate: Date?
     @State private var hoveredLocation: CGPoint = .zero
 
@@ -329,7 +331,7 @@ struct TrafficLineChart: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(trafficBucketLabel(for: point.date, timeRange: timeRange, calendar: .current))
                 .font(.system(size: 11, weight: .semibold))
-            Text("流量 \(formatBytesTotal(bytes: trafficBarValue(for: point)))")
+            Text("\(i18n.text("Total Traffic")) \(formatBytesTotal(bytes: trafficBarValue(for: point)))")
                 .foregroundStyle(.secondary)
         }
         .font(.system(size: 11))
