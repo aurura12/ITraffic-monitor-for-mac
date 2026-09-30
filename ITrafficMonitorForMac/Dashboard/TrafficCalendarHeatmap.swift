@@ -2,7 +2,7 @@
 //  TrafficCalendarHeatmap.swift
 //  ITrafficMonitorForMac
 //
-//  GitHub-style calendar heatmap for 30 Days / This Month ranges.
+//  GitHub-style calendar heatmap covering the last 365 days.
 //  Columns are weeks, rows are Mon–Sun (respecting `calendar.firstWeekday`),
 //  each cell is one day colored by its total traffic.
 //

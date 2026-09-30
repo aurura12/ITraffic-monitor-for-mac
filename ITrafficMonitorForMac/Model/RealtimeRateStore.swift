@@ -2,8 +2,9 @@
 //  RealtimeRateStore.swift
 //  ITrafficMonitorForMac
 //
-//  Ring buffer of recent total network rates, feeding the Realtime tab
-//  chart. Capacity 300 samples (2s cadence ≈ 10 minutes).
+//  Ring buffer of recent total network rates, feeding the dashboard's live
+//  "Download Speed" / "Upload Speed" stat cards. Capacity 300 samples
+//  (2s cadence ≈ 10 minutes).
 //
 
 import Foundation
