@@ -66,15 +66,22 @@ class Network {
         )
         SharedStore.trafficSamplingDiagnostics.recordDroppedNettopRows(droppedRows)
 
-        // Re-attribute only bytes already present in this raw nettop frame.
-        // The proxy attributor is a bounded allocator: it cannot add bytes or
-        // carry an unpaid declaration into a later frame.
-        let entities = SharedStore.proxyAttributor.attributedEntities(rawEntities)
-
-        // nettop is the sole historical byte source. The Network Extension may
-        // report app identities for diagnostics, but its records are not a
-        // second accounting stream and can never replace this raw frame.
-        HelperAttributionRegistry.shared.register(entities: entities)
+        // Proxy re-attribution and helper bookkeeping only affect the per-app
+        // breakdown; the recorded totals are the raw nettop bytes either way.
+        // Skip them while the per-app presentation is hidden.
+        let entities: [ProcessEntity]
+        if TrafficPresentationFeatures.perAppBreakdown {
+            // Re-attribute only bytes already present in this raw nettop frame.
+            // The proxy attributor is a bounded allocator: it cannot add bytes
+            // or carry an unpaid declaration into a later frame.
+            entities = SharedStore.proxyAttributor.attributedEntities(rawEntities)
+            // nettop is the sole historical byte source. The Network Extension
+            // may report app identities for diagnostics, but its records are
+            // not a second accounting stream and can never replace this frame.
+            HelperAttributionRegistry.shared.register(entities: entities)
+        } else {
+            entities = rawEntities
+        }
         SharedStore.recorder.record(
             entities: entities,
             sampleID: sampleID,
