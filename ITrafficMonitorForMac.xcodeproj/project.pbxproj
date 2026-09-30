@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		04BDC687851FAE38F5203BB8 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */; };
-		05142CA4984F4152D29816AD /* TrafficFilterTotals.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CBBE5348658C36C691432DF /* TrafficFilterTotals.swift */; };
 		07CFBEA99D4A7579D4E4AC71 /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D30F89C22ACDFD9102801CD /* Utils.swift */; };
 		1938B3E5D68DE73D4EC289DF /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 748FB46B5B1D40583CCBFC28 /* Store.swift */; };
 		1F57535E5C2B092EFC365D6D /* AppRankingTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB64FEF25D607571553044E0 /* AppRankingTable.swift */; };
@@ -75,7 +74,6 @@
 		2200E367B287B2B15A0DD387 /* PerAppRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerAppRateStore.swift; sourceTree = "<group>"; };
 		2AF29493AB65C88B04AE9758 /* FreeAttributionCalibrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeAttributionCalibrator.swift; sourceTree = "<group>"; };
 		2E94AFE218DE8B52AC41D875 /* TrafficFilterRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterRecord.swift; sourceTree = "<group>"; };
-		3CBBE5348658C36C691432DF /* TrafficFilterTotals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterTotals.swift; sourceTree = "<group>"; };
 		3D30F89C22ACDFD9102801CD /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
 		4889D7E3690CBEA1CDF7C956 /* TrafficBarHoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficBarHoverTests.swift; sourceTree = "<group>"; };
 		5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -187,7 +185,6 @@
 				E760B012490A706D383888B1 /* TrafficDatabase.swift */,
 				8191AA13BA7BD18EB4944E14 /* TrafficFilterManager.swift */,
 				CA9EE1E45D4FA08000A680CD /* TrafficFilterStatsStore.swift */,
-				3CBBE5348658C36C691432DF /* TrafficFilterTotals.swift */,
 				031A75F509B62CC97841A678 /* TrafficRecorder.swift */,
 				DF15E3615DC5C58960022527 /* UTunTrafficSampler.swift */,
 			);
@@ -397,7 +394,6 @@
 				6826FE426429BDBEA2B02137 /* TrafficFilterReportAccumulator.swift in Sources */,
 				702FC9A68EE397790418003A /* TrafficFilterSharedOutput.swift in Sources */,
 				4278B4E31D397762896428FF /* TrafficFilterStatsStore.swift in Sources */,
-				05142CA4984F4152D29816AD /* TrafficFilterTotals.swift in Sources */,
 				7CFAE01821629B774ADC8C9E /* TrafficLineChart.swift in Sources */,
 				42181CD01DFC3EC634BBD0BA /* TrafficRecorder.swift in Sources */,
 				DA90E8D6D8F3685CF140C38E /* UTunTrafficSampler.swift in Sources */,

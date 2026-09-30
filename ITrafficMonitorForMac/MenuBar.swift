@@ -7,21 +7,6 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// A small, testable snapshot of the rates shown in the menu bar popover.
-struct MenuBarSnapshot: Equatable {
-    let downloadRate: Int
-    let uploadRate: Int
-
-    init(downloadRate: Int, uploadRate: Int) {
-        self.downloadRate = max(0, downloadRate)
-        self.uploadRate = max(0, uploadRate)
-    }
-
-    var isIdle: Bool {
-        downloadRate == 0 && uploadRate == 0
-    }
-}
-
 struct MenuBarRateText: Equatable {
     let download: String
     let upload: String

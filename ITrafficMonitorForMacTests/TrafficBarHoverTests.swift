@@ -255,10 +255,6 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(dashboardTopSectionHeight(for: .heatmap), .flexible)
     }
 
-    func testDashboardActionsStayAtInlineTrailing() {
-        XCTAssertEqual(dashboardActionsPlacement(), .inlineTrailing)
-    }
-
     func testTrafficXAxisLabelsUseStableCalendarFormatting() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 8 * 60 * 60)!
@@ -766,20 +762,6 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertEqual(attributedPID(previousPID: 0, resolvedPID: 0), 0)
     }
 
-    func testEmptyProxyConnectionTableIsStillDetected() {
-        XCTAssertEqual(
-            proxyFetchOutcome(statusCode: 200, hasBody: true, connectionCount: 0),
-            .success(connectionCount: 0)
-        )
-    }
-
-    func testProxyTransportFailureIsNotReportedAsAuthenticationFailure() {
-        XCTAssertEqual(
-            proxyFetchOutcome(statusCode: nil, hasBody: false, connectionCount: 0),
-            .transportFailure
-        )
-    }
-
     func testProxyDiagnosticsDistinguishAPIFailureFromMissingNetTopProxyRow() {
         let apiFailure = proxyDiagnosticSummary(.apiUnavailable(endpoint: "unix:/tmp/verge/verge-mihomo.sock"))
         let missingRow = proxyDiagnosticSummary(.waitingForProxyRow(
@@ -821,19 +803,6 @@ final class TrafficBarHoverTests: XCTestCase {
     func testProxyCreditHelpersClampCountersAndIncludeUploadOnlyPIDs() {
         XCTAssertEqual(nonNegativeProxyDelta(current: 5, previous: 10), 0)
         XCTAssertEqual(proxyCreditPIDs(inBytes: [1: 20], outBytes: [2: 30]), [1, 2])
-    }
-
-    func testProxyCreditConsumptionSummaryIncludesCreditedAndPendingBytes() {
-        let summary = proxyCreditConsumptionSummary(
-            creditedIn: 120,
-            creditedOut: 45,
-            pendingIn: 30,
-            pendingOut: 6,
-            proxyIn: 150,
-            proxyOut: 51
-        )
-
-        XCTAssertEqual(summary, "proxy credits consumed in=120 out=45 pendingIn=30 pendingOut=6 proxyIn=150 proxyOut=51")
     }
 
     func testShortLivedSocketUsesFreshCachedOwnerWhenLiveMapMisses() {
@@ -904,38 +873,11 @@ final class TrafficBarHoverTests: XCTestCase {
         ))
     }
 
-    func testProxyDiagnosticReportsPartialMappingCoverage() {
-        XCTAssertEqual(
-            proxyMappingCoverage(.detected(
-                name: "Clash Verge",
-                endpoint: "unix:/tmp/verge.sock",
-                connectionCount: 86,
-                mappedConnectionCount: 73,
-                proxyPID: 91681
-            )) ?? -1,
-            73.0 / 86.0,
-            accuracy: 0.0001
-        )
-    }
-
     func testClashConfigLineParsesControllerAndSecret() {
         XCTAssertEqual(parseProxyConfigLine("external-controller: 127.0.0.1:9097"),
                        ProxyConfigEntry(key: "external-controller", value: "127.0.0.1:9097"))
         XCTAssertEqual(parseProxyConfigLine("secret: 'local-secret'"),
                        ProxyConfigEntry(key: "secret", value: "local-secret"))
-    }
-
-    func testProxyCreditsAccumulateAcrossAttributorTicks() {
-        var existing: [Int: (inBytes: Int, outBytes: Int)] = [
-            52391: (inBytes: 100, outBytes: 20)
-        ]
-        accumulateProxyCredits(&existing, [
-            52391: (inBytes: 30, outBytes: 7),
-            52392: (inBytes: 5, outBytes: 2)
-        ])
-        XCTAssertEqual(existing[52391]?.inBytes, 130)
-        XCTAssertEqual(existing[52391]?.outBytes, 27)
-        XCTAssertEqual(existing[52392]?.inBytes, 5)
     }
 
     func testPendingCreditsConsumeOldestBytesFirst() {
@@ -1010,18 +952,6 @@ final class TrafficBarHoverTests: XCTestCase {
     func testHourSeriesSQLGroupsByValidLocalHourKey() {
         XCTAssertTrue(hourSeriesSQL.contains("strftime('%Y-%m-%d %H'"))
         XCTAssertFalse(hourSeriesSQL.contains("start of hour"))
-    }
-
-    func testLineChartHoverSelectsTheNearestHour() {
-        let first = TrafficSeriesPoint(date: Date(timeIntervalSince1970: 0), inBytes: 10, outBytes: 2)
-        let second = TrafficSeriesPoint(date: Date(timeIntervalSince1970: 3600), inBytes: 30, outBytes: 4)
-
-        let selected = nearestTrafficSeriesPoint(
-            to: Date(timeIntervalSince1970: 3200),
-            points: [first, second]
-        )
-
-        XCTAssertEqual(selected?.date, second.date)
     }
 
     func testLineChartHoverSelectsTheNearestRenderedBar() {

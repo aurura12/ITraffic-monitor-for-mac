@@ -48,23 +48,6 @@ final class TrafficFilterTests: XCTestCase {
         )])
     }
 
-    func testSequenceConsumerDoesNotReturnDuplicateRecords() {
-        let records = [TrafficFilterRecord(
-            schemaVersion: 1,
-            sequence: 3,
-            timestamp: 100,
-            appKey: "com.apple.Safari",
-            displayName: "Safari",
-            inBytes: 4,
-            outBytes: 2,
-            flowCount: 1
-        )]
-
-        var consumer = TrafficFilterSequenceConsumer(lastSequence: 3)
-
-        XCTAssertTrue(consumer.consume(records).isEmpty)
-    }
-
     func testMissingSourceAppFallsBackToClash() {
         XCTAssertEqual(normalizedTrafficAppKey(sourceAppIdentifier: nil), "Clash Verge")
     }
@@ -145,26 +128,6 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertEqual(try store.readNewRecords().map(\.sequence), [1, 2, 3])
     }
 
-    func testTrafficTotalsReportSmallExpectedDifference() {
-        let result = reconcileTrafficTotals(
-            filterTotal: 1_000,
-            attributedTotal: 990,
-            unattributedTotal: 5
-        )
-
-        XCTAssertEqual(result.status, .withinTolerance)
-    }
-
-    func testTrafficTotalsReportLargeDifference() {
-        let result = reconcileTrafficTotals(
-            filterTotal: 1_000_000,
-            attributedTotal: 700_000,
-            unattributedTotal: 5
-        )
-
-        XCTAssertEqual(result.status, .mismatch)
-    }
-
     func testParsesOnlyUtunInterfaceCounters() {
         let output = """
         Name       Mtu   Network       Address            Ipkts Ierrs    Ibytes    Opkts Oerrs    Obytes Coll
@@ -177,13 +140,6 @@ final class TrafficFilterTests: XCTestCase {
             parseUTunInterfaceCounters(output),
             UTunInterfaceCounters(inBytes: 1500, outBytes: 2900)
         )
-    }
-
-    func testUtunCounterRollbackProducesNoDelta() {
-        XCTAssertNil(utunDelta(
-            previous: UTunInterfaceCounters(inBytes: 100, outBytes: 200),
-            current: UTunInterfaceCounters(inBytes: 90, outBytes: 250)
-        ))
     }
 
     func testParsesExternalInterfaceCountersOnlyOncePerLinkInterface() {
@@ -236,14 +192,6 @@ final class TrafficFilterTests: XCTestCase {
         XCTAssertEqual(result.entities.first?.inBytes, entities.first?.inBytes)
         XCTAssertEqual(result.entities.first?.outBytes, entities.first?.outBytes)
         XCTAssertEqual(result.positiveGap, UTunTrafficCounters(inBytes: 0, outBytes: 0))
-    }
-
-    func testMenuBarSnapshotNormalizesRatesAndReportsIdleState() {
-        let snapshot = MenuBarSnapshot(downloadRate: -10, uploadRate: 0)
-
-        XCTAssertEqual(snapshot.downloadRate, 0)
-        XCTAssertEqual(snapshot.uploadRate, 0)
-        XCTAssertTrue(snapshot.isIdle)
     }
 
     func testMenuBarRateTextPlacesUploadAboveDownloadInCompactRows() {

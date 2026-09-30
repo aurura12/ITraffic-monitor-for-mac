@@ -58,20 +58,3 @@ struct TrafficFilterAggregate {
         }
     }
 }
-
-struct TrafficFilterSequenceConsumer {
-    private(set) var lastSequence: Int64
-
-    init(lastSequence: Int64 = 0) {
-        self.lastSequence = lastSequence
-    }
-
-    mutating func consume(_ records: [TrafficFilterRecord]) -> [TrafficFilterRecord] {
-        let newRecords = records
-            .filter { $0.sequence > lastSequence }
-            .sorted { $0.sequence < $1.sequence }
-        guard let last = newRecords.last else { return [] }
-        lastSequence = last.sequence
-        return newRecords
-    }
-}

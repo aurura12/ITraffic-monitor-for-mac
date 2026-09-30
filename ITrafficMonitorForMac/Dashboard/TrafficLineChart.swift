@@ -7,12 +7,6 @@ import SwiftUI
 import Charts
 import AppKit
 
-func nearestTrafficSeriesPoint(to date: Date, points: [TrafficSeriesPoint]) -> TrafficSeriesPoint? {
-    points.min { lhs, rhs in
-        abs(lhs.date.timeIntervalSince(date)) < abs(rhs.date.timeIntervalSince(date))
-    }
-}
-
 func nearestTrafficBarIndex(to plotX: CGFloat, barCenters: [CGFloat]) -> Int? {
     guard !barCenters.isEmpty else { return nil }
     return barCenters.indices.min { lhs, rhs in

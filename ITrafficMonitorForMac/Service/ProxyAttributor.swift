@@ -215,17 +215,6 @@ func recordingProxyRowVisibility(
     return ProxyRowVisibilityUpdate(changed: true, newLastVisible: visible, diagnostic: diagnostic)
 }
 
-func proxyCreditConsumptionSummary(
-    creditedIn: Int,
-    creditedOut: Int,
-    pendingIn: Int,
-    pendingOut: Int,
-    proxyIn: Int,
-    proxyOut: Int
-) -> String {
-    "proxy credits consumed in=\(creditedIn) out=\(creditedOut) pendingIn=\(pendingIn) pendingOut=\(pendingOut) proxyIn=\(proxyIn) proxyOut=\(proxyOut)"
-}
-
 func retainingNewestDiagnosticLogBytes(_ data: Data, maximumBytes: Int) -> Data {
     guard data.count > maximumBytes else { return data }
     return data.suffix(maximumBytes)
@@ -377,32 +366,9 @@ func shouldReuseTrackedProxyPID(
     previousSourcePort == currentSourcePort && previousTransport == currentTransport
 }
 
-func proxyMappingCoverage(_ diagnostic: ProxyDiagnostic) -> Double? {
-    switch diagnostic {
-    case let .detected(_, _, connectionCount, mappedConnectionCount, _),
-         let .waitingForProxyRow(_, _, connectionCount, mappedConnectionCount, _):
-        guard connectionCount > 0 else { return 1 }
-        return min(1, max(0, Double(mappedConnectionCount) / Double(connectionCount)))
-    case .idle, .apiUnavailable, .authRequired, .notDetected:
-        return nil
-    }
-}
-
 func proxyEntityMatches(pid: Int, name: String, proxyPIDs: Set<Int>, isClashVerge: Bool) -> Bool {
     proxyPIDs.contains(pid) ||
     (isClashVerge && canonicalProcessDisplayName(name) == "Clash Verge")
-}
-
-func accumulateProxyCredits(
-    _ existing: inout [Int: (inBytes: Int, outBytes: Int)],
-    _ additions: [Int: (inBytes: Int, outBytes: Int)]
-) {
-    for (pid, credit) in additions {
-        var current = existing[pid] ?? (inBytes: 0, outBytes: 0)
-        current.inBytes += credit.inBytes
-        current.outBytes += credit.outBytes
-        existing[pid] = current
-    }
 }
 
 /// Custom proxy endpoints are only allowed on the local machine. This keeps
@@ -468,22 +434,6 @@ func proxyDiagnosticSummary(_ diagnostic: ProxyDiagnostic) -> String {
     case .notDetected:
         return "proxy not detected"
     }
-}
-
-enum ProxyFetchOutcome: Equatable {
-    case success(connectionCount: Int)
-    case transportFailure
-    case authRequired
-    case httpFailure(statusCode: Int)
-    case invalidResponse
-}
-
-func proxyFetchOutcome(statusCode: Int?, hasBody: Bool, connectionCount: Int) -> ProxyFetchOutcome {
-    guard let statusCode else { return .transportFailure }
-    if statusCode == 401 || statusCode == 403 { return .authRequired }
-    guard statusCode == 200 else { return .httpFailure(statusCode: statusCode) }
-    guard hasBody else { return .invalidResponse }
-    return .success(connectionCount: connectionCount)
 }
 
 func proxyEndpointLabel(_ endpoint: String) -> String {

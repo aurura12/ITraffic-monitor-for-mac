@@ -93,10 +93,6 @@ private func parseInterfaceCounters(
     return found ? UTunInterfaceCounters(inBytes: totalIn, outBytes: totalOut) : nil
 }
 
-func utunDelta(previous: UTunInterfaceCounters, current: UTunInterfaceCounters) -> UTunTrafficCounters? {
-    interfaceCounterDelta(previous: previous, current: current)
-}
-
 func interfaceCounterDelta(previous: UTunInterfaceCounters, current: UTunInterfaceCounters) -> UTunTrafficCounters? {
     guard current.inBytes >= previous.inBytes, current.outBytes >= previous.outBytes else { return nil }
     return UTunTrafficCounters(
