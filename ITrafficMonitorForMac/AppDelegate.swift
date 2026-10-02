@@ -110,10 +110,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self.network = Network()
         menuBarController?.network = self.network
         self.network.startListenNetwork()
-        SharedStore.utunTrafficSampler.onReferenceSample = { sample in
-            SharedStore.trafficSamplingDiagnostics.recordReferenceSample(sample)
-        }
-        SharedStore.utunTrafficSampler.start()
 
         // The app is menu-bar-first. The full dashboard remains available from
         // the status item popover and the application menu.
@@ -140,8 +136,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if AppEnvironment.isRunningTests { return }
         print("applicationWillTerminate")
         network?.stopListenNetwork()
-        SharedStore.utunTrafficSampler.stop()
-        SharedStore.proxyAttributor.stop()
         SharedStore.recorder.flush()
     }
 }

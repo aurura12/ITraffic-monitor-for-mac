@@ -163,7 +163,7 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    private func diagnosticCounterRow(title: String, value: UTunTrafficCounters?) -> some View {
+    private func diagnosticCounterRow(title: String, value: TrafficCounters?) -> some View {
         HStack {
             Text(title)
                 .font(.caption)

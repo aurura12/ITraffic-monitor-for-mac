@@ -14,38 +14,25 @@
 		34FA784A46B78003B0C0DA44 /* RealtimeRateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */; };
 		3B03C3F2B98B05E93EEBE510 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F0324CEDB56F043E9676BA /* DashboardView.swift */; };
 		3CD3C483420F51057FC93505 /* NettopRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30BFFD61518831774A91BFE /* NettopRunner.swift */; };
-		3E43F8B01467B9D22918F2DD /* ListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB270FCE9653D5465B9967DE /* ListViewModel.swift */; };
 		40EFC85DD540245FF296E5FA /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC7303753732C9E0A5C756B /* ExportView.swift */; };
 		41A2BA9B90B99047FA68B2B0 /* TrafficBarHoverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4889D7E3690CBEA1CDF7C956 /* TrafficBarHoverTests.swift */; };
 		42181CD01DFC3EC634BBD0BA /* TrafficRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 031A75F509B62CC97841A678 /* TrafficRecorder.swift */; };
-		4278B4E31D397762896428FF /* TrafficFilterStatsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9EE1E45D4FA08000A680CD /* TrafficFilterStatsStore.swift */; };
 		4ED25F054E2D3D4EE005F729 /* TrafficCalendarHeatmap.swift in Sources */ = {isa = PBXBuildFile; fileRef = 619A0B2F8706BE146256112B /* TrafficCalendarHeatmap.swift */; };
 		545E2BC0646328833772AF12 /* MenuBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08982BEA9591C5710684F088 /* MenuBar.swift */; };
 		6174503C0F07E7332136B076 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F7073581DC3527238C3C97F5 /* Main.storyboard */; };
-		6826FE426429BDBEA2B02137 /* TrafficFilterReportAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C156DBB5DCF14BF637E04AC2 /* TrafficFilterReportAccumulator.swift */; };
 		69E191496ED3B5A1BCECD1C7 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */; };
-		702FC9A68EE397790418003A /* TrafficFilterSharedOutput.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC134DBEDC722C7EFB9C9653 /* TrafficFilterSharedOutput.swift */; };
 		7CFAE01821629B774ADC8C9E /* TrafficLineChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = E54D307461D73ABC43EA1B88 /* TrafficLineChart.swift */; };
-		7EA7D2C45841A5A8BDD05B30 /* ProcessEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */; };
-		91015F2BF717F7ED69A5DAE3 /* TrafficFilterRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E94AFE218DE8B52AC41D875 /* TrafficFilterRecord.swift */; };
-		9183E7EB8F352D0C0AE05310 /* TrafficFilterAppIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 999067C0B88284276E64A81E /* TrafficFilterAppIdentity.swift */; };
-		931A6E57DB23372756A5E6BE /* TrafficFilterManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8191AA13BA7BD18EB4944E14 /* TrafficFilterManager.swift */; };
 		9ADA873E4A69AE07A95C4057 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E83DF0462DC3E858E4B86679 /* SettingsView.swift */; };
 		A630FD43890D5C19CF10FF37 /* TrafficFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 754E9D4DB5DAABA8084C6D4E /* TrafficFilterTests.swift */; };
 		A6795D1FB4CB78509A27C8EC /* TrafficBarChartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 065D4B4260EC8645AF7E7918 /* TrafficBarChartView.swift */; };
 		AED77EB854A3D9CA2251354C /* GeneratedBuildInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DE533394707409DB44B2D69 /* GeneratedBuildInfo.swift */; };
 		AFA718A91B39E3C1029808BE /* UnifiedDashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9CF9AC9226D7A354F2DF2F /* UnifiedDashboardView.swift */; };
-		B392EE422D1C8A666EB02E6B /* TrafficFilterAggregation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0D24DA2EE81B71CCB83209C /* TrafficFilterAggregation.swift */; };
-		C5F104C728A98137ED706CFF /* ProxyAttributor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0CC43C0CA35F7577E3D134A8 /* ProxyAttributor.swift */; };
 		CBC7BE90B5FEFD68694D383B /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 116719D934B1B6383F92CBDC /* Theme.swift */; };
 		CBF6BA30843CEC14BEEB0008 /* TrafficDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = E760B012490A706D383888B1 /* TrafficDatabase.swift */; };
 		D4C75F33BA95B8E5322266EA /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5338D25E880B4A7444E80A /* LocalizationManager.swift */; };
-		DA90E8D6D8F3685CF140C38E /* UTunTrafficSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF15E3615DC5C58960022527 /* UTunTrafficSampler.swift */; };
 		DBB0BBC93E11797BD3244AF0 /* StatusDataModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */; };
-		E650BB638F28006E5D213361 /* PerAppRateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2200E367B287B2B15A0DD387 /* PerAppRateStore.swift */; };
 		F3EF007B23AA3BA82676E988 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DC67E0DE60F9255C3A54E63 /* Assets.xcassets */; };
 		F4A7B8FD6BD2999EB29AF68A /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */; };
-		F83B3C7A3C27F69F25DA4E1C /* FreeAttributionCalibrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF29493AB65C88B04AE9758 /* FreeAttributionCalibrator.swift */; };
 		FE4F53C25F06D7C16BC91AD6 /* TrafficRollupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6898F90C736ADDBFB454500F /* TrafficRollupTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -64,13 +51,9 @@
 		065D4B4260EC8645AF7E7918 /* TrafficBarChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficBarChartView.swift; sourceTree = "<group>"; };
 		08982BEA9591C5710684F088 /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
 		0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
-		0CC43C0CA35F7577E3D134A8 /* ProxyAttributor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyAttributor.swift; sourceTree = "<group>"; };
 		116719D934B1B6383F92CBDC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		11F0324CEDB56F043E9676BA /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		1336C3058B9DCCFC303FD09D /* ITraffic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ITraffic.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		2200E367B287B2B15A0DD387 /* PerAppRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerAppRateStore.swift; sourceTree = "<group>"; };
-		2AF29493AB65C88B04AE9758 /* FreeAttributionCalibrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreeAttributionCalibrator.swift; sourceTree = "<group>"; };
-		2E94AFE218DE8B52AC41D875 /* TrafficFilterRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterRecord.swift; sourceTree = "<group>"; };
 		3D30F89C22ACDFD9102801CD /* Utils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utils.swift; sourceTree = "<group>"; };
 		4889D7E3690CBEA1CDF7C956 /* TrafficBarHoverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficBarHoverTests.swift; sourceTree = "<group>"; };
 		5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -79,26 +62,17 @@
 		6898F90C736ADDBFB454500F /* TrafficRollupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficRollupTests.swift; sourceTree = "<group>"; };
 		748FB46B5B1D40583CCBFC28 /* Store.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Store.swift; sourceTree = "<group>"; };
 		754E9D4DB5DAABA8084C6D4E /* TrafficFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterTests.swift; sourceTree = "<group>"; };
-		8191AA13BA7BD18EB4944E14 /* TrafficFilterManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterManager.swift; sourceTree = "<group>"; };
 		8989097F8257FDFC655FD131 /* ITrafficMonitorForMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ITrafficMonitorForMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8DC67E0DE60F9255C3A54E63 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8DE533394707409DB44B2D69 /* GeneratedBuildInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneratedBuildInfo.swift; sourceTree = "<group>"; };
-		999067C0B88284276E64A81E /* TrafficFilterAppIdentity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterAppIdentity.swift; sourceTree = "<group>"; };
 		B30BFFD61518831774A91BFE /* NettopRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NettopRunner.swift; sourceTree = "<group>"; };
 		B4DE4AB076FAF20A640BD23F /* Network.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Network.swift; sourceTree = "<group>"; };
 		BB9CF9AC9226D7A354F2DF2F /* UnifiedDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedDashboardView.swift; sourceTree = "<group>"; };
-		C156DBB5DCF14BF637E04AC2 /* TrafficFilterReportAccumulator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterReportAccumulator.swift; sourceTree = "<group>"; };
-		CA9EE1E45D4FA08000A680CD /* TrafficFilterStatsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterStatsStore.swift; sourceTree = "<group>"; };
-		CB270FCE9653D5465B9967DE /* ListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListViewModel.swift; sourceTree = "<group>"; };
 		CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusDataModel.swift; sourceTree = "<group>"; };
-		CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessEntity.swift; sourceTree = "<group>"; };
-		D0D24DA2EE81B71CCB83209C /* TrafficFilterAggregation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterAggregation.swift; sourceTree = "<group>"; };
-		DF15E3615DC5C58960022527 /* UTunTrafficSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UTunTrafficSampler.swift; sourceTree = "<group>"; };
 		E54D307461D73ABC43EA1B88 /* TrafficLineChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficLineChart.swift; sourceTree = "<group>"; };
 		E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeRateStore.swift; sourceTree = "<group>"; };
 		E760B012490A706D383888B1 /* TrafficDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficDatabase.swift; sourceTree = "<group>"; };
 		E83DF0462DC3E858E4B86679 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		EC134DBEDC722C7EFB9C9653 /* TrafficFilterSharedOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterSharedOutput.swift; sourceTree = "<group>"; };
 		F7073581DC3527238C3C97F5 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		FAC7303753732C9E0A5C756B /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
 		FF5338D25E880B4A7444E80A /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationManager.swift; sourceTree = "<group>"; };
@@ -108,9 +82,7 @@
 		1084C47DA714E5ED8C50E54D /* Model */ = {
 			isa = PBXGroup;
 			children = (
-				CB270FCE9653D5465B9967DE /* ListViewModel.swift */,
 				FF5338D25E880B4A7444E80A /* LocalizationManager.swift */,
-				2200E367B287B2B15A0DD387 /* PerAppRateStore.swift */,
 				E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */,
 				CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */,
 			);
@@ -133,14 +105,6 @@
 			path = Dashboard;
 			sourceTree = "<group>";
 		};
-		31485B444FA0EA9A0DE5DA0C /* NetworkFilter */ = {
-			isa = PBXGroup;
-			children = (
-				917179FC256D1EF2172E8EA5 /* Shared */,
-			);
-			path = NetworkFilter;
-			sourceTree = "<group>";
-		};
 		4120213D73F4C876D85E3432 = {
 			isa = PBXGroup;
 			children = (
@@ -148,18 +112,6 @@
 				DE39BF6F28691375023B267A /* ITrafficMonitorForMacTests */,
 				C7F7F27CEDA49B8A0BBE19D9 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		917179FC256D1EF2172E8EA5 /* Shared */ = {
-			isa = PBXGroup;
-			children = (
-				D0D24DA2EE81B71CCB83209C /* TrafficFilterAggregation.swift */,
-				999067C0B88284276E64A81E /* TrafficFilterAppIdentity.swift */,
-				2E94AFE218DE8B52AC41D875 /* TrafficFilterRecord.swift */,
-				C156DBB5DCF14BF637E04AC2 /* TrafficFilterReportAccumulator.swift */,
-				EC134DBEDC722C7EFB9C9653 /* TrafficFilterSharedOutput.swift */,
-			);
-			path = Shared;
 			sourceTree = "<group>";
 		};
 		93A1FCAC2059C9BA4F8137C5 /* Base.lproj */ = {
@@ -173,14 +125,9 @@
 		B04E2F28E667BBA2ADAE07F6 /* Service */ = {
 			isa = PBXGroup;
 			children = (
-				2AF29493AB65C88B04AE9758 /* FreeAttributionCalibrator.swift */,
 				B30BFFD61518831774A91BFE /* NettopRunner.swift */,
-				0CC43C0CA35F7577E3D134A8 /* ProxyAttributor.swift */,
 				E760B012490A706D383888B1 /* TrafficDatabase.swift */,
-				8191AA13BA7BD18EB4944E14 /* TrafficFilterManager.swift */,
-				CA9EE1E45D4FA08000A680CD /* TrafficFilterStatsStore.swift */,
 				031A75F509B62CC97841A678 /* TrafficRecorder.swift */,
-				DF15E3615DC5C58960022527 /* UTunTrafficSampler.swift */,
 			);
 			path = Service;
 			sourceTree = "<group>";
@@ -220,13 +167,11 @@
 				8DE533394707409DB44B2D69 /* GeneratedBuildInfo.swift */,
 				08982BEA9591C5710684F088 /* MenuBar.swift */,
 				B4DE4AB076FAF20A640BD23F /* Network.swift */,
-				CFEBA748A68F38F9678D3C65 /* ProcessEntity.swift */,
 				748FB46B5B1D40583CCBFC28 /* Store.swift */,
 				3D30F89C22ACDFD9102801CD /* Utils.swift */,
 				93A1FCAC2059C9BA4F8137C5 /* Base.lproj */,
 				27F00417CB2C3A88E4CD181C /* Dashboard */,
 				1084C47DA714E5ED8C50E54D /* Model */,
-				31485B444FA0EA9A0DE5DA0C /* NetworkFilter */,
 				BBD02EC3A58E02C9B9D09A87 /* Preview Content */,
 				B04E2F28E667BBA2ADAE07F6 /* Service */,
 			);
@@ -361,16 +306,11 @@
 				3B03C3F2B98B05E93EEBE510 /* DashboardView.swift in Sources */,
 				04BDC687851FAE38F5203BB8 /* DashboardViewModel.swift in Sources */,
 				40EFC85DD540245FF296E5FA /* ExportView.swift in Sources */,
-				F83B3C7A3C27F69F25DA4E1C /* FreeAttributionCalibrator.swift in Sources */,
 				AED77EB854A3D9CA2251354C /* GeneratedBuildInfo.swift in Sources */,
-				3E43F8B01467B9D22918F2DD /* ListViewModel.swift in Sources */,
 				D4C75F33BA95B8E5322266EA /* LocalizationManager.swift in Sources */,
 				545E2BC0646328833772AF12 /* MenuBar.swift in Sources */,
 				3CD3C483420F51057FC93505 /* NettopRunner.swift in Sources */,
 				33C440AED95888F010013660 /* Network.swift in Sources */,
-				E650BB638F28006E5D213361 /* PerAppRateStore.swift in Sources */,
-				7EA7D2C45841A5A8BDD05B30 /* ProcessEntity.swift in Sources */,
-				C5F104C728A98137ED706CFF /* ProxyAttributor.swift in Sources */,
 				34FA784A46B78003B0C0DA44 /* RealtimeRateStore.swift in Sources */,
 				9ADA873E4A69AE07A95C4057 /* SettingsView.swift in Sources */,
 				DBB0BBC93E11797BD3244AF0 /* StatusDataModel.swift in Sources */,
@@ -379,16 +319,8 @@
 				A6795D1FB4CB78509A27C8EC /* TrafficBarChartView.swift in Sources */,
 				4ED25F054E2D3D4EE005F729 /* TrafficCalendarHeatmap.swift in Sources */,
 				CBF6BA30843CEC14BEEB0008 /* TrafficDatabase.swift in Sources */,
-				B392EE422D1C8A666EB02E6B /* TrafficFilterAggregation.swift in Sources */,
-				9183E7EB8F352D0C0AE05310 /* TrafficFilterAppIdentity.swift in Sources */,
-				931A6E57DB23372756A5E6BE /* TrafficFilterManager.swift in Sources */,
-				91015F2BF717F7ED69A5DAE3 /* TrafficFilterRecord.swift in Sources */,
-				6826FE426429BDBEA2B02137 /* TrafficFilterReportAccumulator.swift in Sources */,
-				702FC9A68EE397790418003A /* TrafficFilterSharedOutput.swift in Sources */,
-				4278B4E31D397762896428FF /* TrafficFilterStatsStore.swift in Sources */,
 				7CFAE01821629B774ADC8C9E /* TrafficLineChart.swift in Sources */,
 				42181CD01DFC3EC634BBD0BA /* TrafficRecorder.swift in Sources */,
-				DA90E8D6D8F3685CF140C38E /* UTunTrafficSampler.swift in Sources */,
 				AFA718A91B39E3C1029808BE /* UnifiedDashboardView.swift in Sources */,
 				07CFBEA99D4A7579D4E4AC71 /* Utils.swift in Sources */,
 			);

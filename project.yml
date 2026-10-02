@@ -27,9 +27,7 @@ targets:
           - Assets.xcassets
           - "Preview Content"
           - Base.lproj
-          - NetworkFilter
       - path: ITrafficMonitorForMac/GeneratedBuildInfo.swift
-      - path: ITrafficMonitorForMac/NetworkFilter/Shared
       - path: ITrafficMonitorForMac/Assets.xcassets
         buildPhase: resources
       - path: ITrafficMonitorForMac/Preview Content/Preview Assets.xcassets
@@ -86,10 +84,8 @@ targets:
           - "-lsqlite3"
         SWIFT_VERSION: 5.0
 
-  # The Network Extension implementation is intentionally kept under
-  # ITrafficMonitorForMac/NetworkFilter, but is not part of the default free
-  # project. It requires a signed Apple Developer Team and a real install /
-  # enablement flow before it can be shipped safely.
+  # The Network Extension implementation was removed along with the per-app
+  # breakdown; the app now records total traffic only.
 
   ITrafficMonitorForMacTests:
     type: bundle.unit-test

@@ -489,47 +489,31 @@ final class TrafficBarHoverTests: XCTestCase {
         }
     }
 
-    func testUnixSocketCurlOutputParsesStatusAndBody() {
-        let output = "{\"connections\":[]}\n__ITRAFFIC_STATUS__:200\n"
-
-        let response = parseUnixSocketCurlOutput(output)
-
-        XCTAssertEqual(response?.statusCode, 200)
-        XCTAssertEqual(response?.body, "{\"connections\":[]}")
-    }
-
     func testNettopParserHandlesQuotedCommaInProcessName() {
-        let network = Network()
+        let row = Network().parser(text: "\"My, Browser.42\",100,200")
 
-        let entity = network.parser(text: "\"My, Browser.42\",100,200")
-
-        XCTAssertEqual(entity?.name, "My, Browser")
-        XCTAssertEqual(entity?.pid, 42)
-        XCTAssertEqual(entity?.inBytes, 100)
-        XCTAssertEqual(entity?.outBytes, 200)
+        XCTAssertEqual(row?.inBytes, 100)
+        XCTAssertEqual(row?.outBytes, 200)
     }
 
     func testNettopParserRejectsUnclosedQuotedField() {
         XCTAssertNil(Network().parser(text: "\"My, Browser.42,100,200"))
     }
 
-    func testNettopParserRejectsNonNumericFieldsInsteadOfCoercingToZero() {
-        // A row with a non-numeric byte field or PID must be rejected so it is
-        // counted as dropped, not kept with a zeroed field.
+    func testNettopParserRejectsNonNumericByteFields() {
+        // A row whose byte fields are not numbers must be rejected so it is
+        // counted as dropped, not kept with a zeroed field. The name field is
+        // not inspected, so an odd name is still a valid byte row.
         XCTAssertNil(Network().parser(text: "Foo.123,abc,200,"))
         XCTAssertNil(Network().parser(text: "Foo.123,100,xyz,"))
-        XCTAssertNil(Network().parser(text: "Foo.bar,100,200,"))
-    }
-
-    func testNettopParserRejectsNegativePid() {
-        XCTAssertNil(Network().parser(text: "Foo.-1,100,200,"))
+        XCTAssertNotNil(Network().parser(text: "Foo.bar,100,200,"))
     }
 
     func testNettopParserClampsNegativeByteDeltaToZero() {
-        let entity = Network().parser(text: "Foo.123,-5,200,")
+        let row = Network().parser(text: "Foo.123,-5,200,")
 
-        XCTAssertEqual(entity?.inBytes, 0)
-        XCTAssertEqual(entity?.outBytes, 200)
+        XCTAssertEqual(row?.inBytes, 0)
+        XCTAssertEqual(row?.outBytes, 200)
     }
 
     func testNettopHeaderLineIsRecognizedAndNotADataRow() {
@@ -545,92 +529,10 @@ final class TrafficBarHoverTests: XCTestCase {
     }
 
     func testNettopParserHandlesRealFrameRowWithSpacesAndTrailingComma() {
-        let entity = Network().parser(text: "Codex (Service).1084,6264839,0,")
+        let row = Network().parser(text: "Codex (Service).1084,6264839,0,")
 
-        XCTAssertEqual(entity?.name, "Codex (Service)")
-        XCTAssertEqual(entity?.pid, 1084)
-        XCTAssertEqual(entity?.inBytes, 6_264_839)
-        XCTAssertEqual(entity?.outBytes, 0)
-    }
-
-    func testPerAppRateStoreAggregatesRatesByAppKey() {
-        let store = PerAppRateStore()
-        store.update(
-            entities: [
-                ProcessEntity(pid: 4_000_001, name: "node", inBytes: 2048, outBytes: 0),
-                ProcessEntity(pid: 4_000_002, name: "node", inBytes: 2048, outBytes: 1024),
-                ProcessEntity(pid: 4_000_003, name: "idle", inBytes: 0, outBytes: 0)
-            ],
-            interval: 2
-        )
-
-        // Both "node" rows share an appKey, and the idle row is dropped.
-        XCTAssertEqual(store.latest.count, 1)
-        XCTAssertEqual(store.latest["node"]?.inRate, 2048)
-        XCTAssertEqual(store.latest["node"]?.outRate, 512)
-    }
-
-    func testPerAppRateStorePicksBusiestAppByCombinedRate() {
-        let store = PerAppRateStore()
-        store.update(
-            entities: [
-                ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 2048, outBytes: 0),
-                ProcessEntity(pid: 4_000_002, name: "beta", inBytes: 4096, outBytes: 4096),
-                ProcessEntity(pid: 4_000_003, name: "idle", inBytes: 0, outBytes: 0)
-            ],
-            interval: 2
-        )
-
-        XCTAssertEqual(store.topApp?.displayName, "beta")
-        XCTAssertEqual(store.topApp?.inRate, 2048)
-        XCTAssertEqual(store.topApp?.outRate, 2048)
-    }
-
-    func testMenuBarDoesNotExposeTheBusiestAppTitle() {
-        let localization = LocalizationManager.shared
-        let originalLanguage = localization.language
-        defer { localization.language = originalLanguage }
-
-        localization.language = .zhHans
-
-        XCTAssertEqual(localization.text("Top App"), "Top App")
-    }
-
-    func testPerAppRateStoreTopAppIsNilWithoutTraffic() {
-        let store = PerAppRateStore()
-        store.update(
-            entities: [ProcessEntity(pid: 4_000_001, name: "idle", inBytes: 0, outBytes: 0)],
-            interval: 2
-        )
-
-        XCTAssertNil(store.topApp)
-    }
-
-    func testPerAppRateStoreClearDropsLiveValues() {
-        let store = PerAppRateStore()
-        store.update(
-            entities: [ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 2048, outBytes: 0)],
-            interval: 2
-        )
-        XCTAssertFalse(store.latest.isEmpty)
-        XCTAssertNotNil(store.topApp)
-
-        store.clear()
-
-        XCTAssertTrue(store.latest.isEmpty)
-        XCTAssertNil(store.topApp)
-    }
-
-    func testListViewModelClearDropsRows() {
-        let viewModel = ListViewModel()
-        viewModel.updateData(newItems: [
-            ProcessEntity(pid: 4_000_001, name: "alpha", inBytes: 1, outBytes: 0)
-        ])
-        XCTAssertFalse(viewModel.items.isEmpty)
-
-        viewModel.clear()
-
-        XCTAssertTrue(viewModel.items.isEmpty)
+        XCTAssertEqual(row?.inBytes, 6_264_839)
+        XCTAssertEqual(row?.outBytes, 0)
     }
 
     func testProcessHelperReturnsOutput() {
@@ -687,36 +589,6 @@ final class TrafficBarHoverTests: XCTestCase {
         }
     }
 
-    func testHelperProcessUsesParentAppNameInsteadOfTruncatedProcessName() {
-        let name = preferredDisplayName(
-            applicationName: "WeChat",
-            processName: "WeChatAppEx Hel",
-            walkedToAncestor: true
-        )
-
-        XCTAssertEqual(name, "WeChat")
-    }
-
-    func testCommandLineChildUsesParentAppNameForCleanDisplay() {
-        let name = preferredDisplayName(
-            applicationName: "Visual Studio Code",
-            processName: "node",
-            walkedToAncestor: true
-        )
-
-        XCTAssertEqual(name, "Visual Studio Code")
-    }
-
-    func testUnresolvedProcessKeepsItsRawName() {
-        let name = preferredDisplayName(
-            applicationName: nil,
-            processName: "nsurlsessiond",
-            walkedToAncestor: false
-        )
-
-        XCTAssertEqual(name, "nsurlsessiond")
-    }
-
     func testLaunchAtLoginManagerRegistersAndRefreshesState() {
         var registeredState = false
         let manager = LaunchAtLoginManager(
@@ -738,200 +610,6 @@ final class TrafficBarHoverTests: XCTestCase {
 
         XCTAssertFalse(manager.setEnabled(true))
         XCTAssertFalse(manager.isEnabled)
-    }
-
-    func testClashVergeCoreUsesClashVergeDisplayName() {
-        XCTAssertEqual(
-            proxyDisplayName(rawName: "verge-mihomo", isClashVerge: true),
-            "Clash Verge"
-        )
-    }
-
-    func testMihomoUsesStableClashVergeDatabaseName() {
-        XCTAssertEqual(canonicalProcessDisplayName("verge-mihomo"), "Clash Verge")
-        XCTAssertEqual(canonicalProcessDisplayName("mihomo"), "Clash Verge")
-        XCTAssertEqual(canonicalProcessDisplayName("clash-verge"), "Clash Verge")
-        XCTAssertEqual(canonicalProcessDisplayName("Google Chrome"), "Google Chrome")
-    }
-
-    func testLiveListNormalizesMihomoName() {
-        let viewModel = ListViewModel()
-        viewModel.updateData(newItems: [ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 10, outBytes: 2)])
-        XCTAssertEqual(viewModel.items.first?.name, "Clash Verge")
-    }
-
-    func testExistingConnectionRetainsConfirmedPIDWhenLookupLaterFails() {
-        XCTAssertEqual(attributedPID(previousPID: 456, resolvedPID: 0), 456)
-    }
-
-    func testMissingNewConnectionPIDRemainsUnassigned() {
-        XCTAssertEqual(attributedPID(previousPID: 0, resolvedPID: 0), 0)
-    }
-
-    func testProxyDiagnosticsDistinguishAPIFailureFromMissingNetTopProxyRow() {
-        let apiFailure = proxyDiagnosticSummary(.apiUnavailable(endpoint: "unix:/tmp/verge/verge-mihomo.sock"))
-        let missingRow = proxyDiagnosticSummary(.waitingForProxyRow(
-            name: "Clash Verge",
-            endpoint: "unix:/tmp/verge/verge-mihomo.sock",
-            connectionCount: 86,
-            mappedConnectionCount: 73,
-            proxyPID: 91681
-        ))
-
-        XCTAssertTrue(apiFailure.contains("API unavailable"))
-        XCTAssertTrue(missingRow.contains("proxy row missing"))
-        XCTAssertTrue(missingRow.contains("connections=86"))
-        XCTAssertTrue(missingRow.contains("mapped=73"))
-        XCTAssertTrue(missingRow.contains("proxyPID=91681"))
-    }
-
-    func testClashProxyEntityMatchesAnyResolvedPIDOrCanonicalName() {
-        XCTAssertTrue(proxyEntityMatches(
-            pid: 91656,
-            name: "verge-mihomo",
-            proxyPIDs: [91681],
-            isClashVerge: true
-        ))
-        XCTAssertTrue(proxyEntityMatches(
-            pid: 91681,
-            name: "mihomo",
-            proxyPIDs: [91681],
-            isClashVerge: true
-        ))
-        XCTAssertFalse(proxyEntityMatches(
-            pid: 1234,
-            name: "Google Chrome",
-            proxyPIDs: [91681],
-            isClashVerge: true
-        ))
-    }
-
-    func testProxyCreditHelpersClampCountersAndIncludeUploadOnlyPIDs() {
-        XCTAssertEqual(nonNegativeProxyDelta(current: 5, previous: 10), 0)
-        XCTAssertEqual(proxyCreditPIDs(inBytes: [1: 20], outBytes: [2: 30]), [1, 2])
-    }
-
-    func testShortLivedSocketUsesFreshCachedOwnerWhenLiveMapMisses() {
-        let key = SocketKey(protocol: .tcp, port: 64068)
-        let cached = [key: CachedSocketOwner(pid: 30944, name: "Code Helper", lastSeen: 100)]
-
-        let merged = mergeSocketOwners(live: [:], cached: cached, now: 104, ttl: 10)
-
-        XCTAssertEqual(merged[key], SocketOwner(pid: 30944, name: "Code Helper"))
-    }
-
-    func testExpiredSocketOwnerIsNotReusedAfterPortMayHaveBeenRecycled() {
-        let key = SocketKey(protocol: .tcp, port: 64068)
-        let cached = [key: CachedSocketOwner(pid: 30944, name: "Code Helper", lastSeen: 100)]
-
-        let merged = mergeSocketOwners(live: [:], cached: cached, now: 111, ttl: 10)
-
-        XCTAssertNil(merged[key])
-    }
-
-    func testCachedSocketOwnerIsNotReusedWhenPIDWasRecycled() {
-        let key = SocketKey(protocol: .tcp, port: 64068)
-        let cached = [key: CachedSocketOwner(
-            pid: 30944,
-            name: "Code Helper",
-            lastSeen: 100,
-            startTime: 10
-        )]
-
-        let merged = mergeSocketOwners(
-            live: [:],
-            cached: cached,
-            now: 104,
-            ttl: 10,
-            ownerIsCurrent: { $0.startTime == 11 }
-        )
-
-        XCTAssertNil(merged[key])
-    }
-
-    func testUnknownProtocolUsesUniqueSocketOwner() {
-        let ports = [SocketKey(protocol: .tcp, port: 64068): 30944]
-
-        XCTAssertEqual(socketOwnerPID(sourcePort: 64068, transport: nil, ports: ports), 30944)
-    }
-
-    func testUnknownProtocolDoesNotChooseBetweenTCPAndUDPOwners() {
-        let ports = [
-            SocketKey(protocol: .tcp, port: 64068): 30944,
-            SocketKey(protocol: .udp, port: 64068): 30945
-        ]
-
-        XCTAssertNil(socketOwnerPID(sourcePort: 64068, transport: nil, ports: ports))
-    }
-
-    func testReusedConnectionIDCannotRetainPIDWhenEndpointChanges() {
-        XCTAssertFalse(shouldReuseTrackedProxyPID(
-            previousSourcePort: 64068,
-            previousTransport: .tcp,
-            currentSourcePort: 64069,
-            currentTransport: .tcp
-        ))
-        XCTAssertTrue(shouldReuseTrackedProxyPID(
-            previousSourcePort: 64068,
-            previousTransport: .tcp,
-            currentSourcePort: 64068,
-            currentTransport: .tcp
-        ))
-    }
-
-    func testClashConfigLineParsesControllerAndSecret() {
-        XCTAssertEqual(parseProxyConfigLine("external-controller: 127.0.0.1:9097"),
-                       ProxyConfigEntry(key: "external-controller", value: "127.0.0.1:9097"))
-        XCTAssertEqual(parseProxyConfigLine("secret: 'local-secret'"),
-                       ProxyConfigEntry(key: "secret", value: "local-secret"))
-    }
-
-    func testPendingCreditsConsumeOldestBytesFirst() {
-        let pending = [
-            PendingProxyCredit(timestamp: 10, pid: 1, inBytes: 100, outBytes: 0),
-            PendingProxyCredit(timestamp: 11, pid: 2, inBytes: 100, outBytes: 0)
-        ]
-
-        let result = consumePendingProxyCredits(pending, availableIn: 150, availableOut: 0)
-
-        XCTAssertEqual(result.credited[1]?.inBytes, 100)
-        XCTAssertEqual(result.credited[2]?.inBytes, 50)
-        XCTAssertEqual(result.remaining, [
-            PendingProxyCredit(timestamp: 11, pid: 2, inBytes: 50, outBytes: 0)
-        ])
-    }
-
-    func testPendingCreditsRemainWhenNoProxyRowCanCarryThem() {
-        let pending = [PendingProxyCredit(timestamp: 10, pid: 1, inBytes: 100, outBytes: 20)]
-
-        let result = consumePendingProxyCredits(pending, availableIn: 0, availableOut: 0)
-
-        XCTAssertTrue(result.credited.isEmpty)
-        XCTAssertEqual(result.remaining, pending)
-    }
-
-    func testSocketKeysKeepTCPAndUDPSamePortSeparate() {
-        let tcp = SocketKey(protocol: .tcp, port: 54000)
-        let udp = SocketKey(protocol: .udp, port: 54000)
-
-        XCTAssertNotEqual(tcp, udp)
-    }
-
-    func testDiagnosticLogRetentionKeepsNewestBytesWithinLimit() {
-        let retained = retainingNewestDiagnosticLogBytes(
-            Data("old\nnewest\n".utf8),
-            maximumBytes: 7
-        )
-
-        XCTAssertEqual(String(decoding: retained, as: UTF8.self), "newest\n")
-    }
-
-    func testCustomProxyAPIOnlyAllowsLoopbackHosts() {
-        XCTAssertTrue(isAllowedProxyAPIURL("http://127.0.0.1:9090"))
-        XCTAssertTrue(isAllowedProxyAPIURL("http://localhost:9090"))
-        XCTAssertTrue(isAllowedProxyAPIURL("http://[::1]:9090"))
-        XCTAssertFalse(isAllowedProxyAPIURL("http://192.168.1.10:9090"))
-        XCTAssertFalse(isAllowedProxyAPIURL("https://example.com/api"))
     }
 
     func testTodaySeriesContainsAll24HoursAndFillsMissingHoursWithZero() {
@@ -1022,148 +700,6 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
-    // MARK: - Proxy row visibility diagnostic
-
-    func testVisibilityTransitionIsNotConsumedWhileDetectionUnavailable() {
-        // Regression: a frame racing a transient reset() (proxyDetected
-        // momentarily false) must not consume the only visibility change. The
-        // previous visibility stays nil so the next frame retries.
-        let diagnostic = (name: "Clash Verge", endpoint: "unix:/tmp/verge/verge-mihomo.sock",
-                          connectionCount: 10, mappedConnectionCount: 8, proxyPID: Int?(91681))
-
-        let update = recordingProxyRowVisibility(
-            visible: true,
-            proxyDetected: false,
-            lastProxyRowVisible: nil,
-            diagnostic: diagnostic
-        )
-
-        XCTAssertFalse(update.changed)
-        XCTAssertNil(update.newLastVisible, "Detection unavailable: keep nil so a later frame can fire")
-        XCTAssertNil(update.diagnostic)
-    }
-
-    func testVisibilityTransitionEmitsDiagnosticOnFirstObservation() {
-        let diagnostic = (name: "Clash Verge", endpoint: "unix:/tmp/verge/verge-mihomo.sock",
-                          connectionCount: 10, mappedConnectionCount: 8, proxyPID: Int?(91681))
-
-        let update = recordingProxyRowVisibility(
-            visible: true,
-            proxyDetected: true,
-            lastProxyRowVisible: nil,
-            diagnostic: diagnostic
-        )
-
-        XCTAssertTrue(update.changed)
-        XCTAssertEqual(update.newLastVisible, true)
-        XCTAssertEqual(update.diagnostic?.proxyPID, 91681)
-    }
-
-    func testVisibilityTransitionIsIdempotentForSameVisibility() {
-        let diagnostic = (name: "Clash Verge", endpoint: "unix:/tmp/verge/verge-mihomo.sock",
-                          connectionCount: 10, mappedConnectionCount: 8, proxyPID: Int?(91681))
-
-        let update = recordingProxyRowVisibility(
-            visible: true,
-            proxyDetected: true,
-            lastProxyRowVisible: true,
-            diagnostic: diagnostic
-        )
-
-        XCTAssertFalse(update.changed)
-        XCTAssertNil(update.diagnostic)
-    }
-
-    func testSameWindowSettlementClampsDeclarationsAndPreservesBothDirections() {
-        let raw = [
-            ProcessEntity(pid: 61013, name: "Google Chrome", inBytes: 100, outBytes: 50),
-            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 1_000, outBytes: 500)
-        ]
-        let declarations = [
-            PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 1_500, outBytes: 700)
-        ]
-
-        let result = settleProxyWindow(
-            raw: raw,
-            proxyPIDs: [91681],
-            isClashVerge: true,
-            declarations: declarations,
-            pidNames: [61013: "Google Chrome"]
-        )
-
-        XCTAssertEqual(result.credited[61013]?.inBytes, 1_000)
-        XCTAssertEqual(result.credited[61013]?.outBytes, 500)
-        XCTAssertTrue(result.droppedDeclarations.isEmpty == false)
-        XCTAssertEqual(result.droppedDeclarations.first?.inBytes, 500)
-        XCTAssertEqual(result.droppedDeclarations.first?.outBytes, 200)
-
-        let rawIn = raw.reduce(0) { $0 + $1.inBytes }
-        let rawOut = raw.reduce(0) { $0 + $1.outBytes }
-        let finalIn = result.entities.reduce(0) { $0 + $1.inBytes }
-        let finalOut = result.entities.reduce(0) { $0 + $1.outBytes }
-        XCTAssertEqual(finalIn, rawIn)
-        XCTAssertEqual(finalOut, rawOut)
-        XCTAssertEqual(result.entities.first(where: { $0.pid == 91681 })?.inBytes, 0)
-        XCTAssertEqual(result.entities.first(where: { $0.pid == 91681 })?.outBytes, 0)
-    }
-
-    func testMissingProxyRowLeavesBytesOnRawEntitiesAndDoesNotCreateDebt() {
-        let raw = [
-            ProcessEntity(pid: 61013, name: "Google Chrome", inBytes: 100, outBytes: 25)
-        ]
-        let declarations = [
-            PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 900, outBytes: 300)
-        ]
-
-        let result = settleProxyWindow(
-            raw: raw,
-            proxyPIDs: [91681],
-            isClashVerge: true,
-            declarations: declarations,
-            pidNames: [61013: "Google Chrome"]
-        )
-
-        XCTAssertTrue(result.credited.isEmpty)
-        XCTAssertEqual(result.entities.map(\.inBytes), raw.map(\.inBytes))
-        XCTAssertEqual(result.entities.map(\.outBytes), raw.map(\.outBytes))
-        XCTAssertEqual(result.droppedDeclarations, declarations)
-    }
-
-    func testUploadOnlyDeclarationCreatesAnAppRowWithoutChangingTotal() {
-        let raw = [
-            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 0, outBytes: 500)
-        ]
-        let result = settleProxyWindow(
-            raw: raw,
-            proxyPIDs: [91681],
-            isClashVerge: true,
-            declarations: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 0, outBytes: 300)],
-            pidNames: [61013: "Google Chrome"]
-        )
-
-        XCTAssertEqual(result.entities.first(where: { $0.pid == 61013 })?.inBytes, 0)
-        XCTAssertEqual(result.entities.first(where: { $0.pid == 61013 })?.outBytes, 300)
-        XCTAssertEqual(result.entities.reduce(0) { $0 + $1.inBytes }, 0)
-        XCTAssertEqual(result.entities.reduce(0) { $0 + $1.outBytes }, 500)
-    }
-
-    func testDuplicateRawProcessRowsDoNotDuplicateASettlement() {
-        let raw = [
-            ProcessEntity(pid: 91681, name: "verge-mihomo", inBytes: 800, outBytes: 0),
-            ProcessEntity(pid: 61013, name: "Google Chrome", inBytes: 20, outBytes: 0),
-            ProcessEntity(pid: 61013, name: "Google Chrome", inBytes: 30, outBytes: 0)
-        ]
-        let result = settleProxyWindow(
-            raw: raw,
-            proxyPIDs: [91681],
-            isClashVerge: true,
-            declarations: [PendingProxyCredit(timestamp: 100, pid: 61013, inBytes: 500, outBytes: 0)],
-            pidNames: [61013: "Google Chrome"]
-        )
-
-        XCTAssertEqual(result.entities.reduce(0) { $0 + $1.inBytes }, 850)
-        XCTAssertEqual(result.entities.filter { $0.pid == 61013 }.map(\.inBytes), [520, 30])
-    }
 
     func testSampleLedgerCommitIsIdempotentAndIncludesCurrentMinute() {
         let url = FileManager.default.temporaryDirectory

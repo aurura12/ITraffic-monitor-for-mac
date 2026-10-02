@@ -9,7 +9,6 @@ import Foundation
 import SwiftUI
 
 class Network {
-    @ObservedObject var viewModel = SharedStore.listViewModel
     @ObservedObject var statusDataModel = SharedStore.statusDataModel
 
     private let interval = 2
@@ -24,8 +23,6 @@ class Network {
             // Sampling may not resume (a restart can keep failing), so drop the
             // now-stale live values rather than showing the last frame's rates.
             DispatchQueue.main.async {
-                SharedStore.perAppRateStore.clear()
-                SharedStore.listViewModel.clear()
                 SharedStore.statusDataModel.update(totalInBytes: 0, totalOutBytes: 0)
             }
         }
@@ -46,17 +43,16 @@ class Network {
         var totalInBytes = 0
         var totalOutBytes = 0
         var droppedRows = 0
-        let rawEntities: [ProcessEntity] = lines.compactMap { line -> ProcessEntity? in
+        for line in lines {
             // The column header is reprinted every frame; it is not a row that
             // failed to parse.
-            if isNettopHeaderLine(line) { return nil }
-            guard let entity = parser(text: line) else {
+            if isNettopHeaderLine(line) { continue }
+            guard let row = parser(text: line) else {
                 droppedRows += 1
-                return nil
+                continue
             }
-            totalInBytes += entity.inBytes
-            totalOutBytes += entity.outBytes
-            return entity
+            totalInBytes += row.inBytes
+            totalOutBytes += row.outBytes
         }
 
         SharedStore.trafficSamplingDiagnostics.recordNettopFrame(
@@ -86,39 +82,21 @@ class Network {
         }
     }
 
-    func parser(text: String) -> ProcessEntity? {
-        guard let item = parseNettopCSVFields(text) else { return nil }
-        if item.count < 3 {
-            return nil
-        }
-        // Store raw delta bytes; rate is computed once at the aggregation
-        // point. Reject a row whose fields are not numbers instead of coercing
-        // them to 0, so malformed input is counted rather than silently kept.
+    /// Parse one nettop CSV row into its download / upload delta. The name field
+    /// may be quoted and contain commas, so the row is still split as CSV, but
+    /// only the two byte columns matter for total accounting.
+    func parser(text: String) -> (inBytes: Int, outBytes: Int)? {
+        guard let item = parseNettopCSVFields(text), item.count >= 3 else { return nil }
+        // Store raw delta bytes; reject a row whose byte fields are not numbers
+        // instead of coercing them to 0, so malformed input is counted rather
+        // than silently kept.
         guard let parsedIn = Int(item[1].trimmingCharacters(in: .whitespaces)),
               let parsedOut = Int(item[2].trimmingCharacters(in: .whitespaces)) else {
             return nil
         }
         // nettop can report a negative delta when a counter resets; clamp that
         // to 0 rather than dropping the row's other direction.
-        let inBytes = max(0, parsedIn)
-        let outBytes = max(0, parsedOut)
-
-        let nameAndPid = item[0].split(separator: ".")
-        guard nameAndPid.count >= 2,
-              let pid = Int(nameAndPid[nameAndPid.count - 1]),
-              pid >= 0 else {
-            return nil
-        }
-        var name = nameAndPid
-        name.removeLast()
-        guard !name.isEmpty else { return nil }
-
-        return ProcessEntity(
-            pid: pid,
-            name: name.joined(separator: "."),
-            inBytes: inBytes,
-            outBytes: outBytes
-        )
+        return (inBytes: max(0, parsedIn), outBytes: max(0, parsedOut))
     }
 }
 

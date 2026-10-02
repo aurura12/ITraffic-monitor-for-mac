@@ -7,12 +7,38 @@
 
 import Foundation
 
+/// A download / upload byte-count pair, used by the sampling diagnostics.
+struct TrafficCounters: Equatable {
+    let inBytes: Int
+    let outBytes: Int
+}
+
+/// Lifecycle of the nettop sampler, surfaced in Settings diagnostics.
+enum NettopSamplingStatus: Equatable {
+    case waiting
+    case active
+    case restarting
+}
+
+enum NettopSamplingEvent {
+    case frame
+    case restart
+}
+
+func nextNettopSamplingStatus(
+    _ status: NettopSamplingStatus,
+    event: NettopSamplingEvent
+) -> NettopSamplingStatus {
+    switch event {
+    case .frame: return .active
+    case .restart: return .restarting
+    }
+}
+
 struct TrafficSamplingSnapshot: Equatable {
     var nettopStatus: NettopSamplingStatus = .waiting
     var lastNettopSampleAt: Date?
-    var latestNettopDelta: UTunTrafficCounters?
-    var latestExternalDelta: UTunTrafficCounters?
-    var latestUTunDelta: UTunTrafficCounters?
+    var latestNettopDelta: TrafficCounters?
     /// Cumulative nettop rows that could not be parsed, so their bytes are
     /// missing from the recorded totals.
     var droppedNettopRows: Int = 0
@@ -28,7 +54,7 @@ final class TrafficSamplingDiagnostics: ObservableObject {
         update { snapshot in
             snapshot.nettopStatus = nextNettopSamplingStatus(snapshot.nettopStatus, event: .frame)
             snapshot.lastNettopSampleAt = capturedAt
-            snapshot.latestNettopDelta = UTunTrafficCounters(inBytes: max(0, inBytes), outBytes: max(0, outBytes))
+            snapshot.latestNettopDelta = TrafficCounters(inBytes: max(0, inBytes), outBytes: max(0, outBytes))
         }
     }
 
@@ -47,13 +73,6 @@ final class TrafficSamplingDiagnostics: ObservableObject {
         }
     }
 
-    func recordReferenceSample(_ sample: TrafficReferenceSample) {
-        update { snapshot in
-            snapshot.latestExternalDelta = sample.externalDelta
-            snapshot.latestUTunDelta = sample.utunDelta
-        }
-    }
-
     private func update(_ transform: (inout TrafficSamplingSnapshot) -> Void) {
         lock.lock()
         transform(&value)
@@ -68,7 +87,7 @@ final class TrafficSamplingDiagnostics: ObservableObject {
 class StatusDataModel: ObservableObject {
     @Published var totalInBytes: Int = 0
     @Published var totalOutBytes: Int = 0
-    
+
     public func update(totalInBytes: Int, totalOutBytes: Int) {
         self.totalInBytes = totalInBytes
         self.totalOutBytes = totalOutBytes
