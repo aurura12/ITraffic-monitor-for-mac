@@ -2,7 +2,7 @@
 
 # iTraffic for macOS
 
-A lightweight, open-source per-process network speed monitor for your Mac.
+A lightweight, open-source network usage monitor for your Mac.
 
 [Download iTraffic](https://github.com/foamzou/ITraffic-monitor-for-mac/releases/latest)
 · [Install with Homebrew](#install--update)
@@ -30,8 +30,9 @@ Bytetally Free goes far beyond iTraffic's real-time list. It adds a native dashb
 |---|:---:|:---:|:---:|
 | Source available to inspect and modify | ✅ | — | — |
 | Minimum macOS version | 14 Sonoma | 14 Sonoma | 14 Sonoma |
-| Live upload/download by process or app | ✅ | ✅ | ✅ |
-| Native dashboard and per-app live charts | ✅ | ✅ | ✅ |
+| Live upload/download rates | ✅ | ✅ | ✅ |
+| Native dashboard and charts | ✅ | ✅ | ✅ |
+| Per-app live charts and per-app history | — | ✅ | ✅ |
 | Month overview, 7-day device trend, and monthly top apps | — | ✅ | ✅ |
 | Attribution through VPNs and local proxies | — | ✅ | ✅ |
 | Mac App Store install and full sandboxing | — | ✅ | ✅ |
@@ -101,15 +102,15 @@ Bytetally Pro features include a free trial and can then be unlocked with a subs
 
 ## About iTraffic
 
-iTraffic keeps one job simple: show which processes are using your network right now.
+iTraffic keeps one job simple: show how much network traffic your Mac is using right now.
 
-- Per-process upload and download speeds
+- Live total upload and download speeds
 - Native macOS dashboard interface with a menu-bar resident quick view
 - Light and dark mode
 - Direct Swift driver for macOS `nettop`
 - Delta-mode sampling for more accurate live rates
-- Best-effort VPN / proxy attribution; exact per-app VPN bytes require a signed Network Extension and are not included in the default free build
-- Dashboard history currently aggregates traffic across all networks; per-Wi-Fi network filtering is not included
+- Local history of total traffic (no per-app breakdown)
+- Dashboard history aggregates traffic across all non-loopback interfaces; it is not WAN-only and has no per-Wi-Fi filtering
 
 ## Requirements
 
