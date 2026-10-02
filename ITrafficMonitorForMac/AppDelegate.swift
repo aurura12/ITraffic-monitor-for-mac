@@ -87,6 +87,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        // Hosted tests run inside this process. Starting nettop / attribution or
+        // building UI here would make a test run open the production database and
+        // record the test machine's traffic. Stay completely inert under tests.
+        if AppEnvironment.isRunningTests { return }
         AppDelegate.applyAppearance(UserDefaults.standard.string(forKey: "appAppearance") ?? "system")
         NSApp.setActivationPolicy(.accessory)
         menuBarController = MenuBarController()
@@ -140,6 +144,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
+        if AppEnvironment.isRunningTests { return }
         print("applicationWillTerminate")
         network?.stopListenNetwork()
         SharedStore.utunTrafficSampler.stop()

@@ -501,4 +501,14 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM app_traffic WHERE out_bytes<0;", in: url), 1)
         XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 1)
     }
+
+    /// The default (no-URL) database must never be the production one under
+    /// tests: a freshly isolated test database has no history, while the real
+    /// database holds terabytes. This fails loudly if the test host ever falls
+    /// back to the production path.
+    func testDefaultDatabaseIsIsolatedFromProductionUnderTests() {
+        let total = readTotal(TrafficDatabase(), start: 0, end: Int.max)
+        XCTAssertEqual(total.inBytes, 0)
+        XCTAssertEqual(total.outBytes, 0)
+    }
 }

@@ -195,6 +195,10 @@ final class TrafficDatabase {
         let dbPath: String
         if let databaseURL {
             dbPath = databaseURL.path
+        } else if AppEnvironment.isRunningTests {
+            // Hard guarantee: never read or write the production database from a
+            // test host, even if something constructs the default store.
+            dbPath = Self.isolatedTestDatabaseURL().path
         } else {
             let fm = FileManager.default
             let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -209,6 +213,17 @@ final class TrafficDatabase {
         }
         sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
         migrate()
+    }
+
+    /// Throwaway database for a test host, scoped to the process so parallel
+    /// runs never share state. Used only when no explicit URL is supplied and
+    /// `AppEnvironment.isRunningTests` is set.
+    private static func isolatedTestDatabaseURL() -> URL {
+        let fm = FileManager.default
+        let directory = fm.temporaryDirectory
+            .appendingPathComponent("itraffic-testhost-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
+        try? fm.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("traffic.sqlite3")
     }
 
     private func migrate() {

@@ -4,6 +4,12 @@ import SwiftUI
 @testable import ITraffic
 
 final class TrafficBarHoverTests: XCTestCase {
+    /// Hosted tests run inside the app process, so the app must recognise a test
+    /// run and stay inert: no nettop, no attribution, and no production DB.
+    func testAppEnvironmentDetectsTestHost() {
+        XCTAssertTrue(AppEnvironment.isRunningTests)
+    }
+
     func testMenuBarStatusItemUsesStableIdentity() {
         XCTAssertEqual(
             MenuBarStatusItemConfiguration.autosaveName,

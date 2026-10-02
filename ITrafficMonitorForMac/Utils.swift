@@ -9,6 +9,25 @@ import Foundation
 import Cocoa
 import Darwin
 
+/// Process-level launch environment.
+enum AppEnvironment {
+    /// True when this process is a unit/UI-test host rather than a normal app
+    /// launch. Hosted tests run inside the app process, so without this guard
+    /// `applicationDidFinishLaunching` would start `nettop` and construct the
+    /// default `TrafficRecorder`, writing the test machine's real traffic into
+    /// the user's history. Detected from the XCTest runtime: the runner injects
+    /// the test bundle and sets its environment variables.
+    static let isRunningTests: Bool = {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
+            || environment["XCTestSessionIdentifier"] != nil {
+            return true
+        }
+        return NSClassFromString("XCTestCase") != nil
+    }()
+}
+
 func formatBytes(bytes: Int) -> String {
     let kbyte = Float(bytes) / 1024
     if kbyte <= 0 {
