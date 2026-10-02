@@ -303,14 +303,14 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
-    func testHeatmapRefreshDoesNotLoadRangeAppRanking() {
+    func testHeatmapRefreshLoadsHeatmapBeforeTotal() {
         XCTAssertEqual(
             DashboardRefreshPlan.operations(for: .heatmap),
             [.heatmap, .total]
         )
     }
 
-    func testUsageRefreshDoesNotLoadRangeAppRanking() {
+    func testUsageRefreshLoadsUsageBeforeTotal() {
         XCTAssertEqual(
             DashboardRefreshPlan.operations(for: .usage),
             [.usage, .total]
