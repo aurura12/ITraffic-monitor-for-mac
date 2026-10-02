@@ -269,8 +269,7 @@ final class TrafficDatabase {
         migrateArchivedSamplesTimestamp()
         migrateClashVergeName()
         migrateUnattributedVPNName()
-        migrateClampNegativeTraffic()
-        migrateLegacyProxyPIDKeys()
+        runLegacyDirtyCleanupIfNeeded()
     }
 
     /// Add the archive timestamp to databases created by the first tombstone
@@ -369,30 +368,73 @@ final class TrafficDatabase {
         }
     }
 
+    /// `PRAGMA user_version` marker for the one-time legacy dirty-data cleanups
+    /// below. They scan the whole `app_traffic` table, so they must run once per
+    /// database instead of on every launch. Bump this and add a matching `<`
+    /// check when another one-time cleanup is introduced.
+    private static let legacyDirtyCleanupVersion: Int32 = 1
+
+    /// Run the legacy dirty-data cleanups once, gated by `PRAGMA user_version`.
+    ///
+    /// The clamp and the PID-key merge share one transaction with the version
+    /// bump, so a failure rolls the whole thing back and retries next launch
+    /// rather than leaving the database half-cleaned with the gate already set.
+    /// Fresh databases run them as no-ops and jump straight to the current
+    /// version.
+    private func runLegacyDirtyCleanupIfNeeded() {
+        guard let db, userVersion() < Self.legacyDirtyCleanupVersion else { return }
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] legacy cleanup BEGIN failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+        let cleaned = clampNegativeTrafficLocked() && mergeLegacyProxyPIDKeysLocked()
+        let bump = "PRAGMA user_version = \(Self.legacyDirtyCleanupVersion);"
+        if cleaned, sqlite3_exec(db, bump, nil, nil, nil) == SQLITE_OK {
+            _ = commitTransaction(db, failureMessage: "[TrafficDatabase] legacy cleanup COMMIT failed")
+        } else {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            print("[TrafficDatabase] legacy cleanup rolled back: \(String(cString: sqlite3_errmsg(db)))")
+        }
+    }
+
+    /// Read `PRAGMA user_version` (0 for a database this code has never
+    /// cleaned). Runs on `dbQueue`.
+    private func userVersion() -> Int32 {
+        guard let db else { return 0 }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &stmt, nil) == SQLITE_OK else {
+            return 0
+        }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return sqlite3_column_int(stmt, 0)
+    }
+
     /// Clamp byte counters that a superseded attribution implementation left
     /// negative. The pre-conservative model could over-subtract one direction
     /// and write a small negative into a bucket; every counter is otherwise
-    /// >= 0, so a negative value is always invalid. Idempotent: re-running
-    /// matches nothing once every row is clamped to 0.
-    private func migrateClampNegativeTraffic() {
-        guard let db else { return }
+    /// >= 0, so a negative value is always invalid. Runs inside the caller's
+    /// transaction; returns false so the caller can roll back.
+    private func clampNegativeTrafficLocked() -> Bool {
+        guard let db else { return false }
         let sql = """
         UPDATE app_traffic SET in_bytes = 0 WHERE in_bytes < 0;
         UPDATE app_traffic SET out_bytes = 0 WHERE out_bytes < 0;
         """
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] negative-traffic clamp migration failed: \(String(cString: sqlite3_errmsg(db)))")
-            return
+            print("[TrafficDatabase] negative-traffic clamp failed: \(String(cString: sqlite3_errmsg(db)))")
+            return false
         }
+        return true
     }
 
     /// Merge legacy app keys that are a bare PID (for example "65220") into
     /// the stable Clash Verge key. Those rows came from the old proxy-credit
     /// fallback that named an unattributable credit after the pid; there is no
     /// per-pid category, and unmatched proxy bytes belong on the proxy row.
-    /// Idempotent: after the first run no bare-PID key remains.
-    private func migrateLegacyProxyPIDKeys() {
-        guard let db else { return }
+    /// Runs inside the caller's transaction; returns false on failure.
+    private func mergeLegacyProxyPIDKeysLocked() -> Bool {
+        guard let db else { return false }
         // A key made only of digits. The leading `app_key <> ''` guard keeps
         // the empty string out, which would otherwise match "no non-digit".
         let pidKey = "app_key <> '' AND app_key GLOB '[0-9]*' AND app_key NOT GLOB '*[^0-9]*'"
@@ -417,9 +459,10 @@ final class TrafficDatabase {
         DELETE FROM apps WHERE \(pidKey);
         """
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] legacy proxy PID-key merge migration failed: \(String(cString: sqlite3_errmsg(db)))")
-            return
+            print("[TrafficDatabase] legacy proxy PID-key merge failed: \(String(cString: sqlite3_errmsg(db)))")
+            return false
         }
+        return true
     }
 
     // MARK: - Write

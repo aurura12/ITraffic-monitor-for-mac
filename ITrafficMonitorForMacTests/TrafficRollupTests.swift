@@ -458,4 +458,47 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM traffic_samples;", in: url), 1)
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM app_traffic;", in: url), 2)
     }
+
+    // MARK: - Legacy dirty-data cleanup (gated by PRAGMA user_version)
+
+    /// A database that predates the cleanup (user_version 0) gets its negative
+    /// counters clamped and its bare-PID keys merged onto Clash Verge exactly
+    /// once, and the gate advances so the full-table scan does not repeat.
+    func testLegacyDirtyCleanupRunsOnceAndSetsVersion() {
+        let (_, url) = makeDatabase()
+
+        // Seed the two dirty shapes the old code could write.
+        execRaw("INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count) VALUES('syspolicyd', 100, 20681, 11, 23, -28, 1);", in: url)
+        execRaw("INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count) VALUES('65220', 100, 20681, 11, 1000, 500, 1);", in: url)
+        execRaw("INSERT INTO apps(app_key,display_name,last_seen) VALUES('65220','65220',1);", in: url)
+        // Pretend this database was created before the gate existed.
+        execRaw("PRAGMA user_version = 0;", in: url)
+
+        // Opening it runs migrate() once.
+        _ = TrafficDatabase(databaseURL: url)
+
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM app_traffic WHERE in_bytes<0 OR out_bytes<0;", in: url), 0)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM app_traffic WHERE app_key <> '' AND app_key GLOB '[0-9]*' AND app_key NOT GLOB '*[^0-9]*';", in: url), 0)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM apps WHERE app_key <> '' AND app_key GLOB '[0-9]*' AND app_key NOT GLOB '*[^0-9]*';", in: url), 0)
+        // The negative out-bytes are clamped; the positive in-bytes are kept.
+        XCTAssertEqual(rawCount("SELECT out_bytes FROM app_traffic WHERE app_key='syspolicyd' AND bucket_start=100;", in: url), 0)
+        XCTAssertEqual(rawCount("SELECT in_bytes FROM app_traffic WHERE app_key='syspolicyd' AND bucket_start=100;", in: url), 23)
+        // The bare-PID bytes moved onto the proxy row.
+        XCTAssertEqual(rawCount("SELECT in_bytes FROM app_traffic WHERE app_key='Clash Verge' AND bucket_start=100;", in: url), 1000)
+        XCTAssertEqual(rawCount("SELECT out_bytes FROM app_traffic WHERE app_key='Clash Verge' AND bucket_start=100;", in: url), 500)
+        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 1)
+    }
+
+    /// The gate is authoritative: a database already marked as cleaned is not
+    /// rescanned, even if a dirty row somehow reappears.
+    func testLegacyDirtyCleanupSkipsWhenVersionCurrent() {
+        let (_, url) = makeDatabase()
+        execRaw("INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count) VALUES('syspolicyd', 100, 20681, 11, 23, -28, 1);", in: url)
+        execRaw("PRAGMA user_version = 1;", in: url)
+
+        _ = TrafficDatabase(databaseURL: url)
+
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM app_traffic WHERE out_bytes<0;", in: url), 1)
+        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 1)
+    }
 }
