@@ -86,11 +86,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// One-time cleanup of state left by the retired proxy attribution: its
+    /// settings keys and the diagnostics log it wrote. Cheap and idempotent, so
+    /// it runs on every launch.
+    static func removeRetiredProxyState() {
+        let defaults = UserDefaults.standard
+        for key in ["proxyAttributionEnabled", "proxyAttributionType",
+                    "proxyAttributionBaseURL", "proxyAttributionSecret"] {
+            defaults.removeObject(forKey: key)
+        }
+        guard let appSupport = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return }
+        let logURL = appSupport
+            .appendingPathComponent("ITraffic", isDirectory: true)
+            .appendingPathComponent("proxy-diagnostics.log")
+        try? FileManager.default.removeItem(at: logURL)
+    }
+
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         // Hosted tests run inside this process. Starting nettop / attribution or
         // building UI here would make a test run open the production database and
         // record the test machine's traffic. Stay completely inert under tests.
         if AppEnvironment.isRunningTests { return }
+        AppDelegate.removeRetiredProxyState()
         AppDelegate.applyAppearance(UserDefaults.standard.string(forKey: "appAppearance") ?? "system")
         NSApp.setActivationPolicy(.accessory)
         menuBarController = MenuBarController()
