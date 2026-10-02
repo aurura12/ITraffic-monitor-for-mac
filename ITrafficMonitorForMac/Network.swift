@@ -66,24 +66,10 @@ class Network {
         )
         SharedStore.trafficSamplingDiagnostics.recordDroppedNettopRows(droppedRows)
 
-        // Proxy re-attribution and helper bookkeeping only affect the per-app
-        // breakdown; the recorded totals are the raw nettop bytes either way.
-        // Skip them while the per-app presentation is hidden.
-        let entities: [ProcessEntity]
-        if TrafficPresentationFeatures.perAppBreakdown {
-            // Re-attribute only bytes already present in this raw nettop frame.
-            // The proxy attributor is a bounded allocator: it cannot add bytes
-            // or carry an unpaid declaration into a later frame.
-            entities = SharedStore.proxyAttributor.attributedEntities(rawEntities)
-            // nettop is the sole historical byte source. The Network Extension
-            // may report app identities for diagnostics, but its records are
-            // not a second accounting stream and can never replace this frame.
-            HelperAttributionRegistry.shared.register(entities: entities)
-        } else {
-            entities = rawEntities
-        }
+        // nettop is the sole byte source; the frame's raw parsed rows are
+        // recorded as-is.
         SharedStore.recorder.record(
-            entities: entities,
+            entities: rawEntities,
             sampleID: sampleID,
             capturedAt: capturedAt,
             rawInBytes: totalInBytes,
@@ -99,13 +85,6 @@ class Network {
         DispatchQueue.main.async {
             self.statusDataModel.update(totalInBytes: inRate, totalOutBytes: outRate)
             SharedStore.realtimeRateStore.append(inRate: Double(inRate), outRate: Double(outRate))
-            // These models only feed the currently hidden per-app UI. Their
-            // per-process identity lookups can otherwise stall the main thread
-            // while the user opens the status-item popover.
-            if TrafficPresentationFeatures.perAppBreakdown {
-                self.viewModel.updateData(newItems: entities)
-                SharedStore.perAppRateStore.update(entities: entities, interval: safeSeconds)
-            }
         }
     }
 

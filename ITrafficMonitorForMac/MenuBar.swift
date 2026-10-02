@@ -231,7 +231,6 @@ final class TodayUsageModel: ObservableObject {
 
 struct MenuBarSummaryView: View {
     @EnvironmentObject private var i18n: LocalizationManager
-    @EnvironmentObject private var perAppRates: PerAppRateStore
     @ObservedObject var todayUsage: TodayUsageModel
 
     let onOpenDashboard: () -> Void
@@ -273,12 +272,6 @@ struct MenuBarSummaryView: View {
                     .fontWeight(.semibold)
             }
 
-            if TrafficPresentationFeatures.perAppBreakdown {
-                Divider()
-                busiestAppRow
-                Divider()
-            }
-
             HStack(spacing: 8) {
                 Button(i18n.text("Open Dashboard"), action: onOpenDashboard)
                     .keyboardShortcut(.defaultAction)
@@ -289,41 +282,6 @@ struct MenuBarSummaryView: View {
         }
         .padding(16)
         .frame(width: 320)
-    }
-
-    /// The app using the most bandwidth right now, with its rates aligned to
-    /// the trailing edge of the row.
-    @ViewBuilder
-    private var busiestAppRow: some View {
-        HStack(spacing: 6) {
-            if let top = perAppRates.topApp {
-                HStack(spacing: 6) {
-                    Image(nsImage: iconForAppKey(top.appKey))
-                        .resizable()
-                        .frame(width: 14, height: 14)
-                    Text(top.displayName)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-
-                Spacer(minLength: 8)
-
-                HStack(spacing: 6) {
-                    Text("↓ " + formatBytes(bytes: Int(top.inRate)))
-                        .foregroundColor(Theme.download)
-                        .monospacedDigit()
-                    Text("↑ " + formatBytes(bytes: Int(top.outRate)))
-                        .foregroundColor(Theme.upload)
-                        .monospacedDigit()
-                }
-                .fixedSize(horizontal: true, vertical: false)
-            } else {
-                Text(i18n.text("No active traffic"))
-                    .foregroundColor(.secondary)
-            }
-        }
-        .font(.system(size: 11))
     }
 
     private func usageRow(title: String, bytes: Int, color: Color, symbol: String) -> some View {
@@ -561,8 +519,6 @@ final class MenuBarController: NSObject {
             network?.stopListenNetwork()
             // Drop the now-frozen live values so the UI does not show the last
             // frame's rates as if they were current.
-            SharedStore.perAppRateStore.clear()
-            SharedStore.listViewModel.clear()
             SharedStore.statusDataModel.update(totalInBytes: 0, totalOutBytes: 0)
         } else {
             network?.startListenNetwork()

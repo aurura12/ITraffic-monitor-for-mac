@@ -10,8 +10,6 @@
 		04BDC687851FAE38F5203BB8 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */; };
 		07CFBEA99D4A7579D4E4AC71 /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D30F89C22ACDFD9102801CD /* Utils.swift */; };
 		1938B3E5D68DE73D4EC289DF /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 748FB46B5B1D40583CCBFC28 /* Store.swift */; };
-		1F57535E5C2B092EFC365D6D /* AppRankingTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB64FEF25D607571553044E0 /* AppRankingTable.swift */; };
-		3131A106167A2768DE9EBDE8 /* AppDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA22D03B2B11F19C7F5DFE3 /* AppDetailView.swift */; };
 		33C440AED95888F010013660 /* Network.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DE4AB076FAF20A640BD23F /* Network.swift */; };
 		34FA784A46B78003B0C0DA44 /* RealtimeRateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */; };
 		3B03C3F2B98B05E93EEBE510 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F0324CEDB56F043E9676BA /* DashboardView.swift */; };
@@ -67,7 +65,6 @@
 		08982BEA9591C5710684F088 /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
 		0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		0CC43C0CA35F7577E3D134A8 /* ProxyAttributor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyAttributor.swift; sourceTree = "<group>"; };
-		0DA22D03B2B11F19C7F5DFE3 /* AppDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDetailView.swift; sourceTree = "<group>"; };
 		116719D934B1B6383F92CBDC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		11F0324CEDB56F043E9676BA /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
 		1336C3058B9DCCFC303FD09D /* ITraffic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ITraffic.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -101,7 +98,6 @@
 		E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeRateStore.swift; sourceTree = "<group>"; };
 		E760B012490A706D383888B1 /* TrafficDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficDatabase.swift; sourceTree = "<group>"; };
 		E83DF0462DC3E858E4B86679 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		EB64FEF25D607571553044E0 /* AppRankingTable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppRankingTable.swift; sourceTree = "<group>"; };
 		EC134DBEDC722C7EFB9C9653 /* TrafficFilterSharedOutput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficFilterSharedOutput.swift; sourceTree = "<group>"; };
 		F7073581DC3527238C3C97F5 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		FAC7303753732C9E0A5C756B /* ExportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportView.swift; sourceTree = "<group>"; };
@@ -124,8 +120,6 @@
 		27F00417CB2C3A88E4CD181C /* Dashboard */ = {
 			isa = PBXGroup;
 			children = (
-				0DA22D03B2B11F19C7F5DFE3 /* AppDetailView.swift */,
-				EB64FEF25D607571553044E0 /* AppRankingTable.swift */,
 				11F0324CEDB56F043E9676BA /* DashboardView.swift */,
 				5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */,
 				FAC7303753732C9E0A5C756B /* ExportView.swift */,
@@ -364,8 +358,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				69E191496ED3B5A1BCECD1C7 /* AppDelegate.swift in Sources */,
-				3131A106167A2768DE9EBDE8 /* AppDetailView.swift in Sources */,
-				1F57535E5C2B092EFC365D6D /* AppRankingTable.swift in Sources */,
 				3B03C3F2B98B05E93EEBE510 /* DashboardView.swift in Sources */,
 				04BDC687851FAE38F5203BB8 /* DashboardViewModel.swift in Sources */,
 				40EFC85DD540245FF296E5FA /* ExportView.swift in Sources */,

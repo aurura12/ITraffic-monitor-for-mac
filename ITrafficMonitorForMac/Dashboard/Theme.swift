@@ -7,12 +7,6 @@
 
 import SwiftUI
 
-/// Controls whether per-app traffic is presented in the UI. Collection,
-/// attribution, and persistence remain available while the breakdown is hidden.
-enum TrafficPresentationFeatures {
-    static let perAppBreakdown = false
-}
-
 enum Theme {
     /// Card surface used for stat cards and chart containers.
     static let cardBackground = Color(nsColor: .controlBackgroundColor).opacity(0.85)

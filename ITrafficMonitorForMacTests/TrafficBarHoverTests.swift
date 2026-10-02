@@ -299,7 +299,7 @@ final class TrafficBarHoverTests: XCTestCase {
     func testLineRefreshPrioritizesSeriesBeforeSecondaryData() {
         XCTAssertEqual(
             DashboardRefreshPlan.operations(for: .line),
-            [.series, .total, .topApps]
+            [.series, .total]
         )
     }
 

@@ -56,27 +56,8 @@ struct SettingsView: View {
     @AppStorage("appAppearance") private var appearanceRaw = "system"
     @AppStorage(MenuBarDisplayMode.defaultsKey) private var menuBarDisplayModeRaw = MenuBarDisplayMode.both.rawValue
 
-    @AppStorage("proxyAttributionEnabled") private var proxyEnabled = true
-    @AppStorage("proxyAttributionType") private var proxyTypeRaw = "auto"
-    @AppStorage("proxyAttributionBaseURL") private var proxyBaseURL = ""
-    @AppStorage("proxyAttributionSecret") private var proxySecret = ""
-    @ObservedObject private var proxy = SharedStore.proxyAttributor
     @ObservedObject private var sampling = SharedStore.trafficSamplingDiagnostics
-    private let diagnostics = DiagnosticLogStore.shared
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
-
-    private var proxyStatusText: String {
-        switch proxy.status {
-        case .detected(let name):
-            return L("Proxy detected") + ": \(name)"
-        case .notDetected:
-            return L("No proxy detected")
-        case .secretRequired:
-            return L("Secret required")
-        case .disabled:
-            return L("Off")
-        }
-    }
 
     var body: some View {
         Form {
@@ -115,43 +96,6 @@ struct SettingsView: View {
                 set: { launchAtLogin.setEnabled($0) }
             ))
 
-            if TrafficPresentationFeatures.perAppBreakdown {
-                Section {
-                    Toggle(i18n.text("Enable proxy attribution"), isOn: $proxyEnabled)
-                        .onChange(of: proxyEnabled) { proxy.reconfigure() }
-                    Picker(i18n.text("Proxy type"), selection: $proxyTypeRaw) {
-                        Text(i18n.text("Auto detect")).tag("auto")
-                        Text(i18n.text("Clash")).tag("clash")
-                        Text(i18n.text("Surge")).tag("surge")
-                        Text(i18n.text("Off")).tag("off")
-                    }
-                    .onChange(of: proxyTypeRaw) { proxy.reconfigure() }
-                    TextField(i18n.text("API base URL"), text: $proxyBaseURL)
-                        .onChange(of: proxyBaseURL) { proxy.reconfigure() }
-                    SecureField(i18n.text("Secret"), text: $proxySecret)
-                        .onChange(of: proxySecret) { proxy.reconfigure() }
-                    HStack {
-                        Text(proxyStatusText)
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Button(i18n.text("Redetect")) {
-                            proxy.reconfigure()
-                        }
-                        .controlSize(.small)
-                    }
-                    Text(proxyDiagnosticSummary(proxy.diagnostic))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .textSelection(.enabled)
-                } header: {
-                    Text(i18n.text("Proxy attribution"))
-                } footer: {
-                    Text(i18n.text("Only same-frame confirmed proxy bytes are reassigned; unmatched bytes stay with Clash."))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-
             Section(i18n.text("Traffic metric")) {
                 Text(i18n.text("Totals use nettop non-loopback interface socket traffic; this is not a physical Wi-Fi/Ethernet counter."))
                     .font(.caption)
@@ -175,44 +119,6 @@ struct SettingsView: View {
                     title: i18n.text("nettop delta"),
                     value: sampling.snapshot.latestNettopDelta
                 )
-                diagnosticCounterRow(
-                    title: i18n.text("Physical interface delta"),
-                    value: sampling.snapshot.latestExternalDelta
-                )
-                diagnosticCounterRow(
-                    title: i18n.text("VPN utun delta"),
-                    value: sampling.snapshot.latestUTunDelta
-                )
-                Text(i18n.text("Reference counters are for comparison only and are not added to historical totals."))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            if TrafficPresentationFeatures.perAppBreakdown {
-                Section(i18n.text("Diagnostic Logs")) {
-                    Text(diagnostics.logURL.path)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .textSelection(.enabled)
-                    HStack {
-                        Button(i18n.text("Show in Finder")) {
-                            diagnostics.revealInFinder()
-                        }
-                        Button(i18n.text("Export") + "…") {
-                            let panel = NSSavePanel()
-                            panel.nameFieldStringValue = "proxy-diagnostics.log"
-                            guard panel.runModal() == .OK, let destination = panel.url else { return }
-                            try? diagnostics.export(to: destination)
-                        }
-                        Button(i18n.text("Clear")) {
-                            diagnostics.clear()
-                        }
-                        .foregroundColor(.red)
-                    }
-                    Text(i18n.text("Proxy attribution diagnostics are retained locally (up to 16 MB)."))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
             }
         }
         .formStyle(.grouped)

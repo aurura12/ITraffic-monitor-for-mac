@@ -2,8 +2,8 @@
 //  UnifiedDashboardView.swift
 //  ITrafficMonitorForMac
 //
-//  Single-page dashboard: time range + chart mode controls, stat cards,
-//  traffic timeline (line/heatmap), and an app ranking table.
+//  Single-page dashboard: time range + chart mode controls, stat cards and a
+//  traffic timeline (line / heatmap / usage).
 //
 
 import SwiftUI
@@ -38,47 +38,36 @@ struct UnifiedDashboardView: View {
     @EnvironmentObject var viewModel: DashboardViewModel
     @EnvironmentObject var i18n: LocalizationManager
     @EnvironmentObject var realtimeRateStore: RealtimeRateStore
-    @EnvironmentObject var proxyAttributor: ProxyAttributor
     @State private var showExport = false
 
     private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        NavigationStack {
-            GeometryReader { geometry in
-                if dashboardUsesSharedOuterScrollView(for: viewModel.chartMode) {
-                    ScrollView {
-                        dashboardContent
-                            .padding(16)
-                            .frame(
-                                maxWidth: .infinity,
-                                minHeight: dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart
-                                    ? geometry.size.height
-                                    : nil,
-                                alignment: .topLeading
-                            )
-                    }
-                } else {
+        GeometryReader { geometry in
+            if dashboardUsesSharedOuterScrollView(for: viewModel.chartMode) {
+                ScrollView {
                     dashboardContent
                         .padding(16)
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart
+                                ? geometry.size.height
+                                : nil,
+                            alignment: .topLeading
+                        )
                 }
+            } else {
+                dashboardContent
+                    .padding(16)
             }
-            .navigationDestination(for: AppNavTarget.self) { target in
-                if TrafficPresentationFeatures.perAppBreakdown {
-                    AppDetailView(target: target)
-                }
-            }
-            // Give the root its own title so popping back from an app's detail
-            // view restores the window title instead of leaving the app's name.
-            .navigationTitle(AppDelegate.appDisplayName)
-            .onAppear { viewModel.refreshDashboard() }
-            .onReceive(refreshTimer) { _ in viewModel.refreshDashboard() }
-            .onChange(of: viewModel.timeRange) { viewModel.refreshDashboard() }
-            .onChange(of: viewModel.chartMode) { viewModel.refreshDashboard() }
-            .onChange(of: viewModel.barGranularity) { viewModel.refreshBarChart() }
-            .sheet(isPresented: $showExport) {
-                ExportView()
-            }
+        }
+        .onAppear { viewModel.refreshDashboard() }
+        .onReceive(refreshTimer) { _ in viewModel.refreshDashboard() }
+        .onChange(of: viewModel.timeRange) { viewModel.refreshDashboard() }
+        .onChange(of: viewModel.chartMode) { viewModel.refreshDashboard() }
+        .onChange(of: viewModel.barGranularity) { viewModel.refreshBarChart() }
+        .sheet(isPresented: $showExport) {
+            ExportView()
         }
     }
 
@@ -87,17 +76,11 @@ struct UnifiedDashboardView: View {
         VStack(alignment: .leading, spacing: 16) {
             topSection(toolbar)
             topSection(statCards)
-            if TrafficPresentationFeatures.perAppBreakdown {
-                topSection(attributionNotice)
-            }
             if dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart {
                 chartSection
                     .frame(maxHeight: .infinity, alignment: .top)
             } else {
                 chartSection
-            }
-            if TrafficPresentationFeatures.perAppBreakdown && viewModel.chartMode == .line {
-                rankingSection
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,67 +196,6 @@ struct UnifiedDashboardView: View {
 
     private var latestRateSample: RateSample? {
         realtimeRateStore.samples.last
-    }
-
-    private var attributionNotice: some View {
-        let diagnostic = proxyAttributor.diagnostic
-        let title: String
-        let detail: String
-        let color: Color
-
-        switch diagnostic {
-        case .idle:
-            title = i18n.text("Attribution status")
-            detail = i18n.text("Collecting proxy attribution status")
-            color = .secondary
-        case .notDetected:
-            title = i18n.text("Direct process accounting")
-            detail = i18n.text("Total traffic uses nettop bytes; apps are read directly from their sockets.")
-            color = .green
-        case let .detected(name, _, connectionCount, mappedConnectionCount, _):
-            title = mappedConnectionCount == connectionCount
-                ? i18n.text("Proxy mapping active")
-                : i18n.text("Proxy mapping partly complete")
-            detail = "\(name): \(mappedConnectionCount)/\(connectionCount) " +
-                i18n.text("proxy connections mapped; unmatched bytes stay with the proxy.")
-            color = mappedConnectionCount == connectionCount ? .blue : .orange
-        case let .waitingForProxyRow(name, _, connectionCount, mappedConnectionCount, _):
-            title = i18n.text("Proxy row not visible")
-            detail = "\(name): \(mappedConnectionCount)/\(connectionCount) " +
-                i18n.text("connections mapped; total remains conservative.")
-            color = .orange
-        case .apiUnavailable:
-            title = i18n.text("Proxy mapping temporarily paused")
-            detail = i18n.text("Existing total accounting continues; new proxy bytes stay with the proxy until the API recovers.")
-            color = .orange
-        case .authRequired:
-            title = i18n.text("Proxy API needs a secret")
-            detail = i18n.text("Total traffic continues to be recorded; proxy traffic cannot be mapped until the secret is configured.")
-            color = .red
-        }
-
-        return HStack(alignment: .top, spacing: 8) {
-            Circle()
-                .fill(color)
-                .frame(width: 7, height: 7)
-                .padding(.top, 4)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 11, weight: .semibold))
-                Text(detail)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                .fill(Theme.cardBackground)
-                .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).stroke(Theme.cardStroke))
-        )
     }
 
     // MARK: - Chart section
@@ -438,50 +360,6 @@ struct UnifiedDashboardView: View {
         case .quarter: return i18n.text("Quarterly usage")
         case .year: return i18n.text("Yearly usage")
         }
-    }
-
-    // MARK: - Ranking section
-
-    private var rankingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(i18n.text("App Ranking"))
-                        .font(.system(size: 13, weight: .semibold))
-                    Text(i18n.text("Rank updates with visible range"))
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                searchField
-            }
-            .padding(.horizontal, Theme.cardPadding)
-            .padding(.top, Theme.cardPadding)
-
-            AppRankingTable(rows: viewModel.rangeTopApps, searchText: $viewModel.appSearchText)
-                .frame(minHeight: 180)
-                .padding(.bottom, 6)
-        }
-        .background(
-            RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                .fill(Theme.cardBackground)
-                .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius).stroke(Theme.cardStroke))
-        )
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-            TextField(i18n.text("Search apps"), text: $viewModel.appSearchText)
-                .font(.system(size: 12))
-                .textFieldStyle(.plain)
-                .frame(width: 140)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)).opacity(0.5))
     }
 }
 

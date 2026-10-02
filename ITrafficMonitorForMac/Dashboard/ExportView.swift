@@ -107,17 +107,9 @@ struct ExportView: View {
         do {
             switch format {
             case .csv:
-                if TrafficPresentationFeatures.perAppBreakdown {
-                    data = try Self.csvData(rows: rows)
-                } else {
-                    data = Self.totalCSVData(rows: rows)
-                }
+                data = Self.totalCSVData(rows: rows)
             case .json:
-                if TrafficPresentationFeatures.perAppBreakdown {
-                    data = try Self.jsonData(rows: rows)
-                } else {
-                    data = try Self.totalJSONData(rows: rows)
-                }
+                data = try Self.totalJSONData(rows: rows)
             }
         } catch {
             isExporting = false
@@ -185,36 +177,6 @@ struct ExportView: View {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(totalRows(from: rows).map {
             Record(period: $0.period, inBytes: $0.inBytes, outBytes: $0.outBytes, totalBytes: $0.totalBytes)
-        })
-    }
-
-    private static func csvData(rows: [ExportTrafficRow]) throws -> Data {
-        var csv = "period,app,display_name,in_bytes,out_bytes\n"
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        for r in rows {
-            csv += "\(csvField(fmt.string(from: r.period))),"
-                + "\(csvField(r.appKey)),"
-                + "\(csvField(r.displayName)),"
-                + "\(r.inBytes),\(r.outBytes)\n"
-        }
-        return Data(csv.utf8)
-    }
-
-    private static func jsonData(rows: [ExportTrafficRow]) throws -> Data {
-        struct Record: Encodable {
-            let period: Date
-            let app: String
-            let displayName: String
-            let inBytes: Int
-            let outBytes: Int
-        }
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(rows.map {
-            Record(period: $0.period, app: $0.appKey, displayName: $0.displayName,
-                   inBytes: $0.inBytes, outBytes: $0.outBytes)
         })
     }
 

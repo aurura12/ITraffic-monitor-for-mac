@@ -115,13 +115,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         SharedStore.utunTrafficSampler.start()
 
-        // Proxy attribution only affects the per-app breakdown; totals come
-        // from raw nettop bytes and are conserved either way. While per-app
-        // presentation is hidden, skip the Clash/Surge API + lsof polling.
-        if TrafficPresentationFeatures.perAppBreakdown {
-            SharedStore.proxyAttributor.start()
-        }
-
         // The app is menu-bar-first. The full dashboard remains available from
         // the status item popover and the application menu.
     }

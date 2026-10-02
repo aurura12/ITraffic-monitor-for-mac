@@ -57,7 +57,6 @@ enum ChartMode: String, CaseIterable, Identifiable {
 enum DashboardRefreshOperation: Equatable {
     case series
     case total
-    case topApps
     case heatmap
     case usage
 }
@@ -68,7 +67,7 @@ enum DashboardRefreshPlan {
         case .line:
             // The chart is the control's most visible result. It should be
             // queued before the less visible cards below it.
-            return [.series, .total, .topApps]
+            return [.series, .total]
         case .heatmap:
             return [.heatmap, .total]
         case .usage:
@@ -196,14 +195,12 @@ class DashboardViewModel: ObservableObject {
     // MARK: - Controls
     @Published var timeRange: TimeRange = .today
     @Published var chartMode: ChartMode = .line
-    @Published var appSearchText: String = ""
     @Published var barGranularity: BarGranularity = .month
     @Published var barScaleMode: BarScaleMode = .linear
 
     // MARK: - Data
     @Published var seriesPoints: [TrafficSeriesPoint] = []
     @Published var rangeTotal: TrafficTotal = .init(inBytes: 0, outBytes: 0)
-    @Published var rangeTopApps: [AppPeakTrafficRow] = []
     @Published var calendarCells: [CalendarDayCell] = []
     @Published var calendarHeatmapThresholds: [Int] = []
     @Published var barPoints: [BarPeriodPoint] = []
@@ -232,10 +229,7 @@ class DashboardViewModel: ObservableObject {
         )
         let interval = token.timeRange.interval(calendar: calendar)
 
-        // `.topApps` only feeds the per-app ranking UI, which is hidden while
-        // `perAppBreakdown` is false, so skip its DB query at the call site.
-        for operation in DashboardRefreshPlan.operations(for: token.chartMode)
-            where operation != .topApps || TrafficPresentationFeatures.perAppBreakdown {
+        for operation in DashboardRefreshPlan.operations(for: token.chartMode) {
             switch operation {
             case .series:
                 recorder.trafficSeries(
@@ -260,12 +254,6 @@ class DashboardViewModel: ObservableObject {
                 recorder.totalTraffic(start: interval.start, end: interval.end) { [weak self] total in
                     guard let self, self.isCurrent(token) else { return }
                     self.rangeTotal = total
-                }
-
-            case .topApps:
-                recorder.topAppsWithPeak(start: interval.start, end: interval.end, limit: 50) { [weak self] rows in
-                    guard let self, self.isCurrent(token) else { return }
-                    self.rangeTopApps = rows
                 }
 
             case .heatmap:
