@@ -448,6 +448,36 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 2)
     }
 
+    /// A failed fold must never blank history: the legacy app-keyed view has to
+    /// stay readable until the migration actually commits. Regression for a
+    /// view-before-fold ordering bug where a fold failure (data intact, version
+    /// not bumped) still left every history query reading zero.
+    func testFailedPerAppRemovalKeepsLegacyHistoryReadable() {
+        let (_, url) = makeDatabase()
+        createLegacyPerAppSchema(in: url)
+        execRaw("INSERT INTO app_traffic VALUES('Chrome', 1000, 100, 1, 300, 100, 3);", in: url)
+        // The app-keyed view a real pre-migration database has.
+        execRaw("DROP VIEW IF EXISTS accounted_traffic;", in: url)
+        execRaw("""
+        CREATE VIEW accounted_traffic AS
+          SELECT app_key, bucket_start, day, hour, in_bytes, out_bytes FROM app_traffic;
+        """, in: url)
+        execRaw("PRAGMA user_version = 0;", in: url)
+        // Force the fold to abort: any insert into traffic_totals fails.
+        execRaw("CREATE TRIGGER block_fold BEFORE INSERT ON traffic_totals BEGIN SELECT RAISE(ABORT,'boom'); END;", in: url)
+
+        XCTAssertEqual(rawCount("SELECT SUM(in_bytes) FROM accounted_traffic;", in: url), 300)
+
+        let migrated = TrafficDatabase(databaseURL: url)
+        _ = migrated
+
+        // The migration failed cleanly: legacy data intact, version not bumped.
+        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 0)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM app_traffic;", in: url), 1)
+        // And the legacy view is still readable, not zero against empty totals.
+        XCTAssertEqual(rawCount("SELECT SUM(in_bytes) FROM accounted_traffic;", in: url), 300)
+    }
+
     /// A fresh database is created directly on the total-only schema.
     func testFreshDatabaseIsTotalOnlyAtCurrentVersion() {
         let (db, url) = makeDatabase()

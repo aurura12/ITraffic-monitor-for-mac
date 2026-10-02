@@ -203,7 +203,6 @@ final class TrafficDatabase {
     private func migrate() {
         createCoreTables()
         migrateArchivedSamplesTimestamp()
-        ensureAccountedTrafficView()
         migratePerAppRemovalIfNeeded()
     }
 
@@ -250,8 +249,15 @@ final class TrafficDatabase {
     /// The two arms are disjoint by the rollup cutoff, so no bucket is counted
     /// twice. `DROP` first because SQLite has no `CREATE VIEW IF NOT EXISTS`
     /// replacement, and a legacy database already has an app-keyed definition.
-    private func ensureAccountedTrafficView() {
-        guard let db else { return }
+    ///
+    /// Must never run before a pending fold has committed: replacing an
+    /// app-keyed view with a total-only one while the fold has not yet filled
+    /// `traffic_totals` makes every history read return zero. Callers run it
+    /// only on the already-migrated path or inside the fold transaction after
+    /// the fold succeeds.
+    @discardableResult
+    private func ensureAccountedTrafficView() -> Bool {
+        guard let db else { return false }
         let sql = """
         DROP VIEW IF EXISTS accounted_traffic;
         CREATE VIEW accounted_traffic AS
@@ -260,9 +266,11 @@ final class TrafficDatabase {
           SELECT bucket_start, day, hour, raw_in_bytes, raw_out_bytes
           FROM traffic_samples WHERE finalized = 1;
         """
-        if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
             print("[TrafficDatabase] accounted_traffic view creation failed: \(String(cString: sqlite3_errmsg(db)))")
+            return false
         }
+        return true
     }
 
     /// `PRAGMA user_version` for the total-only schema. Databases at 1 (the
@@ -272,12 +280,18 @@ final class TrafficDatabase {
     /// One-time migration from the per-app schema to the total-only schema,
     /// gated by `PRAGMA user_version`. The legacy history is folded losslessly
     /// (summed over apps per bucket) before the per-app tables are dropped.
-    /// The fold, the drops and the version bump share one transaction, so a
-    /// failure leaves the old schema usable and retries on the next launch.
+    /// The fold, the view rebuild, the drops and the version bump share one
+    /// transaction, so a failure rolls the whole thing back and leaves the
+    /// legacy schema — and its app-keyed view — readable until the next launch
+    /// retries.
     private func migratePerAppRemovalIfNeeded() {
         guard let db else { return }
         let hasLegacy = legacyPerAppTablesPresent()
         if !hasLegacy, userVersion() >= Self.currentSchemaVersion {
+            // Already on the total-only schema. Re-assert the view definition
+            // (idempotent). There is no pending fold, so replacing the view
+            // here cannot blank history.
+            ensureAccountedTrafficView()
             return
         }
 
@@ -296,6 +310,13 @@ final class TrafficDatabase {
             ok = ok && foldAppTrafficIntoTotalsLocked()
         }
         ok = ok && dropLegacyPerAppObjectsLocked()
+        // Rebuild the view only after the fold succeeded, and inside this
+        // transaction: if the fold fails and rolls back, the legacy app-keyed
+        // view stays in place, so history remains readable rather than
+        // reading as zero against an empty `traffic_totals`.
+        if ok {
+            ok = ensureAccountedTrafficView()
+        }
         let bump = "PRAGMA user_version = \(Self.currentSchemaVersion);"
         if ok, sqlite3_exec(db, bump, nil, nil, nil) == SQLITE_OK {
             _ = commitTransaction(db, failureMessage: "[TrafficDatabase] per-app removal COMMIT failed")
