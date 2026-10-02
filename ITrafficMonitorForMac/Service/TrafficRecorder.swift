@@ -45,26 +45,21 @@ final class TrafficRecorder {
 
     // MARK: - Recording
 
-    /// Persist one finalized frame. The nettop path supplies the original raw
-    /// totals so the database can reject any non-conservative result.
+    /// Persist one finalized frame's total in/out bytes. The frame identifier
+    /// is the idempotency key, so replaying a frame is a no-op.
     func record(
-        entities: [ProcessEntity],
         sampleID: String = UUID().uuidString,
         capturedAt: Date = Date(),
-        rawInBytes: Int? = nil,
-        rawOutBytes: Int? = nil
+        rawInBytes: Int,
+        rawOutBytes: Int
     ) {
         queue.async { [weak self] in
             guard let self else { return }
-            let allocations = self.allocations(from: entities)
-            let totalIn = rawInBytes ?? allocations.reduce(0) { $0 + $1.inBytes }
-            let totalOut = rawOutBytes ?? allocations.reduce(0) { $0 + $1.outBytes }
             self.database.commitSample(self.sample(
                 id: sampleID,
                 capturedAt: capturedAt,
-                rawInBytes: totalIn,
-                rawOutBytes: totalOut,
-                allocations: allocations
+                rawInBytes: rawInBytes,
+                rawOutBytes: rawOutBytes
             ))
             self.rollUpIfNeeded(capturedAt: capturedAt)
         }
@@ -97,11 +92,11 @@ final class TrafficRecorder {
         }
     }
 
-    /// Fold the frame ledger accumulated by a previous run into `app_traffic`
-    /// in bounded chunks on a dedicated queue, without blocking frame
-    /// recording or dashboard reads. Frames of the launch minute are never
-    /// touched here (they are >= `finalCutoff`); the per-minute trigger in
-    /// `record` archives them as their minutes complete.
+    /// Fold the frame ledger accumulated by a previous run into
+    /// `traffic_totals` in bounded chunks on a dedicated queue, without
+    /// blocking frame recording or dashboard reads. Frames of the launch
+    /// minute are never touched here (they are >= `finalCutoff`); the
+    /// per-minute trigger in `record` archives them as their minutes complete.
     private func startBackfill(finalCutoff: Int) {
         backfillQueue.async { [weak self] in
             guard let self else { return }
@@ -139,35 +134,11 @@ final class TrafficRecorder {
         return false
     }
 
-    private func allocations(from entities: [ProcessEntity]) -> [TrafficSampleAllocation] {
-        var grouped: [String: TrafficSampleAllocation] = [:]
-        for entity in entities where entity.inBytes > 0 || entity.outBytes > 0 {
-            let allocation = TrafficSampleAllocation(
-                appKey: entity.appKey,
-                displayName: entity.displayName,
-                inBytes: max(0, entity.inBytes),
-                outBytes: max(0, entity.outBytes)
-            )
-            if let existing = grouped[allocation.appKey] {
-                grouped[allocation.appKey] = TrafficSampleAllocation(
-                    appKey: allocation.appKey,
-                    displayName: existing.displayName,
-                    inBytes: existing.inBytes + allocation.inBytes,
-                    outBytes: existing.outBytes + allocation.outBytes
-                )
-            } else {
-                grouped[allocation.appKey] = allocation
-            }
-        }
-        return Array(grouped.values)
-    }
-
     private func sample(
         id: String,
         capturedAt: Date,
         rawInBytes: Int,
-        rawOutBytes: Int,
-        allocations: [TrafficSampleAllocation]
+        rawOutBytes: Int
     ) -> TrafficSample {
         let bucketStart = Self.minuteBucket(for: capturedAt)
         let (day, hour) = Self.dayAndHour(for: capturedAt, calendar: calendar)
@@ -178,8 +149,7 @@ final class TrafficRecorder {
             day: day,
             hour: hour,
             rawInBytes: max(0, rawInBytes),
-            rawOutBytes: max(0, rawOutBytes),
-            allocations: allocations
+            rawOutBytes: max(0, rawOutBytes)
         )
     }
 
@@ -189,8 +159,8 @@ final class TrafficRecorder {
         database.totalTraffic(start: start, end: end, completion: completion)
     }
 
-    func dailyTraffic(start: Int, end: Int, appKey: String? = nil, completion: @escaping ([DayTrafficRow]) -> Void) {
-        database.dailyTraffic(start: start, end: end, appKey: appKey, completion: completion)
+    func dailyTraffic(start: Int, end: Int, completion: @escaping ([DayTrafficRow]) -> Void) {
+        database.dailyTraffic(start: start, end: end, completion: completion)
     }
 
     func dayTotalTraffic(day: Int, completion: @escaping (TrafficTotal) -> Void) {
@@ -200,11 +170,6 @@ final class TrafficRecorder {
     func trafficSeries(start: Int, end: Int, granularity: TimeSeriesGranularity,
                        completion: @escaping ([TrafficSeriesPoint]) -> Void) {
         database.trafficSeries(start: start, end: end, granularity: granularity, completion: completion)
-    }
-
-    func topAppsWithPeak(start: Int, end: Int, limit: Int = 20,
-                         completion: @escaping ([AppPeakTrafficRow]) -> Void) {
-        database.topAppsWithPeak(start: start, end: end, limit: limit, completion: completion)
     }
 
     func exportRows(start: Int, end: Int, granularity: ExportGranularity,

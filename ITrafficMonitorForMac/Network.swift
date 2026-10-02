@@ -66,10 +66,8 @@ class Network {
         )
         SharedStore.trafficSamplingDiagnostics.recordDroppedNettopRows(droppedRows)
 
-        // nettop is the sole byte source; the frame's raw parsed rows are
-        // recorded as-is.
+        // nettop is the sole byte source; record the frame's raw totals.
         SharedStore.recorder.record(
-            entities: rawEntities,
             sampleID: sampleID,
             capturedAt: capturedAt,
             rawInBytes: totalInBytes,

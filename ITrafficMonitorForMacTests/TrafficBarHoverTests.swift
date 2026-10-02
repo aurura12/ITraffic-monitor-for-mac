@@ -1182,11 +1182,7 @@ final class TrafficBarHoverTests: XCTestCase {
             day: 19_675,
             hour: 1,
             rawInBytes: 100,
-            rawOutBytes: 50,
-            allocations: [
-                TrafficSampleAllocation(appKey: "Google Chrome", displayName: "Google Chrome", inBytes: 75, outBytes: 40),
-                TrafficSampleAllocation(appKey: "Clash Verge", displayName: "Clash Verge", inBytes: 25, outBytes: 10)
-            ]
+            rawOutBytes: 50
         )
 
         database.commitSample(sample)

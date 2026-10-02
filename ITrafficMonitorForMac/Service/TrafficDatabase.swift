@@ -38,8 +38,6 @@ enum ExportGranularity: CaseIterable {
 }
 
 struct ExportTrafficRow {
-    let appKey: String
-    let displayName: String
     let period: Date
     let inBytes: Int
     let outBytes: Int
@@ -71,16 +69,6 @@ struct TrafficSeriesPoint: Identifiable {
     var id: Date { date }
 }
 
-struct AppPeakTrafficRow: Identifiable {
-    let appKey: String
-    let displayName: String
-    let inBytes: Int
-    let outBytes: Int
-    let peakBytesPerSecond: Int
-    var id: String { appKey }
-    var totalBytes: Int { inBytes + outBytes }
-}
-
 /// SQLite has no `start of hour` modifier. Group by a local calendar-hour
 /// key and use the earliest bucket timestamp as the chart point's date.
 let hourSeriesSQL = """
@@ -97,29 +85,28 @@ ORDER BY hour_start;
 /// actually occur. `rollupPruneArchivedSamplesSQL` removes older rows.
 private let archivedSampleRetentionSeconds = 7 * 24 * 60 * 60
 
-/// Rollup sweep 1/5: aggregate every finalized sample below a cutoff into the
-/// minute-bucket `app_traffic` table, merging additively with any legacy rows
-/// that already exist for the same (app_key, bucket_start).
+/// Rollup sweep 1/4: aggregate every finalized sample below a cutoff into the
+/// minute-bucket `traffic_totals` table, merging additively with any bucket
+/// that already exists (e.g. from a legacy fold or a replay at the boundary).
 ///
 /// `MIN(s.day)/MIN(s.hour)` are safe because a `bucket_start` is a whole
 /// minute, so all samples inside it map to the same local (day, hour).
 private let rollupInsertSQL = """
-INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
-SELECT a.app_key, s.bucket_start,
+INSERT INTO traffic_totals(bucket_start,day,hour,in_bytes,out_bytes,sample_count)
+SELECT s.bucket_start,
        MIN(s.day), MIN(s.hour),
-       SUM(a.in_bytes), SUM(a.out_bytes),
+       SUM(s.raw_in_bytes), SUM(s.raw_out_bytes),
        COUNT(*)
-FROM sample_allocations AS a
-JOIN traffic_samples AS s ON s.sample_id = a.sample_id
+FROM traffic_samples AS s
 WHERE s.finalized = 1 AND s.bucket_start < ?
-GROUP BY a.app_key, s.bucket_start
-ON CONFLICT(app_key,bucket_start) DO UPDATE SET
-  in_bytes     = app_traffic.in_bytes     + excluded.in_bytes,
-  out_bytes    = app_traffic.out_bytes    + excluded.out_bytes,
-  sample_count = app_traffic.sample_count + excluded.sample_count;
+GROUP BY s.bucket_start
+ON CONFLICT(bucket_start) DO UPDATE SET
+  in_bytes     = traffic_totals.in_bytes     + excluded.in_bytes,
+  out_bytes    = traffic_totals.out_bytes    + excluded.out_bytes,
+  sample_count = traffic_totals.sample_count + excluded.sample_count;
 """
 
-/// Rollup sweep 2/5: tombstone the swept sample ids so a replay of an
+/// Rollup sweep 2/4: tombstone the swept sample ids so a replay of an
 /// already-archived frame stays a no-op (commitSample idempotency). Without
 /// this, deleting the frame row would also delete the dedup key.
 private let rollupArchiveSamplesSQL = """
@@ -129,7 +116,7 @@ WHERE finalized = 1 AND bucket_start < ?
 ON CONFLICT(sample_id) DO NOTHING;
 """
 
-/// Rollup sweep 3/5: remove deduplication metadata outside the retry window.
+/// Rollup sweep 3/4: remove deduplication metadata outside the retry window.
 /// This bounds the tombstone table instead of moving the unbounded growth from
 /// the frame ledger into `archived_samples`.
 private let rollupPruneArchivedSamplesSQL = """
@@ -137,27 +124,11 @@ DELETE FROM archived_samples
 WHERE archived_at < CAST(strftime('%s','now') AS INTEGER) - \(archivedSampleRetentionSeconds);
 """
 
-/// Rollup sweep 4/5: delete the allocations of the swept samples.
-private let rollupDeleteAllocationsSQL = """
-DELETE FROM sample_allocations
-WHERE sample_id IN (
-  SELECT s.sample_id FROM traffic_samples AS s
-  WHERE s.finalized = 1 AND s.bucket_start < ?
-);
-"""
-
-/// Rollup sweep 5/5: delete the swept samples.
+/// Rollup sweep 4/4: delete the swept samples.
 private let rollupDeleteSamplesSQL = """
 DELETE FROM traffic_samples
 WHERE finalized = 1 AND bucket_start < ?;
 """
-
-struct TrafficSampleAllocation: Equatable {
-    let appKey: String
-    let displayName: String
-    let inBytes: Int
-    let outBytes: Int
-}
 
 struct TrafficSample: Equatable {
     let id: String
@@ -167,7 +138,6 @@ struct TrafficSample: Equatable {
     let hour: Int
     let rawInBytes: Int
     let rawOutBytes: Int
-    let allocations: [TrafficSampleAllocation]
 }
 
 final class TrafficDatabase {
@@ -175,6 +145,9 @@ final class TrafficDatabase {
     private let dbQueue = DispatchQueue(label: "traffic-db", qos: .utility)
     private let databaseURL: URL?
     private var db: OpaquePointer?
+    /// Resolved path of the open database. Used by the one-time per-app-removal
+    /// backup so it can snapshot the exact file the connection is using.
+    private var databasePath: String?
 
     init(databaseURL: URL? = nil) {
         self.databaseURL = databaseURL
@@ -211,6 +184,7 @@ final class TrafficDatabase {
             print("[TrafficDatabase] open failed: \(msg)")
             return
         }
+        self.databasePath = dbPath
         sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
         migrate()
     }
@@ -227,22 +201,26 @@ final class TrafficDatabase {
     }
 
     private func migrate() {
+        createCoreTables()
+        migrateArchivedSamplesTimestamp()
+        ensureAccountedTrafficView()
+        migratePerAppRemovalIfNeeded()
+    }
+
+    /// Create the total-only tables and indexes. Idempotent; runs on every
+    /// launch. The `accounted_traffic` view is created separately so a legacy
+    /// app-keyed view is replaced rather than left in place.
+    @discardableResult
+    private func createCoreTables() -> Bool {
+        guard let db else { return false }
         let schema = """
-        CREATE TABLE IF NOT EXISTS app_traffic (
-          app_key      TEXT NOT NULL,
-          bucket_start INTEGER NOT NULL,
+        CREATE TABLE IF NOT EXISTS traffic_totals (
+          bucket_start INTEGER PRIMARY KEY,
           day          INTEGER NOT NULL,
           hour         INTEGER NOT NULL,
           in_bytes     INTEGER NOT NULL DEFAULT 0,
           out_bytes    INTEGER NOT NULL DEFAULT 0,
-          sample_count INTEGER NOT NULL DEFAULT 0,
-          PRIMARY KEY (app_key, bucket_start)
-        );
-        CREATE INDEX IF NOT EXISTS idx_traffic_bucket ON app_traffic(bucket_start);
-        CREATE TABLE IF NOT EXISTS apps (
-          app_key      TEXT PRIMARY KEY,
-          display_name TEXT NOT NULL,
-          last_seen    INTEGER NOT NULL
+          sample_count INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS traffic_samples (
           sample_id       TEXT PRIMARY KEY,
@@ -255,36 +233,144 @@ final class TrafficDatabase {
           finalized       INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_traffic_samples_bucket ON traffic_samples(bucket_start);
-        CREATE TABLE IF NOT EXISTS sample_allocations (
-          sample_id  TEXT NOT NULL,
-          app_key    TEXT NOT NULL,
-          in_bytes   INTEGER NOT NULL DEFAULT 0,
-          out_bytes  INTEGER NOT NULL DEFAULT 0,
-          PRIMARY KEY (sample_id, app_key)
-        );
-        CREATE INDEX IF NOT EXISTS idx_sample_allocations_app ON sample_allocations(app_key);
         CREATE TABLE IF NOT EXISTS archived_samples (
           sample_id   TEXT PRIMARY KEY,
           archived_at INTEGER NOT NULL DEFAULT 0
         );
-        CREATE VIEW IF NOT EXISTS accounted_traffic AS
-          SELECT app_key, bucket_start, day, hour, in_bytes, out_bytes
-          FROM app_traffic
-          UNION ALL
-          SELECT a.app_key, s.bucket_start, s.day, s.hour, a.in_bytes, a.out_bytes
-          FROM sample_allocations AS a
-          JOIN traffic_samples AS s ON s.sample_id = a.sample_id
-          WHERE s.finalized = 1;
         """
         guard sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK else {
-            let msg = String(cString: sqlite3_errmsg(db))
-            print("[TrafficDatabase] migrate failed: \(msg)")
+            print("[TrafficDatabase] schema creation failed: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        return true
+    }
+
+    /// (Re)create the total-only `accounted_traffic` view: rolled minute
+    /// buckets from `traffic_totals`, unioned with the still-live frame ledger.
+    /// The two arms are disjoint by the rollup cutoff, so no bucket is counted
+    /// twice. `DROP` first because SQLite has no `CREATE VIEW IF NOT EXISTS`
+    /// replacement, and a legacy database already has an app-keyed definition.
+    private func ensureAccountedTrafficView() {
+        guard let db else { return }
+        let sql = """
+        DROP VIEW IF EXISTS accounted_traffic;
+        CREATE VIEW accounted_traffic AS
+          SELECT bucket_start, day, hour, in_bytes, out_bytes FROM traffic_totals
+          UNION ALL
+          SELECT bucket_start, day, hour, raw_in_bytes, raw_out_bytes
+          FROM traffic_samples WHERE finalized = 1;
+        """
+        if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
+            print("[TrafficDatabase] accounted_traffic view creation failed: \(String(cString: sqlite3_errmsg(db)))")
+        }
+    }
+
+    /// `PRAGMA user_version` for the total-only schema. Databases at 1 (the
+    /// retired dirty-data cleanup) or 0 (older) migrate to it exactly once.
+    private static let currentSchemaVersion: Int32 = 2
+
+    /// One-time migration from the per-app schema to the total-only schema,
+    /// gated by `PRAGMA user_version`. The legacy history is folded losslessly
+    /// (summed over apps per bucket) before the per-app tables are dropped.
+    /// The fold, the drops and the version bump share one transaction, so a
+    /// failure leaves the old schema usable and retries on the next launch.
+    private func migratePerAppRemovalIfNeeded() {
+        guard let db else { return }
+        let hasLegacy = legacyPerAppTablesPresent()
+        if !hasLegacy, userVersion() >= Self.currentSchemaVersion {
             return
         }
-        migrateArchivedSamplesTimestamp()
-        migrateClashVergeName()
-        migrateUnattributedVPNName()
-        runLegacyDirtyCleanupIfNeeded()
+
+        // One-time safety snapshot before the destructive fold. Only when a
+        // legacy database is actually present, and never under tests.
+        if hasLegacy, !AppEnvironment.isRunningTests {
+            backupBeforePerAppRemoval()
+        }
+
+        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] per-app removal BEGIN failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+        var ok = createCoreTables()
+        if hasLegacy {
+            ok = ok && foldAppTrafficIntoTotalsLocked()
+        }
+        ok = ok && dropLegacyPerAppObjectsLocked()
+        let bump = "PRAGMA user_version = \(Self.currentSchemaVersion);"
+        if ok, sqlite3_exec(db, bump, nil, nil, nil) == SQLITE_OK {
+            _ = commitTransaction(db, failureMessage: "[TrafficDatabase] per-app removal COMMIT failed")
+        } else {
+            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
+            print("[TrafficDatabase] per-app removal rolled back: \(String(cString: sqlite3_errmsg(db)))")
+        }
+    }
+
+    /// True when this database still has the per-app `app_traffic` table, i.e.
+    /// it predates the total-only schema.
+    private func legacyPerAppTablesPresent() -> Bool {
+        guard let db else { return false }
+        var stmt: OpaquePointer?
+        let sql = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_traffic' LIMIT 1;"
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
+    /// Sum every per-app bucket into the total-only table. `MAX(0, ·)` (scalar
+    /// form) absorbs the retired negative-counter clamp, and the `NOT EXISTS`
+    /// guard makes the fold idempotent per bucket so a re-run can never double
+    /// count. Runs inside the caller's transaction.
+    private func foldAppTrafficIntoTotalsLocked() -> Bool {
+        guard let db else { return false }
+        let sql = """
+        INSERT INTO traffic_totals(bucket_start,day,hour,in_bytes,out_bytes,sample_count)
+        SELECT a.bucket_start, MIN(a.day), MIN(a.hour),
+               SUM(MAX(0, a.in_bytes)), SUM(MAX(0, a.out_bytes)), SUM(a.sample_count)
+        FROM app_traffic AS a
+        WHERE NOT EXISTS (
+          SELECT 1 FROM traffic_totals AS t WHERE t.bucket_start = a.bucket_start
+        )
+        GROUP BY a.bucket_start;
+        """
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] per-app fold failed: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        return true
+    }
+
+    /// Drop the per-app storage now that its totals have been folded. Runs
+    /// inside the caller's transaction.
+    private func dropLegacyPerAppObjectsLocked() -> Bool {
+        guard let db else { return false }
+        let sql = """
+        DROP TABLE IF EXISTS sample_allocations;
+        DROP TABLE IF EXISTS app_traffic;
+        DROP TABLE IF EXISTS apps;
+        DROP INDEX IF EXISTS idx_traffic_bucket;
+        DROP INDEX IF EXISTS idx_sample_allocations_app;
+        """
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] legacy per-app drop failed: \(String(cString: sqlite3_errmsg(db)))")
+            return false
+        }
+        return true
+    }
+
+    /// One-time snapshot of the database before the destructive per-app fold.
+    /// `VACUUM INTO` reads through the open WAL connection, so the snapshot is
+    /// a consistent single file that includes uncheckpointed frames. A failure
+    /// is logged and ignored: the migration transaction is the primary safety
+    /// net (fold + drops + version bump roll back together).
+    private func backupBeforePerAppRemoval() {
+        guard let db, let databasePath else { return }
+        let backupPath = "\(databasePath).pre-perapp-removal-\(Int(Date().timeIntervalSince1970)).bak"
+        let escaped = backupPath.replacingOccurrences(of: "'", with: "''")
+        if sqlite3_exec(db, "VACUUM INTO '\(escaped)';", nil, nil, nil) == SQLITE_OK {
+            print("[TrafficDatabase] per-app removal backup written to \(backupPath)")
+        } else {
+            print("[TrafficDatabase] per-app removal backup skipped: \(String(cString: sqlite3_errmsg(db)))")
+        }
     }
 
     /// Add the archive timestamp to databases created by the first tombstone
@@ -328,90 +414,6 @@ final class TrafficDatabase {
         }
     }
 
-    /// Merge rows written by older versions under the raw mihomo process name
-    /// into the stable Clash Verge app key.
-    private func migrateClashVergeName() {
-        guard let db else { return }
-        let sql = """
-        INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
-        SELECT 'Clash Verge', bucket_start, day, hour, SUM(in_bytes), SUM(out_bytes), SUM(sample_count)
-        FROM app_traffic
-        WHERE app_key IN ('verge-mihomo', 'mihomo', 'io.github.clash-verge-rev.clash-verge-rev')
-        GROUP BY bucket_start, day, hour
-        ON CONFLICT(app_key,bucket_start) DO UPDATE SET
-          in_bytes=in_bytes+excluded.in_bytes,
-          out_bytes=out_bytes+excluded.out_bytes,
-          sample_count=sample_count+excluded.sample_count;
-        DELETE FROM app_traffic WHERE app_key IN ('verge-mihomo', 'mihomo', 'io.github.clash-verge-rev.clash-verge-rev');
-        INSERT INTO apps(app_key,display_name,last_seen)
-        SELECT 'Clash Verge', 'Clash Verge', COALESCE(MAX(last_seen), CAST(strftime('%s','now') AS INTEGER))
-        FROM apps
-        WHERE app_key IN ('verge-mihomo', 'mihomo', 'io.github.clash-verge-rev.clash-verge-rev')
-        ON CONFLICT(app_key) DO UPDATE SET
-          display_name='Clash Verge',
-          last_seen=MAX(apps.last_seen, excluded.last_seen);
-        DELETE FROM apps WHERE app_key IN ('verge-mihomo', 'mihomo', 'io.github.clash-verge-rev.clash-verge-rev');
-        """
-        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] Clash Verge name migration failed: \(String(cString: sqlite3_errmsg(db)))")
-            return
-        }
-    }
-
-    /// Merge rows written by older versions under the synthetic
-    /// "Unattributed VPN" key into the Clash Verge app key. There is no
-    /// unattributed-VPN category: traffic that cannot be mapped to an app is
-    /// credited to the proxy process.
-    private func migrateUnattributedVPNName() {
-        guard let db else { return }
-        let sql = """
-        INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
-        SELECT 'Clash Verge', bucket_start, day, hour, SUM(in_bytes), SUM(out_bytes), SUM(sample_count)
-        FROM app_traffic
-        WHERE app_key = 'Unattributed VPN'
-        GROUP BY bucket_start, day, hour
-        ON CONFLICT(app_key,bucket_start) DO UPDATE SET
-          in_bytes=in_bytes+excluded.in_bytes,
-          out_bytes=out_bytes+excluded.out_bytes,
-          sample_count=sample_count+excluded.sample_count;
-        DELETE FROM app_traffic WHERE app_key = 'Unattributed VPN';
-        DELETE FROM apps WHERE app_key = 'Unattributed VPN';
-        """
-        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] Unattributed VPN merge migration failed: \(String(cString: sqlite3_errmsg(db)))")
-            return
-        }
-    }
-
-    /// `PRAGMA user_version` marker for the one-time legacy dirty-data cleanups
-    /// below. They scan the whole `app_traffic` table, so they must run once per
-    /// database instead of on every launch. Bump this and add a matching `<`
-    /// check when another one-time cleanup is introduced.
-    private static let legacyDirtyCleanupVersion: Int32 = 1
-
-    /// Run the legacy dirty-data cleanups once, gated by `PRAGMA user_version`.
-    ///
-    /// The clamp and the PID-key merge share one transaction with the version
-    /// bump, so a failure rolls the whole thing back and retries next launch
-    /// rather than leaving the database half-cleaned with the gate already set.
-    /// Fresh databases run them as no-ops and jump straight to the current
-    /// version.
-    private func runLegacyDirtyCleanupIfNeeded() {
-        guard let db, userVersion() < Self.legacyDirtyCleanupVersion else { return }
-        guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] legacy cleanup BEGIN failed: \(String(cString: sqlite3_errmsg(db)))")
-            return
-        }
-        let cleaned = clampNegativeTrafficLocked() && mergeLegacyProxyPIDKeysLocked()
-        let bump = "PRAGMA user_version = \(Self.legacyDirtyCleanupVersion);"
-        if cleaned, sqlite3_exec(db, bump, nil, nil, nil) == SQLITE_OK {
-            _ = commitTransaction(db, failureMessage: "[TrafficDatabase] legacy cleanup COMMIT failed")
-        } else {
-            sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            print("[TrafficDatabase] legacy cleanup rolled back: \(String(cString: sqlite3_errmsg(db)))")
-        }
-    }
-
     /// Read `PRAGMA user_version` (0 for a database this code has never
     /// cleaned). Runs on `dbQueue`.
     private func userVersion() -> Int32 {
@@ -425,73 +427,15 @@ final class TrafficDatabase {
         return sqlite3_column_int(stmt, 0)
     }
 
-    /// Clamp byte counters that a superseded attribution implementation left
-    /// negative. The pre-conservative model could over-subtract one direction
-    /// and write a small negative into a bucket; every counter is otherwise
-    /// >= 0, so a negative value is always invalid. Runs inside the caller's
-    /// transaction; returns false so the caller can roll back.
-    private func clampNegativeTrafficLocked() -> Bool {
-        guard let db else { return false }
-        let sql = """
-        UPDATE app_traffic SET in_bytes = 0 WHERE in_bytes < 0;
-        UPDATE app_traffic SET out_bytes = 0 WHERE out_bytes < 0;
-        """
-        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] negative-traffic clamp failed: \(String(cString: sqlite3_errmsg(db)))")
-            return false
-        }
-        return true
-    }
-
-    /// Merge legacy app keys that are a bare PID (for example "65220") into
-    /// the stable Clash Verge key. Those rows came from the old proxy-credit
-    /// fallback that named an unattributable credit after the pid; there is no
-    /// per-pid category, and unmatched proxy bytes belong on the proxy row.
-    /// Runs inside the caller's transaction; returns false on failure.
-    private func mergeLegacyProxyPIDKeysLocked() -> Bool {
-        guard let db else { return false }
-        // A key made only of digits. The leading `app_key <> ''` guard keeps
-        // the empty string out, which would otherwise match "no non-digit".
-        let pidKey = "app_key <> '' AND app_key GLOB '[0-9]*' AND app_key NOT GLOB '*[^0-9]*'"
-        let sql = """
-        INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
-        SELECT 'Clash Verge', bucket_start, day, hour, SUM(in_bytes), SUM(out_bytes), SUM(sample_count)
-        FROM app_traffic
-        WHERE \(pidKey)
-        GROUP BY bucket_start, day, hour
-        ON CONFLICT(app_key,bucket_start) DO UPDATE SET
-          in_bytes=app_traffic.in_bytes+excluded.in_bytes,
-          out_bytes=app_traffic.out_bytes+excluded.out_bytes,
-          sample_count=app_traffic.sample_count+excluded.sample_count;
-        DELETE FROM app_traffic WHERE \(pidKey);
-        INSERT INTO apps(app_key,display_name,last_seen)
-        SELECT 'Clash Verge', 'Clash Verge', x.last_seen
-        FROM (SELECT MAX(last_seen) AS last_seen FROM apps WHERE \(pidKey) HAVING COUNT(*) > 0) AS x
-        WHERE x.last_seen IS NOT NULL
-        ON CONFLICT(app_key) DO UPDATE SET
-          display_name='Clash Verge',
-          last_seen=MAX(apps.last_seen, excluded.last_seen);
-        DELETE FROM apps WHERE \(pidKey);
-        """
-        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] legacy proxy PID-key merge failed: \(String(cString: sqlite3_errmsg(db)))")
-            return false
-        }
-        return true
-    }
-
     // MARK: - Write
 
     /// Commit one finalized capture sample atomically. The sample identifier
     /// is the idempotency key: a retry of an already finalized sample is a
-    /// no-op, so replaying a frame cannot inflate history.
+    /// no-op, so replaying a frame cannot inflate history. Totals are
+    /// structural: `traffic_samples.raw_*` is the only byte source.
     func commitSample(_ sample: TrafficSample) {
-        let allocationIn = sample.allocations.reduce(0) { $0 + max(0, $1.inBytes) }
-        let allocationOut = sample.allocations.reduce(0) { $0 + max(0, $1.outBytes) }
-        guard sample.rawInBytes >= 0, sample.rawOutBytes >= 0,
-              allocationIn == sample.rawInBytes,
-              allocationOut == sample.rawOutBytes else {
-            print("[TrafficDatabase] rejected non-conservative sample \(sample.id)")
+        guard sample.rawInBytes >= 0, sample.rawOutBytes >= 0 else {
+            print("[TrafficDatabase] rejected negative sample \(sample.id)")
             return
         }
         dbQueue.sync {
@@ -502,7 +446,7 @@ final class TrafficDatabase {
     // MARK: - Rollup (frame ledger → minute buckets)
 
     /// Roll every finalized sample with `bucket_start < beforeBucket` up into
-    /// `app_traffic` and delete the frame rows, in one transaction. Returns
+    /// `traffic_totals` and delete the frame rows, in one transaction. Returns
     /// false when the sweep could not be committed (BEGIN / step / COMMIT
     /// failure); callers should retry later.
     ///
@@ -546,7 +490,6 @@ final class TrafficDatabase {
         if !execRollupStatement(db, sql: rollupInsertSQL, before: beforeBucket) { failed = true }
         if !execRollupStatement(db, sql: rollupArchiveSamplesSQL, before: beforeBucket) { failed = true }
         if !execRollupStatementWithoutBindings(db, sql: rollupPruneArchivedSamplesSQL) { failed = true }
-        if !execRollupStatement(db, sql: rollupDeleteAllocationsSQL, before: beforeBucket) { failed = true }
         if !execRollupStatement(db, sql: rollupDeleteSamplesSQL, before: beforeBucket) { failed = true }
 
         if failed {
@@ -592,10 +535,10 @@ final class TrafficDatabase {
 
     private func commitSampleLocked(_ sample: TrafficSample) {
         guard let db else { return }
-        // A frame whose bucket was already rolled into `app_traffic` no longer
-        // has a ledger row, so the usual sample_id dedup would not see it. Its
-        // id is tombstoned in `archived_samples` at rollup time; a replay must
-        // stay a no-op or the same bytes would be counted twice.
+        // A frame whose bucket was already rolled into `traffic_totals` no
+        // longer has a ledger row, so the usual sample_id dedup would not see
+        // it. Its id is tombstoned in `archived_samples` at rollup time; a
+        // replay must stay a no-op or the same bytes would be counted twice.
         if sampleWasArchived(db, sampleID: sample.id) {
             print("[TrafficDatabase] sample \(sample.id) already archived; ignoring replay")
             return
@@ -653,40 +596,6 @@ final class TrafficDatabase {
         }
 
         if !failed {
-            let deleteAllocations = "DELETE FROM sample_allocations WHERE sample_id = ?;"
-            if sqlite3_prepare_v2(db, deleteAllocations, -1, &stmt, nil) == SQLITE_OK {
-                sqlite3_bind_text(stmt, 1, sample.id, -1, SQLITE_TRANSIENT)
-                failed = sqlite3_step(stmt) != SQLITE_DONE
-            } else {
-                failed = true
-            }
-            sqlite3_finalize(stmt)
-            stmt = nil
-        }
-
-        if !failed {
-            let insertAllocation = "INSERT INTO sample_allocations(sample_id,app_key,in_bytes,out_bytes) VALUES(?,?,?,?);"
-            if sqlite3_prepare_v2(db, insertAllocation, -1, &stmt, nil) == SQLITE_OK {
-                for allocation in sample.allocations where allocation.inBytes > 0 || allocation.outBytes > 0 {
-                    sqlite3_bind_text(stmt, 1, sample.id, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(stmt, 2, allocation.appKey, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_int64(stmt, 3, Int64(max(0, allocation.inBytes)))
-                    sqlite3_bind_int64(stmt, 4, Int64(max(0, allocation.outBytes)))
-                    if sqlite3_step(stmt) != SQLITE_DONE {
-                        failed = true
-                        break
-                    }
-                    sqlite3_reset(stmt)
-                    sqlite3_clear_bindings(stmt)
-                }
-            } else {
-                failed = true
-            }
-            sqlite3_finalize(stmt)
-            stmt = nil
-        }
-
-        if !failed {
             let finalize = "UPDATE traffic_samples SET finalized = 1 WHERE sample_id = ?;"
             if sqlite3_prepare_v2(db, finalize, -1, &stmt, nil) == SQLITE_OK {
                 sqlite3_bind_text(stmt, 1, sample.id, -1, SQLITE_TRANSIENT)
@@ -698,29 +607,6 @@ final class TrafficDatabase {
             stmt = nil
         }
 
-        if !failed {
-            let insertApp = """
-            INSERT INTO apps(app_key,display_name,last_seen) VALUES(?,?,?)
-            ON CONFLICT(app_key) DO UPDATE SET display_name=excluded.display_name,last_seen=MAX(apps.last_seen, excluded.last_seen);
-            """
-            if sqlite3_prepare_v2(db, insertApp, -1, &stmt, nil) == SQLITE_OK {
-                for allocation in sample.allocations where allocation.inBytes > 0 || allocation.outBytes > 0 {
-                    sqlite3_bind_text(stmt, 1, allocation.appKey, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_text(stmt, 2, allocation.displayName, -1, SQLITE_TRANSIENT)
-                    sqlite3_bind_int64(stmt, 3, Int64(sample.bucketStart))
-                    if sqlite3_step(stmt) != SQLITE_DONE {
-                        failed = true
-                        break
-                    }
-                    sqlite3_reset(stmt)
-                    sqlite3_clear_bindings(stmt)
-                }
-            } else {
-                failed = true
-            }
-            sqlite3_finalize(stmt)
-        }
-
         if failed {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
             print("[TrafficDatabase] rolled back sample \(sample.id): \(String(cString: sqlite3_errmsg(db)))")
@@ -729,7 +615,7 @@ final class TrafficDatabase {
         }
     }
 
-    /// True when `sampleID` was already rolled up into `app_traffic` and its
+    /// True when `sampleID` was already rolled up into `traffic_totals` and its
     /// frame rows deleted. Such ids are tombstoned in `archived_samples`.
     /// Runs on `dbQueue` (no active transaction needed).
     private func sampleWasArchived(_ db: OpaquePointer?, sampleID: String) -> Bool {
@@ -743,23 +629,8 @@ final class TrafficDatabase {
 
     // MARK: - Read (each returns via a completion on the given queue)
 
-    private func displayNameMap() -> [String: String] {
-        guard let db else { return [:] }
-        var map: [String: String] = [:]
-        var stmt: OpaquePointer?
-        let sql = "SELECT app_key, display_name FROM apps;"
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return map }
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let key = String(cString: sqlite3_column_text(stmt, 0))
-            let name = String(cString: sqlite3_column_text(stmt, 1))
-            map[key] = name
-        }
-        sqlite3_finalize(stmt)
-        return map
-    }
-
-    /// Daily totals for a range (or a single app when appKey != nil).
-    func dailyTraffic(start: Int, end: Int, appKey: String? = nil, completion: @escaping ([DayTrafficRow]) -> Void) {
+    /// Daily totals for a range.
+    func dailyTraffic(start: Int, end: Int, completion: @escaping ([DayTrafficRow]) -> Void) {
         dbQueue.async { [weak self] in
             guard let self, let db = self.db else {
                 DispatchQueue.main.async { completion([]) }
@@ -767,17 +638,12 @@ final class TrafficDatabase {
             }
             var rows: [DayTrafficRow] = []
             var stmt: OpaquePointer?
-            var sql = "SELECT day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ?"
-            if appKey != nil { sql += " AND app_key = ?" }
-            sql += " GROUP BY day ORDER BY day;"
+            let sql = "SELECT day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ? GROUP BY day ORDER BY day;"
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
                 completion([]); return
             }
             sqlite3_bind_int64(stmt, 1, Int64(start))
             sqlite3_bind_int64(stmt, 2, Int64(end))
-            if let appKey {
-                sqlite3_bind_text(stmt, 3, appKey, -1, SQLITE_TRANSIENT)
-            }
             while sqlite3_step(stmt) == SQLITE_ROW {
                 rows.append(DayTrafficRow(
                     day: Int(sqlite3_column_int64(stmt, 0)),
@@ -818,8 +684,8 @@ final class TrafficDatabase {
     }
 
     /// Whole-network totals for one local `day`, matching the dashboard's
-    /// daily bars. Read through the accounted view so both current samples
-    /// and legacy app_traffic rows are included.
+    /// daily bars. Read through the accounted view so both the live ledger and
+    /// rolled-up buckets are included.
     func dayTotalTraffic(day: Int, completion: @escaping (TrafficTotal) -> Void) {
         dbQueue.async { [weak self] in
             guard let self, let db = self.db else {
@@ -896,60 +762,11 @@ final class TrafficDatabase {
         }
     }
 
-    /// Top apps by total traffic, including peak one-minute rate (bytes/sec).
-    func topAppsWithPeak(start: Int, end: Int, limit: Int = 20,
-                         completion: @escaping ([AppPeakTrafficRow]) -> Void) {
-        dbQueue.async { [weak self] in
-            guard let self, let db = self.db else {
-                DispatchQueue.main.async { completion([]) }
-                return
-            }
-            let names = self.displayNameMap()
-            var rows: [AppPeakTrafficRow] = []
-            var stmt: OpaquePointer?
-            // `accounted_traffic` holds one row per (sample, app): every 2s
-            // nettop frame inserts its own rows under the same minute bucket.
-            // A bare `MAX(in_bytes + out_bytes)` would therefore return the
-            // largest single 2s frame (~30x smaller than a minute total).
-            // Aggregate each minute bucket first, then take the peak minute.
-            let sql = """
-            SELECT app_key, SUM(in_bytes), SUM(out_bytes), MAX(minute_total)
-            FROM (
-              SELECT app_key, bucket_start,
-                     SUM(in_bytes) AS in_bytes,
-                     SUM(out_bytes) AS out_bytes,
-                     SUM(in_bytes + out_bytes) AS minute_total
-              FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ?
-              GROUP BY app_key, bucket_start
-            )
-            GROUP BY app_key ORDER BY (SUM(in_bytes)+SUM(out_bytes)) DESC LIMIT ?;
-            """
-            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-                completion([]); return
-            }
-            sqlite3_bind_int64(stmt, 1, Int64(start))
-            sqlite3_bind_int64(stmt, 2, Int64(end))
-            sqlite3_bind_int64(stmt, 3, Int64(limit))
-            while sqlite3_step(stmt) == SQLITE_ROW {
-                let key = String(cString: sqlite3_column_text(stmt, 0))
-                rows.append(AppPeakTrafficRow(
-                    appKey: key,
-                    displayName: names[key] ?? key,
-                    inBytes: Int(sqlite3_column_int64(stmt, 1)),
-                    outBytes: Int(sqlite3_column_int64(stmt, 2)),
-                    peakBytesPerSecond: Int(sqlite3_column_int64(stmt, 3)) / 60
-                ))
-            }
-            sqlite3_finalize(stmt)
-            DispatchQueue.main.async { completion(rows) }
-        }
-    }
-
     // MARK: - Export
 
-    /// Export aggregated traffic rows within [start, end). Period label is a
-    /// local-time Date for the bucket. Month rows are aggregated in Swift
-    /// from day-granular data (no month column in the schema).
+    /// Export total traffic rows within [start, end), one row per period.
+    /// Period is a local-time Date for the bucket. Month rows are aggregated
+    /// in Swift from day-granular data (no month column in the schema).
     func exportRows(start: Int, end: Int, granularity: ExportGranularity,
                     completion: @escaping ([ExportTrafficRow]) -> Void) {
         dbQueue.async { [weak self] in
@@ -957,85 +774,71 @@ final class TrafficDatabase {
                 DispatchQueue.main.async { completion([]) }
                 return
             }
-            let names = self.displayNameMap()
             let rows: [ExportTrafficRow]
             switch granularity {
             case .minute:
-                rows = self.exportGrouped(db: db, start: start, end: end, names: names,
-                                          sql: "SELECT app_key, bucket_start, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY app_key, bucket_start ORDER BY bucket_start;",
-                                          period: { a, _ in Date(timeIntervalSince1970: TimeInterval(a)) })
+                rows = self.exportTotals(db: db, start: start, end: end,
+                                         sql: "SELECT bucket_start, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY bucket_start ORDER BY bucket_start;",
+                                         period: { value, _ in Date(timeIntervalSince1970: TimeInterval(value)) })
             case .hour:
-                rows = self.exportGrouped(db: db, start: start, end: end, names: names,
-                                          sql: "SELECT app_key, day, hour, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY app_key, day, hour ORDER BY day, hour;",
-                                          hasHour: true,
-                                          period: { a, h in dateFromDay(a).addingTimeInterval(TimeInterval(h) * 3600) })
+                rows = self.exportTotals(db: db, start: start, end: end,
+                                         sql: "SELECT day, hour, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY day, hour ORDER BY day, hour;",
+                                         hasHour: true,
+                                         period: { day, hour in dateFromDay(day).addingTimeInterval(TimeInterval(hour) * 3600) })
             case .day:
-                rows = self.exportGrouped(db: db, start: start, end: end, names: names,
-                                          sql: "SELECT app_key, day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY app_key, day ORDER BY day;",
-                                          period: { a, _ in dateFromDay(a) })
+                rows = self.exportTotals(db: db, start: start, end: end,
+                                         sql: "SELECT day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY day ORDER BY day;",
+                                         period: { day, _ in dateFromDay(day) })
             case .month:
-                let dayRows = self.exportGrouped(db: db, start: start, end: end, names: names,
-                                                 sql: "SELECT app_key, day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY app_key, day ORDER BY day;",
-                                                 period: { a, _ in dateFromDay(a) })
+                let dayRows = self.exportTotals(db: db, start: start, end: end,
+                                                sql: "SELECT day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY day ORDER BY day;",
+                                                period: { day, _ in dateFromDay(day) })
                 rows = Self.aggregateMonths(dayRows)
             }
             DispatchQueue.main.async { completion(rows) }
         }
     }
 
-    /// Run an export SQL (expects `periodCol0`, optional `periodCol1`, sum_in, sum_out)
-    /// and map rows to ExportTrafficRow with the given period builder.
-    private func exportGrouped(db: OpaquePointer?, start: Int, end: Int, names: [String: String],
-                               sql: String, hasHour: Bool = false,
-                               period: (Int, Int) -> Date) -> [ExportTrafficRow] {
+    /// Run an export SQL (period column 0, optional hour column 1, then
+    /// sum_in and sum_out) and map each row to an `ExportTrafficRow`.
+    private func exportTotals(db: OpaquePointer?, start: Int, end: Int,
+                              sql: String, hasHour: Bool = false,
+                              period: (Int, Int) -> Date) -> [ExportTrafficRow] {
         var rows: [ExportTrafficRow] = []
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return rows }
         sqlite3_bind_int64(stmt, 1, Int64(start))
         sqlite3_bind_int64(stmt, 2, Int64(end))
         while sqlite3_step(stmt) == SQLITE_ROW {
-            let key = String(cString: sqlite3_column_text(stmt, 0))
-            let col1 = Int(sqlite3_column_int64(stmt, 1))
-            let date: Date
-            if hasHour {
-                let hour = Int(sqlite3_column_int64(stmt, 2))
-                date = period(col1, hour)
-                rows.append(ExportTrafficRow(appKey: key, displayName: names[key] ?? key, period: date,
-                                             inBytes: Int(sqlite3_column_int64(stmt, 3)),
-                                             outBytes: Int(sqlite3_column_int64(stmt, 4))))
-            } else {
-                date = period(col1, 0)
-                rows.append(ExportTrafficRow(appKey: key, displayName: names[key] ?? key, period: date,
-                                             inBytes: Int(sqlite3_column_int64(stmt, 2)),
-                                             outBytes: Int(sqlite3_column_int64(stmt, 3))))
-            }
+            let primary = Int(sqlite3_column_int64(stmt, 0))
+            let date = hasHour
+                ? period(primary, Int(sqlite3_column_int64(stmt, 1)))
+                : period(primary, 0)
+            let inIndex: Int32 = hasHour ? 2 : 1
+            let outIndex: Int32 = hasHour ? 3 : 2
+            rows.append(ExportTrafficRow(
+                period: date,
+                inBytes: Int(sqlite3_column_int64(stmt, inIndex)),
+                outBytes: Int(sqlite3_column_int64(stmt, outIndex))
+            ))
         }
         sqlite3_finalize(stmt)
         return rows
     }
 
-    private struct MonthKey: Hashable {
-        let appKey: String
-        let displayName: String
-        let monthStart: Date
-    }
-
     /// Re-group day rows into calendar-month rows (local timezone).
     static func aggregateMonths(_ dayRows: [ExportTrafficRow]) -> [ExportTrafficRow] {
         let calendar = Calendar.current
-        var acc: [MonthKey: (inBytes: Int, outBytes: Int)] = [:]
+        var acc: [Date: (inBytes: Int, outBytes: Int)] = [:]
         for row in dayRows {
             let monthStart = calendar.dateInterval(of: .month, for: row.period)?.start ?? row.period
-            let key = MonthKey(appKey: row.appKey, displayName: row.displayName, monthStart: monthStart)
-            var a = acc[key] ?? (0, 0)
+            var a = acc[monthStart] ?? (0, 0)
             a.inBytes += row.inBytes
             a.outBytes += row.outBytes
-            acc[key] = a
+            acc[monthStart] = a
         }
-        return acc.map { key, value in
-            ExportTrafficRow(appKey: key.appKey, displayName: key.displayName, period: key.monthStart,
-                             inBytes: value.inBytes, outBytes: value.outBytes)
-        }
-        .sorted { $0.period < $1.period }
+        return acc
+            .map { ExportTrafficRow(period: $0.key, inBytes: $0.value.inBytes, outBytes: $0.value.outBytes) }
+            .sorted { $0.period < $1.period }
     }
 }
