@@ -383,14 +383,36 @@ final class TrafficDatabase {
     /// a consistent single file that includes uncheckpointed frames. A failure
     /// is logged and ignored: the migration transaction is the primary safety
     /// net (fold + drops + version bump roll back together).
+    ///
+    /// Only the newest snapshot is kept. A fold that keeps failing re-runs this
+    /// on every launch, so without a cap the backups would grow without bound.
     private func backupBeforePerAppRemoval() {
         guard let db, let databasePath else { return }
         let backupPath = "\(databasePath).pre-perapp-removal-\(Int(Date().timeIntervalSince1970)).bak"
         let escaped = backupPath.replacingOccurrences(of: "'", with: "''")
         if sqlite3_exec(db, "VACUUM INTO '\(escaped)';", nil, nil, nil) == SQLITE_OK {
             print("[TrafficDatabase] per-app removal backup written to \(backupPath)")
+            prunePerAppRemovalBackups(keepingNewest: 1)
         } else {
             print("[TrafficDatabase] per-app removal backup skipped: \(String(cString: sqlite3_errmsg(db)))")
+        }
+    }
+
+    /// Delete all but the newest `*.pre-perapp-removal-*.bak` snapshots sitting
+    /// next to the database. Names embed a fixed-width epoch second, so a plain
+    /// string sort is chronological. Only these automatic snapshots are pruned;
+    /// any other `.bak` files are left alone.
+    private func prunePerAppRemovalBackups(keepingNewest keep: Int) {
+        guard let databasePath else { return }
+        let directory = (databasePath as NSString).deletingLastPathComponent
+        let prefix = (databasePath as NSString).lastPathComponent + ".pre-perapp-removal-"
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: directory) else { return }
+        let backups = entries
+            .filter { $0.hasPrefix(prefix) && $0.hasSuffix(".bak") }
+            .sorted()
+        guard backups.count > keep else { return }
+        for name in backups.dropLast(keep) {
+            try? FileManager.default.removeItem(atPath: (directory as NSString).appendingPathComponent(name))
         }
     }
 
