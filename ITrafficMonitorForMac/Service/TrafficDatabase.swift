@@ -269,6 +269,8 @@ final class TrafficDatabase {
         migrateArchivedSamplesTimestamp()
         migrateClashVergeName()
         migrateUnattributedVPNName()
+        migrateClampNegativeTraffic()
+        migrateLegacyProxyPIDKeys()
     }
 
     /// Add the archive timestamp to databases created by the first tombstone
@@ -363,6 +365,59 @@ final class TrafficDatabase {
         """
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
             print("[TrafficDatabase] Unattributed VPN merge migration failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+    }
+
+    /// Clamp byte counters that a superseded attribution implementation left
+    /// negative. The pre-conservative model could over-subtract one direction
+    /// and write a small negative into a bucket; every counter is otherwise
+    /// >= 0, so a negative value is always invalid. Idempotent: re-running
+    /// matches nothing once every row is clamped to 0.
+    private func migrateClampNegativeTraffic() {
+        guard let db else { return }
+        let sql = """
+        UPDATE app_traffic SET in_bytes = 0 WHERE in_bytes < 0;
+        UPDATE app_traffic SET out_bytes = 0 WHERE out_bytes < 0;
+        """
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] negative-traffic clamp migration failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+    }
+
+    /// Merge legacy app keys that are a bare PID (for example "65220") into
+    /// the stable Clash Verge key. Those rows came from the old proxy-credit
+    /// fallback that named an unattributable credit after the pid; there is no
+    /// per-pid category, and unmatched proxy bytes belong on the proxy row.
+    /// Idempotent: after the first run no bare-PID key remains.
+    private func migrateLegacyProxyPIDKeys() {
+        guard let db else { return }
+        // A key made only of digits. The leading `app_key <> ''` guard keeps
+        // the empty string out, which would otherwise match "no non-digit".
+        let pidKey = "app_key <> '' AND app_key GLOB '[0-9]*' AND app_key NOT GLOB '*[^0-9]*'"
+        let sql = """
+        INSERT INTO app_traffic(app_key,bucket_start,day,hour,in_bytes,out_bytes,sample_count)
+        SELECT 'Clash Verge', bucket_start, day, hour, SUM(in_bytes), SUM(out_bytes), SUM(sample_count)
+        FROM app_traffic
+        WHERE \(pidKey)
+        GROUP BY bucket_start, day, hour
+        ON CONFLICT(app_key,bucket_start) DO UPDATE SET
+          in_bytes=app_traffic.in_bytes+excluded.in_bytes,
+          out_bytes=app_traffic.out_bytes+excluded.out_bytes,
+          sample_count=app_traffic.sample_count+excluded.sample_count;
+        DELETE FROM app_traffic WHERE \(pidKey);
+        INSERT INTO apps(app_key,display_name,last_seen)
+        SELECT 'Clash Verge', 'Clash Verge', x.last_seen
+        FROM (SELECT MAX(last_seen) AS last_seen FROM apps WHERE \(pidKey) HAVING COUNT(*) > 0) AS x
+        WHERE x.last_seen IS NOT NULL
+        ON CONFLICT(app_key) DO UPDATE SET
+          display_name='Clash Verge',
+          last_seen=MAX(apps.last_seen, excluded.last_seen);
+        DELETE FROM apps WHERE \(pidKey);
+        """
+        guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
+            print("[TrafficDatabase] legacy proxy PID-key merge migration failed: \(String(cString: sqlite3_errmsg(db)))")
             return
         }
     }
