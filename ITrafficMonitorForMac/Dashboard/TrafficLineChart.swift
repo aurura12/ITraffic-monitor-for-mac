@@ -233,7 +233,7 @@ struct TrafficLineChart: View {
                             )
                     }
                 }
-                AxisGridLine()
+                AxisGridLine().foregroundStyle(Theme.gridLine)
             }
         }
         .chartYAxis {
@@ -243,7 +243,7 @@ struct TrafficLineChart: View {
                         Text(String(format: number >= 100 ? "%.0f" : "%.1f", number))
                     }
                 }
-                AxisGridLine()
+                AxisGridLine().foregroundStyle(Theme.gridLine)
             }
         }
         .chartYAxisLabel(yUnit.label)
@@ -331,9 +331,9 @@ struct TrafficLineChart: View {
         .font(.system(size: 11))
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
-        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.cardBackground))
+        .background(RoundedRectangle(cornerRadius: 7).fill(Theme.tooltipBackground))
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.cardStroke))
-        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+        .shadow(color: Theme.tooltipShadow, radius: 4, y: 2)
     }
 
     private var xDomain: ClosedRange<Date> {

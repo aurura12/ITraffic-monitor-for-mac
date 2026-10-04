@@ -315,7 +315,7 @@ struct UnifiedDashboardView: View {
                 .font(.system(size: 10))
                 .foregroundColor(.secondary)
             RoundedRectangle(cornerRadius: 2)
-                .fill(Color.secondary.opacity(0.12))
+                .fill(Theme.heatmapEmpty)
                 .frame(width: 10, height: 10)
             Text(i18n.text("Less"))
                 .font(.system(size: 10))

@@ -14,5 +14,6 @@ struct DashboardView: View {
             .environmentObject(viewModel)
             .environment(\.locale, i18n.locale)
             .frame(minWidth: 900, minHeight: 600)
+            .background(Theme.windowBackground)
     }
 }

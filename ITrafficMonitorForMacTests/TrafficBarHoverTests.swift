@@ -345,13 +345,38 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
-    func testTotalAccentUsesReadableBluePurpleColor() {
-        let components = Theme.total.cgColor?.components ?? []
+    func testTrafficAccentsAdaptAndStayReadableInBothAppearances() {
+        func luminance(_ color: Color.Resolved) -> Double {
+            func linearize(_ component: Float) -> Double {
+                let value = Double(component)
+                return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linearize(color.red)
+                + 0.7152 * linearize(color.green)
+                + 0.0722 * linearize(color.blue)
+        }
 
-        XCTAssertEqual(components.count, 4)
-        XCTAssertEqual(components[0], 0.486, accuracy: 0.001)
-        XCTAssertEqual(components[1], 0.514, accuracy: 0.001)
-        XCTAssertEqual(components[2], 0.961, accuracy: 0.001)
+        var light = EnvironmentValues()
+        light.colorScheme = .light
+        var dark = EnvironmentValues()
+        dark.colorScheme = .dark
+
+        for accent in [Theme.download, Theme.upload, Theme.total] {
+            XCTAssertNotEqual(accent.resolve(in: light), accent.resolve(in: dark))
+
+            // Resolve light again after dark to catch accidentally cached colors.
+            for environment in [light, dark, light] {
+                let foreground = accent.resolve(in: environment)
+                let background = Theme.cardBackground.resolve(in: environment)
+                XCTAssertEqual(foreground.opacity, 1)
+                XCTAssertEqual(background.opacity, 1)
+
+                let first = luminance(foreground)
+                let second = luminance(background)
+                let contrast = (max(first, second) + 0.05) / (min(first, second) + 0.05)
+                XCTAssertGreaterThanOrEqual(contrast, 4.5, "Traffic values must stay readable in \(environment.colorScheme) mode")
+            }
+        }
     }
 
     private enum TestError: Error {

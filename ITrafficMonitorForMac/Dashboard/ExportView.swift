@@ -76,6 +76,7 @@ struct ExportView: View {
         }
         .padding(20)
         .frame(width: 380)
+        .background(Theme.windowBackground)
         .alert(i18n.text("Export Failed"), isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }

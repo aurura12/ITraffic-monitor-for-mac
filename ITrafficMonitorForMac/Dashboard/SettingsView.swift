@@ -124,6 +124,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 380)
         .padding(16)
+        .background(Theme.windowBackground)
         .onChange(of: languageRaw) { _, raw in
             i18n.setLanguage(AppLanguage(rawValue: raw) ?? .system)
             AppDelegate.refreshSettingsWindowTitle()

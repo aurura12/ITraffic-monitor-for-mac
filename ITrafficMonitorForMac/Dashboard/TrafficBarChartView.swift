@@ -224,7 +224,7 @@ struct TrafficBarChartView: View {
                             }
                         } header: {
                             xAxis(plotWidth: plotWidth)
-                                .background(Color(nsColor: .windowBackgroundColor))
+                                .background(Theme.windowBackground)
                                 .zIndex(1)
                         }
                     }
@@ -256,7 +256,7 @@ struct TrafficBarChartView: View {
             ZStack(alignment: .leading) {
                 // Track (subtle background) to make short bars visible.
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(Theme.cardStroke.opacity(0.5))
+                    .fill(Theme.barTrack)
                     .frame(width: plotWidth, height: 14)
                 RoundedRectangle(cornerRadius: 2)
                     .fill(Theme.download)
@@ -273,14 +273,14 @@ struct TrafficBarChartView: View {
                 .frame(width: labelWidth, height: 0)
             ZStack(alignment: .topLeading) {
                 Rectangle()
-                    .fill(Theme.cardStroke)
+                    .fill(Theme.gridLine)
                     .frame(width: plotWidth, height: 1)
 
                 ForEach(Array(ticks.enumerated()), id: \.offset) { _, tick in
                     let pos = trafficBarXAxisPosition(for: tick, domain: xDomain)
                     let label = tickLabel(tick)
                     Rectangle()
-                        .fill(Theme.cardStroke)
+                        .fill(Theme.gridLine)
                         .frame(width: 1, height: 5)
                         .position(x: plotWidth * pos, y: 2.5)
 
@@ -309,8 +309,9 @@ struct TrafficBarChartView: View {
             .font(.system(size: 11))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.cardBackground))
+            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.tooltipBackground))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.cardStroke))
+            .shadow(color: Theme.tooltipShadow, radius: 4, y: 2)
     }
 
     private var emptyState: some View {

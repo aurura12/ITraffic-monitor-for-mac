@@ -283,7 +283,7 @@ struct TrafficCalendarHeatmap: View {
     private func cellColor(_ bytes: Int) -> Color {
         let level = heatmapLevel(forBytes: bytes, thresholds: thresholds)
         guard level > 0 else {
-            return Color.secondary.opacity(0.12)
+            return Theme.heatmapEmpty
         }
         return Theme.heatmap.opacity(heatmapLevelOpacities[level])
     }
@@ -295,8 +295,9 @@ struct TrafficCalendarHeatmap: View {
             .font(.system(size: 11))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.cardBackground))
+            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.tooltipBackground))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.cardStroke))
+            .shadow(color: Theme.tooltipShadow, radius: 4, y: 2)
     }
 
     private var emptyState: some View {
