@@ -372,10 +372,6 @@ struct StatCard: View {
 
     var body: some View {
         HStack {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(accent)
-                .frame(width: 4)
-
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 11))
@@ -388,7 +384,7 @@ struct StatCard: View {
 
             Spacer()
         }
-        .padding(.leading, 12)
+        .padding(.leading, 24)
         .background(
             RoundedRectangle(cornerRadius: Theme.cornerRadius)
                 .fill(Theme.cardBackground)
