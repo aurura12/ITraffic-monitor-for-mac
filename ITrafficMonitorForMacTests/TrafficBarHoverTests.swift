@@ -3,6 +3,18 @@ import CoreGraphics
 import SwiftUI
 @testable import ITraffic
 
+private final class RedrawTrackingMenuBarRateView: MenuBarRateView {
+    var redrawRequests = 0
+
+    override var needsDisplay: Bool {
+        get { super.needsDisplay }
+        set {
+            if newValue { redrawRequests += 1 }
+            super.needsDisplay = newValue
+        }
+    }
+}
+
 final class TrafficBarHoverTests: XCTestCase {
     /// Hosted tests run inside the app process, so the app must recognise a test
     /// run and stay inert: no nettop, no attribution, and no production DB.
@@ -75,30 +87,67 @@ final class TrafficBarHoverTests: XCTestCase {
 
     func testMenuBarRateViewShowsOnlyTheSelectedRows() {
         let view = MenuBarRateView(frame: .zero)
-        let children = Mirror(reflecting: view).children
-        let upload = children.first { $0.label == "uploadLabel" }?.value as? NSTextField
-        let download = children.first { $0.label == "downloadLabel" }?.value as? NSTextField
-        let icon = children.first { $0.label == "iconView" }?.value as? NSImageView
+        let text = MenuBarRateText(downloadRate: 1_024, uploadRate: 2_048)
+        view.update(downloadRate: 1_024, uploadRate: 2_048)
 
         view.apply(mode: .both)
-        XCTAssertEqual(upload?.isHidden, false)
-        XCTAssertEqual(download?.isHidden, false)
-        XCTAssertEqual(icon?.isHidden, true)
+        XCTAssertEqual(view.presentation, .text(text.rows))
 
         view.apply(mode: .downloadOnly)
-        XCTAssertEqual(upload?.isHidden, true)
-        XCTAssertEqual(download?.isHidden, false)
-        XCTAssertEqual(icon?.isHidden, true)
+        XCTAssertEqual(view.presentation, .text([text.download]))
 
         view.apply(mode: .uploadOnly)
-        XCTAssertEqual(upload?.isHidden, false)
-        XCTAssertEqual(download?.isHidden, true)
-        XCTAssertEqual(icon?.isHidden, true)
+        XCTAssertEqual(view.presentation, .text([text.upload]))
 
         view.apply(mode: .iconOnly)
-        XCTAssertEqual(upload?.isHidden, true)
-        XCTAssertEqual(download?.isHidden, true)
-        XCTAssertEqual(icon?.isHidden, false)
+        XCTAssertEqual(view.presentation, .icon("arrow.up.arrow.down"))
+    }
+
+    func testMenuBarRateViewSkipsRedrawWhenRoundedRatesAreUnchanged() {
+        let view = RedrawTrackingMenuBarRateView(frame: .zero)
+        view.apply(mode: .both)
+        view.update(downloadRate: 1_024, uploadRate: 2_048)
+        let width = view.neededWidth
+        let redraws = view.redrawRequests
+
+        for _ in 0..<100 {
+            view.update(downloadRate: 1_025, uploadRate: 2_049)
+        }
+
+        XCTAssertEqual(view.redrawRequests, redraws)
+        XCTAssertEqual(view.neededWidth, width)
+        XCTAssertTrue(view.subviews.isEmpty, "Status-item snapshots must not traverse text-field or stack-view layers")
+
+        view.update(downloadRate: 10_240, uploadRate: 2_048)
+        XCTAssertEqual(view.redrawRequests, redraws + 1, "A changed displayed rate must still redraw")
+    }
+
+    func testIconOnlyMenuBarIgnoresRateChanges() {
+        let view = RedrawTrackingMenuBarRateView(frame: .zero)
+        view.apply(mode: .iconOnly)
+        let redraws = view.redrawRequests
+
+        view.update(downloadRate: 1_048_576, uploadRate: 2_097_152)
+
+        XCTAssertEqual(view.redrawRequests, redraws)
+        view.setPaused(true)
+        XCTAssertEqual(view.presentation, .icon("pause.circle"))
+        XCTAssertEqual(view.redrawRequests, redraws + 1)
+    }
+
+    func testPausedMenuBarCachesRatesWithoutRedrawing() {
+        let view = RedrawTrackingMenuBarRateView(frame: .zero)
+        view.apply(mode: .both)
+        view.setPaused(true)
+        let pausedPresentation = view.presentation
+        let redraws = view.redrawRequests
+
+        view.update(downloadRate: 1_024, uploadRate: 2_048)
+
+        XCTAssertEqual(view.presentation, pausedPresentation)
+        XCTAssertEqual(view.redrawRequests, redraws)
+        view.setPaused(false)
+        XCTAssertEqual(view.presentation, .text(MenuBarRateText(downloadRate: 1_024, uploadRate: 2_048).rows))
     }
 
     func testDashboardLaunchFlagIsOptIn() {

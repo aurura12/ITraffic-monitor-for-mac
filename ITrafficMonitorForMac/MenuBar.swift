@@ -77,15 +77,15 @@ func formatMenuBarRate(bytes: Int) -> String {
     return String(format: "%.1fG/s", megabytes / 1024)
 }
 
-final class MenuBarRateView: NSView {
-    private let downloadLabel = NSTextField(labelWithString: "↓ 0.0K/s")
-    private let uploadLabel = NSTextField(labelWithString: "↑ 0.0K/s")
-    private let iconView: NSImageView = {
-        let view = NSImageView()
-        view.imageScaling = .scaleProportionallyDown
-        view.contentTintColor = .labelColor
-        return view
-    }()
+enum MenuBarRatePresentation: Equatable {
+    case text([String])
+    case icon(String)
+}
+
+class MenuBarRateView: NSView {
+    private let font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
+    private var icon: NSImage?
+    private(set) var presentation: MenuBarRatePresentation = .text([])
 
     /// What the item currently renders (two-line rates, a single direction, or
     /// an icon-only marker). Mirrors the persisted menu-bar display mode.
@@ -100,32 +100,10 @@ final class MenuBarRateView: NSView {
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-
-        for label in [downloadLabel, uploadLabel] {
-            label.font = NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular)
-            // 两行文本左对齐：保证上下两行首字符（↑/↓）在同一列，
-            // 不受速率数值位数变化的影响；若用 .center 会因行宽不同而错位。
-            label.alignment = .left
-            label.lineBreakMode = .byClipping
-            label.textColor = .labelColor
-        }
-        iconView.setContentHuggingPriority(.required, for: .horizontal)
-
-        let stack = NSStackView(views: [uploadLabel, downloadLabel, iconView])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.distribution = .fillEqually
-        stack.spacing = 0
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
-            stack.topAnchor.constraint(equalTo: topAnchor),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor)
-        ])
-
-        apply(mode: MenuBarDisplayMode.current)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+        mode = MenuBarDisplayMode.current
+        render()
     }
 
     required init?(coder: NSCoder) {
@@ -151,57 +129,101 @@ final class MenuBarRateView: NSView {
     }
 
     private func render() {
-        let isIconMode = (mode == .iconOnly)
-        uploadLabel.isHidden = isIconMode || mode == .downloadOnly
-        downloadLabel.isHidden = isIconMode || mode == .uploadOnly
-        iconView.isHidden = !isIconMode
-        updateIconImage()
-
-        guard !isPaused else {
-            if !isIconMode {
-                switch mode {
-                case .uploadOnly:
-                    uploadLabel.stringValue = pausedText
-                case .downloadOnly:
-                    downloadLabel.stringValue = pausedText
-                default:
-                    uploadLabel.stringValue = "⏸"
-                    downloadLabel.stringValue = L("Paused")
-                }
+        let next: MenuBarRatePresentation
+        if mode == .iconOnly {
+            next = .icon(isPaused ? "pause.circle" : "arrow.up.arrow.down")
+        } else if isPaused {
+            next = .text(mode == .both ? ["⏸", L("Paused")] : [pausedText])
+        } else {
+            let text = MenuBarRateText(downloadRate: downloadRateValue, uploadRate: uploadRateValue)
+            switch mode {
+            case .both: next = .text(text.rows)
+            case .downloadOnly: next = .text([text.download])
+            case .uploadOnly: next = .text([text.upload])
+            case .iconOnly: return
             }
-            return
         }
 
-        let text = MenuBarRateText(downloadRate: downloadRateValue, uploadRate: uploadRateValue)
-        uploadLabel.stringValue = text.upload
-        downloadLabel.stringValue = text.download
+        // macOS snapshots status-item subviews for Control Center. A stack of
+        // text fields and an image view makes that path repeatedly lay out and
+        // render descendant layers. Draw the small presentation in one view,
+        // and only invalidate it when the displayed (rounded) value changes.
+        guard next != presentation else { return }
+        let oldWidth = neededWidth
+        presentation = next
+        if case .icon(let symbol) = next {
+            icon = image(for: symbol)
+            setAccessibilityValue(isPaused ? L("Paused") : AppDelegate.appDisplayName)
+        } else {
+            icon = nil
+            if case .text(let rows) = next {
+                setAccessibilityValue(rows.joined(separator: ", "))
+            }
+        }
+        if neededWidth != oldWidth {
+            invalidateIntrinsicContentSize()
+        }
+        needsDisplay = true
     }
 
     private var pausedText: String { "⏸ " + L("Paused") }
 
-    private func updateIconImage() {
-        let symbol = isPaused ? "pause.circle" : "arrow.up.arrow.down"
+    private func image(for symbol: String) -> NSImage? {
         let configuration = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: AppDelegate.appDisplayName)?
+            .applying(.init(paletteColors: [.labelColor]))
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: AppDelegate.appDisplayName)?
             .withSymbolConfiguration(configuration)
-        image?.isTemplate = true
-        iconView.image = image
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        if case .icon(let symbol) = presentation {
+            icon = image(for: symbol)
+        }
+        needsDisplay = true
     }
 
     /// Width of the widest currently visible row, so the status item only claims
     /// the menu-bar space its current mode actually needs.
     var neededWidth: CGFloat {
-        var width: CGFloat = 0
-        if !uploadLabel.isHidden {
-            width = max(width, uploadLabel.intrinsicContentSize.width)
+        switch presentation {
+        case .text(let rows):
+            return rows.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        case .icon:
+            return icon?.size.width ?? 13
         }
-        if !downloadLabel.isHidden {
-            width = max(width, downloadLabel.intrinsicContentSize.width)
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: neededWidth, height: MenuBarLayout.statusItemHeight)
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        switch presentation {
+        case .text(let rows):
+            guard !rows.isEmpty else { return }
+            let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
+            let rowHeight = bounds.height / CGFloat(rows.count)
+            for (index, row) in rows.enumerated() {
+                let text = row as NSString
+                let height = text.size(withAttributes: attributes).height
+                text.draw(at: NSPoint(
+                    x: MenuBarLayout.statusItemHorizontalPadding / 2,
+                    y: CGFloat(index) * rowHeight + (rowHeight - height) / 2
+                ), withAttributes: attributes)
+            }
+        case .icon:
+            guard let icon else { return }
+            let size = icon.size
+            icon.draw(in: NSRect(
+                x: (bounds.width - size.width) / 2,
+                y: (bounds.height - size.height) / 2,
+                width: size.width,
+                height: size.height
+            ), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
         }
-        if !iconView.isHidden {
-            width = max(width, max(iconView.intrinsicContentSize.width, iconView.image?.size.width ?? 0))
-        }
-        return width
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {

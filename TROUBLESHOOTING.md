@@ -1,5 +1,34 @@
 # iTraffic 故障记录
 
+## 2026-10-08：菜单栏绘制导致高 CPU 和耗电
+
+状态：已修复，本机已安装验证版本 `0.3.2 (49)`。
+
+### 现象与定位
+
+- “使用情况”页面连续采样约 82–85% CPU；切到“曲线”后仍约 46–47%。
+- 重启应用、仅保留菜单栏时仍约 50–55%，因此重启不能消除问题。
+- `sample` 显示主线程反复执行 `NSStatusItem _updateReplicants`、
+  `_redrawReplicantSnapshot:sourceView:`、图层快照绘制和 SwiftUI 布局。
+- `nettop` 采样与数据库记录在堆栈中的开销很小。主要开销来自 macOS 26
+  菜单栏快照对自定义状态项控件树的重复布局和绘制。
+
+### 修复与验证
+
+`MenuBarRateView` 用单个视图直接绘制文本或图标，替代 `NSStackView`、
+两个 `NSTextField` 和 `NSImageView`。显示内容经过格式化后没有变化时，
+跳过重绘；图标模式和暂停状态也不会因实时速率变化重新绘制。
+视图继续提供辅助功能数值，并在外观变化时刷新图标颜色。
+
+- 64 项菜单栏和仪表盘回归测试通过；Release 构建通过。
+- 更新后“使用情况”页面同样的连续短采样约 0.8–0.9% CPU。
+- “曲线”页面约 1–3%；之后再次复核运行版本 49，占用约 2.7–2.8%。
+
+电池页面的进程百分比不能当作各应用消耗电量的比例。整机耗电还受其他
+进程影响，CPU 修复后的续航应在实际电池供电时重新观察。
+[Apple 的能耗诊断说明](https://developer.apple.com/library/archive/documentation/Performance/Conceptual/power_efficiency_guidelines_osx/MonitoringEnergyUsage.html)
+也将持续高 CPU 列为高能耗的重要原因。
+
 ## 2026-09-06：macOS 26 菜单栏状态项不显示
 
 状态：已解决，修复提交为 `566eb82`。
