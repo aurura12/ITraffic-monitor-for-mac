@@ -85,11 +85,16 @@ final class TrafficSamplingDiagnostics: ObservableObject {
 }
 
 class StatusDataModel: ObservableObject {
-    @Published var totalInBytes: Int = 0
-    @Published var totalOutBytes: Int = 0
+    /// Publish a complete frame once. Separate publishers expose a new
+    /// download rate paired with the previous upload rate to subscribers.
+    @Published private(set) var rates = TrafficCounters(inBytes: 0, outBytes: 0)
+
+    var totalInBytes: Int { rates.inBytes }
+    var totalOutBytes: Int { rates.outBytes }
 
     public func update(totalInBytes: Int, totalOutBytes: Int) {
-        self.totalInBytes = totalInBytes
-        self.totalOutBytes = totalOutBytes
+        let next = TrafficCounters(inBytes: max(0, totalInBytes), outBytes: max(0, totalOutBytes))
+        guard next != rates else { return }
+        rates = next
     }
 }

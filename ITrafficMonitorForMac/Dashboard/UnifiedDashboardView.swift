@@ -37,10 +37,9 @@ func dashboardUsesSharedOuterScrollView(for _: ChartMode) -> Bool {
 struct UnifiedDashboardView: View {
     @EnvironmentObject var viewModel: DashboardViewModel
     @EnvironmentObject var i18n: LocalizationManager
-    @EnvironmentObject var realtimeRateStore: RealtimeRateStore
     @State private var showExport = false
 
-    private let refreshTimer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    private let refreshTimer = Timer.publish(every: 30, tolerance: 3, on: .main, in: .common).autoconnect()
 
     var body: some View {
         GeometryReader { geometry in
@@ -50,7 +49,13 @@ struct UnifiedDashboardView: View {
                         .padding(16)
                         .frame(
                             maxWidth: .infinity,
-                            minHeight: dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart
+                            alignment: .topLeading
+                        )
+                        // Give the usage chart a finite viewport. A minimum
+                        // height plus flexible nested scroll views repeatedly
+                        // remeasures the native segmented controls on macOS 26.
+                        .frame(
+                            height: dashboardLayoutMode(for: viewModel.chartMode) == .windowFillingChart
                                 ? geometry.size.height
                                 : nil,
                             alignment: .topLeading
@@ -181,21 +186,8 @@ struct UnifiedDashboardView: View {
                 value: formatBytesTotal(bytes: viewModel.rangeTotal.inBytes + viewModel.rangeTotal.outBytes),
                 accent: Theme.total
             )
-            StatCard(
-                title: i18n.text("Download Speed"),
-                value: formatBytes(bytes: Int(latestRateSample?.inRate ?? 0)),
-                accent: Theme.download
-            )
-            StatCard(
-                title: i18n.text("Upload Speed"),
-                value: formatBytes(bytes: Int(latestRateSample?.outRate ?? 0)),
-                accent: Theme.upload
-            )
+            LiveRateCards()
         }
-    }
-
-    private var latestRateSample: RateSample? {
-        realtimeRateStore.samples.last
     }
 
     // MARK: - Chart section
@@ -234,6 +226,7 @@ struct UnifiedDashboardView: View {
                     legend
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, Theme.cardPadding)
             .padding(.top, Theme.cardPadding)
 
@@ -359,6 +352,28 @@ struct UnifiedDashboardView: View {
         case .month: return i18n.text("Monthly usage")
         case .quarter: return i18n.text("Quarterly usage")
         case .year: return i18n.text("Yearly usage")
+        }
+    }
+}
+
+/// Only these two cards observe the two-second rate stream. Keeping the
+/// subscription here leaves the history charts and pickers out of that update.
+private struct LiveRateCards: View {
+    @EnvironmentObject private var statusDataModel: StatusDataModel
+    @EnvironmentObject private var i18n: LocalizationManager
+
+    var body: some View {
+        Group {
+            StatCard(
+                title: i18n.text("Download Speed"),
+                value: formatBytes(bytes: statusDataModel.totalInBytes),
+                accent: Theme.download
+            )
+            StatCard(
+                title: i18n.text("Upload Speed"),
+                value: formatBytes(bytes: statusDataModel.totalOutBytes),
+                accent: Theme.upload
+            )
         }
     }
 }

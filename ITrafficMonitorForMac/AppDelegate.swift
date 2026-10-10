@@ -12,6 +12,53 @@ func shouldOpenDashboardAtLaunch(arguments: [String] = CommandLine.arguments) ->
     arguments.contains("--open-dashboard")
 }
 
+/// Retained windows keep their hosting views alive after closing. Detach the
+/// live SwiftUI content while the window is closed, minimized or fully covered
+/// so its observations and autoconnected refresh timer stop as well.
+final class WindowVisibilityState: NSObject, ObservableObject, NSWindowDelegate {
+    @Published private(set) var isVisible = false
+
+    func updateVisibility(of window: NSWindow) {
+        setVisible(window.isVisible && !window.isMiniaturized && window.occlusionState.contains(.visible))
+    }
+
+    private func setVisible(_ visible: Bool) {
+        guard isVisible != visible else { return }
+        isVisible = visible
+    }
+
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        updateVisibility(of: window)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        setVisible(false)
+    }
+
+    func windowDidMiniaturize(_ notification: Notification) {
+        setVisible(false)
+    }
+
+    func windowDidDeminiaturize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        updateVisibility(of: window)
+    }
+}
+
+struct VisibilityAwareWindowContent<Content: View>: View {
+    @ObservedObject var visibility: WindowVisibilityState
+    let content: Content
+
+    var body: some View {
+        if visibility.isVisible {
+            content
+        } else {
+            Color.clear
+        }
+    }
+}
+
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
 
@@ -19,6 +66,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     static var dashboardWindow: NSWindow?
     static var settingsWindow: NSWindow?
+    private static let dashboardVisibility = WindowVisibilityState()
+    private static let settingsVisibility = WindowVisibilityState()
     var network: Network!
     private var menuBarController: MenuBarController?
 
@@ -27,7 +76,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if dashboardWindow == nil {
             let window = NSWindow(
                 contentViewController: NSHostingController(
-                    rootView: DashboardView().withGlobalEnvironmentObjects()
+                    rootView: DashboardView(visibility: dashboardVisibility).withGlobalEnvironmentObjects()
                 )
             )
             window.title = Self.appDisplayName
@@ -35,11 +84,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             window.minSize = NSSize(width: 900, height: 640)
             window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
             window.isReleasedWhenClosed = false
+            window.delegate = dashboardVisibility
             window.center()
             dashboardWindow = window
         }
         NSApp.activate(ignoringOtherApps: true)
         dashboardWindow?.makeKeyAndOrderFront(nil)
+        if let window = dashboardWindow {
+            dashboardVisibility.updateVisibility(of: window)
+        }
     }
 
     /// Open (or reuse) the settings window, shared by the gear button and
@@ -48,7 +101,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if settingsWindow == nil {
             let window = NSWindow(
                 contentViewController: NSHostingController(
-                    rootView: SettingsView().withGlobalEnvironmentObjects()
+                    rootView: VisibilityAwareWindowContent(
+                        visibility: settingsVisibility,
+                        content: SettingsView().withGlobalEnvironmentObjects()
+                    )
                 )
             )
             window.title = L("Settings")
@@ -58,11 +114,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // instead of forcing every section to scroll in a cramped frame.
             window.styleMask = [.titled, .closable, .resizable]
             window.isReleasedWhenClosed = false
+            window.delegate = settingsVisibility
             window.center()
             settingsWindow = window
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+        if let window = settingsWindow {
+            settingsVisibility.updateVisibility(of: window)
+        }
     }
 
     @objc func showSettingsWindow(_ sender: Any?) {

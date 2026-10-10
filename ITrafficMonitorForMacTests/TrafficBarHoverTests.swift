@@ -1,5 +1,6 @@
 import XCTest
 import CoreGraphics
+import Combine
 import SwiftUI
 @testable import ITraffic
 
@@ -15,11 +16,96 @@ private final class RedrawTrackingMenuBarRateView: MenuBarRateView {
     }
 }
 
+private final class VisibilityTestWindow: NSWindow {
+    var orderedOnScreen = false
+    var minimized = false
+    var visibleRegion = false
+
+    override var isVisible: Bool { orderedOnScreen }
+    override var isMiniaturized: Bool { minimized }
+    override var occlusionState: NSWindow.OcclusionState { visibleRegion ? .visible : [] }
+}
+
 final class TrafficBarHoverTests: XCTestCase {
     /// Hosted tests run inside the app process, so the app must recognise a test
     /// run and stay inert: no nettop, no attribution, and no production DB.
     func testAppEnvironmentDetectsTestHost() {
         XCTAssertTrue(AppEnvironment.isRunningTests)
+    }
+
+    func testLiveRatesPublishCompleteFramesAndSkipUnchangedValues() {
+        let model = StatusDataModel()
+        var frames: [TrafficCounters] = []
+        let subscription = model.$rates.sink { frames.append($0) }
+        defer { subscription.cancel() }
+
+        model.update(totalInBytes: 1_024, totalOutBytes: 2_048)
+        for _ in 0..<350 {
+            model.update(totalInBytes: 1_024, totalOutBytes: 2_048)
+        }
+        model.update(totalInBytes: 4_096, totalOutBytes: 8_192)
+        model.update(totalInBytes: 0, totalOutBytes: 0)
+
+        XCTAssertEqual(frames, [
+            TrafficCounters(inBytes: 0, outBytes: 0),
+            TrafficCounters(inBytes: 1_024, outBytes: 2_048),
+            TrafficCounters(inBytes: 4_096, outBytes: 8_192),
+            TrafficCounters(inBytes: 0, outBytes: 0)
+        ], "Each frame must publish once with both directions, including a reset on pause/restart")
+        XCTAssertEqual(model.totalInBytes, 0)
+        XCTAssertEqual(model.totalOutBytes, 0)
+    }
+
+    func testRetainedWindowSuspendsRenderingAndResumesWhenVisible() {
+        let window = VisibilityTestWindow(
+            contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: true
+        )
+        let visibility = WindowVisibilityState()
+        var transitions: [Bool] = []
+        let subscription = visibility.$isVisible.sink { transitions.append($0) }
+        defer { subscription.cancel() }
+
+        visibility.updateVisibility(of: window)
+        XCTAssertFalse(visibility.isVisible)
+
+        window.orderedOnScreen = true
+        window.visibleRegion = true
+        visibility.updateVisibility(of: window)
+        visibility.updateVisibility(of: window)
+        XCTAssertTrue(visibility.isVisible)
+
+        window.visibleRegion = false
+        visibility.windowDidChangeOcclusionState(Notification(
+            name: NSWindow.didChangeOcclusionStateNotification, object: window
+        ))
+        XCTAssertFalse(visibility.isVisible)
+
+        window.visibleRegion = true
+        visibility.windowDidChangeOcclusionState(Notification(
+            name: NSWindow.didChangeOcclusionStateNotification, object: window
+        ))
+        XCTAssertTrue(visibility.isVisible)
+
+        window.minimized = true
+        visibility.windowDidMiniaturize(Notification(name: NSWindow.didMiniaturizeNotification, object: window))
+        visibility.updateVisibility(of: window)
+        XCTAssertFalse(visibility.isVisible)
+
+        window.minimized = false
+        visibility.windowDidDeminiaturize(Notification(name: NSWindow.didDeminiaturizeNotification, object: window))
+        XCTAssertTrue(visibility.isVisible)
+
+        visibility.windowWillClose(Notification(name: NSWindow.willCloseNotification, object: window))
+        XCTAssertFalse(visibility.isVisible, "Closing a retained window must detach its live content immediately")
+
+        window.orderedOnScreen = false
+        visibility.updateVisibility(of: window)
+        XCTAssertFalse(visibility.isVisible)
+
+        window.orderedOnScreen = true
+        visibility.updateVisibility(of: window)
+        XCTAssertTrue(visibility.isVisible, "Reopening the same window must resume rendering")
+        XCTAssertEqual(transitions, [false, true, false, true, false, true, false, true])
     }
 
     func testMenuBarStatusItemUsesStableIdentity() {

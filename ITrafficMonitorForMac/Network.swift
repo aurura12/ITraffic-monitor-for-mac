@@ -6,10 +6,9 @@
 //
 
 import Foundation
-import SwiftUI
 
 class Network {
-    @ObservedObject var statusDataModel = SharedStore.statusDataModel
+    private let statusDataModel = SharedStore.statusDataModel
 
     private let interval = 2
 
@@ -78,7 +77,6 @@ class Network {
 
         DispatchQueue.main.async {
             self.statusDataModel.update(totalInBytes: inRate, totalOutBytes: outRate)
-            SharedStore.realtimeRateStore.append(inRate: Double(inRate), outRate: Double(outRate))
         }
     }
 

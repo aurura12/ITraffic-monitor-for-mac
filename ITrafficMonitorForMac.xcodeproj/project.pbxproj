@@ -11,7 +11,6 @@
 		07CFBEA99D4A7579D4E4AC71 /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D30F89C22ACDFD9102801CD /* Utils.swift */; };
 		1938B3E5D68DE73D4EC289DF /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 748FB46B5B1D40583CCBFC28 /* Store.swift */; };
 		33C440AED95888F010013660 /* Network.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DE4AB076FAF20A640BD23F /* Network.swift */; };
-		34FA784A46B78003B0C0DA44 /* RealtimeRateStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */; };
 		3B03C3F2B98B05E93EEBE510 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F0324CEDB56F043E9676BA /* DashboardView.swift */; };
 		3CD3C483420F51057FC93505 /* NettopRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30BFFD61518831774A91BFE /* NettopRunner.swift */; };
 		40EFC85DD540245FF296E5FA /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC7303753732C9E0A5C756B /* ExportView.swift */; };
@@ -70,7 +69,6 @@
 		BB9CF9AC9226D7A354F2DF2F /* UnifiedDashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedDashboardView.swift; sourceTree = "<group>"; };
 		CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusDataModel.swift; sourceTree = "<group>"; };
 		E54D307461D73ABC43EA1B88 /* TrafficLineChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficLineChart.swift; sourceTree = "<group>"; };
-		E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeRateStore.swift; sourceTree = "<group>"; };
 		E760B012490A706D383888B1 /* TrafficDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficDatabase.swift; sourceTree = "<group>"; };
 		E83DF0462DC3E858E4B86679 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		F7073581DC3527238C3C97F5 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
@@ -83,7 +81,6 @@
 			isa = PBXGroup;
 			children = (
 				FF5338D25E880B4A7444E80A /* LocalizationManager.swift */,
-				E72212AD4F597B73BCFC1EBC /* RealtimeRateStore.swift */,
 				CDA9C6FA41F91307CC26CC82 /* StatusDataModel.swift */,
 			);
 			path = Model;
@@ -311,7 +308,6 @@
 				545E2BC0646328833772AF12 /* MenuBar.swift in Sources */,
 				3CD3C483420F51057FC93505 /* NettopRunner.swift in Sources */,
 				33C440AED95888F010013660 /* Network.swift in Sources */,
-				34FA784A46B78003B0C0DA44 /* RealtimeRateStore.swift in Sources */,
 				9ADA873E4A69AE07A95C4057 /* SettingsView.swift in Sources */,
 				DBB0BBC93E11797BD3244AF0 /* StatusDataModel.swift in Sources */,
 				1938B3E5D68DE73D4EC289DF /* Store.swift in Sources */,

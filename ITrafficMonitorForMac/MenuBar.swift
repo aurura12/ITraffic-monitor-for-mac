@@ -320,7 +320,7 @@ struct MenuBarSummaryView: View {
     }
 }
 
-final class MenuBarController: NSObject {
+final class MenuBarController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let popover: NSPopover
     private let rateView: MenuBarRateView
@@ -350,8 +350,6 @@ final class MenuBarController: NSObject {
         statusItem.autosaveName = MenuBarStatusItemConfiguration.autosaveName
         configureStatusItem()
         configurePopover()
-        refreshTodayUsage()
-        scheduleTodayUsageRefresh()
     }
 
     deinit {
@@ -381,11 +379,10 @@ final class MenuBarController: NSObject {
         ])
         resizeToFitContent()
 
-        SharedStore.statusDataModel.$totalInBytes
-            .combineLatest(SharedStore.statusDataModel.$totalOutBytes)
+        SharedStore.statusDataModel.$rates
             .receive(on: RunLoop.main)
-            .sink { [weak self] downloadRate, uploadRate in
-                self?.rateView.update(downloadRate: downloadRate, uploadRate: uploadRate)
+            .sink { [weak self] rates in
+                self?.rateView.update(downloadRate: rates.inBytes, uploadRate: rates.outBytes)
                 self?.resizeToFitContent()
             }
             .store(in: &cancellables)
@@ -415,6 +412,7 @@ final class MenuBarController: NSObject {
 
     private func configurePopover() {
         popover.behavior = .transient
+        popover.delegate = self
         // The popover is already built at launch; avoid adding an opening
         // animation to every status-item click.
         popover.animates = false
@@ -472,10 +470,23 @@ final class MenuBarController: NSObject {
     /// every few seconds so the numbers stay live without polling the DB
     /// when the popover is hidden.
     private func scheduleTodayUsageRefresh() {
+        refreshTimer?.invalidate()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self, self.popover.isShown else { return }
             self.refreshTodayUsage()
         }
+        refreshTimer?.tolerance = 0.3
+    }
+
+    func popoverWillShow(_ notification: Notification) {
+        refreshTodayUsage()
+        scheduleTodayUsageRefresh()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        cancelPopoverAutoDismiss()
     }
 
     /// Route a status-item click by mouse button: secondary (right click or
@@ -558,7 +569,6 @@ final class MenuBarController: NSObject {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
             schedulePopoverAutoDismiss()
-            refreshTodayUsage()
         }
     }
 
