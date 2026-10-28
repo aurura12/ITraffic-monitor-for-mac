@@ -182,11 +182,13 @@ final class TrafficDatabase {
         guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
             let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown"
             Log.db.error("open failed: \(msg, privacy: .public)")
+            SharedStore.storageDiagnostics.markFailed("open failed: \(msg)")
             return
         }
         self.databasePath = dbPath
         sqlite3_exec(db, "PRAGMA journal_mode=WAL;", nil, nil, nil)
         migrate()
+        reportStorageHealth()
     }
 
     /// Throwaway database for a test host, scoped to the process so parallel
@@ -482,8 +484,22 @@ final class TrafficDatabase {
         return sqlite3_column_int(stmt, 0)
     }
 
-    /// Read a single-integer PRAGMA. Runs on `dbQueue`.
-    private func pragmaInt(_ sql: String) -> Int {
+    /// Publish whether the store can serve history. A failed schema step leaves
+    /// the connection open but every read empty, and that silence used to look
+    /// like "no traffic recorded"; the accounted_traffic view is the proxy for
+    /// "schema and migration completed".
+    private func reportStorageHealth() {
+        let hasView = scalarInt("SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='accounted_traffic';")
+        if hasView == 1 {
+            SharedStore.storageDiagnostics.markReady()
+        } else {
+            Log.db.error("storage is unusable: accounted_traffic view is missing")
+            SharedStore.storageDiagnostics.markFailed("history view is missing")
+        }
+    }
+
+    /// Read a single-integer query or PRAGMA. Runs on `dbQueue`.
+    private func scalarInt(_ sql: String) -> Int {
         guard let db else { return 0 }
         var stmt: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
@@ -510,8 +526,8 @@ final class TrafficDatabase {
         guard version >= Self.totalOnlySchemaVersion, version < Self.currentSchemaVersion else { return }
         guard !legacyPerAppTablesPresent() else { return }
 
-        let pages = pragmaInt("PRAGMA page_count;")
-        let freePages = pragmaInt("PRAGMA freelist_count;")
+        let pages = scalarInt("PRAGMA page_count;")
+        let freePages = scalarInt("PRAGMA freelist_count;")
         if freePages >= Self.compactionMinimumFreePages, freePages * 20 >= pages {
             guard sqlite3_exec(db, "VACUUM;", nil, nil, nil) == SQLITE_OK else {
                 Log.db.error("compaction VACUUM failed, will retry next launch: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")

@@ -540,6 +540,37 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='accounted_traffic';", in: url), 1)
     }
 
+    // MARK: - Storage diagnostics
+
+    /// A failed open must be reported, not only logged: otherwise the dashboard
+    /// reads as "no traffic" with no way to tell that history is unavailable.
+    func testUnopenableDatabaseReportsFailure() {
+        let url = URL(fileURLWithPath: "/dev/null/itraffic-\(UUID().uuidString).sqlite3")
+        _ = TrafficDatabase(databaseURL: url)
+        waitForMainQueue()
+
+        guard case .failed(let reason) = SharedStore.storageDiagnostics.state else {
+            XCTFail("expected a failed storage state, got \(SharedStore.storageDiagnostics.state)")
+            return
+        }
+        XCTAssertTrue(reason.contains("open failed"), reason)
+    }
+
+    /// A database that opened and has a query surface reports ready.
+    func testUsableDatabaseReportsReady() {
+        let (db, _) = makeDatabase()
+        _ = db
+        waitForMainQueue()
+        XCTAssertEqual(SharedStore.storageDiagnostics.state, .ready)
+    }
+
+    /// The state is published through the main queue, so give it one turn.
+    private func waitForMainQueue() {
+        let exp = expectation(description: "main queue turn")
+        DispatchQueue.main.async { exp.fulfill() }
+        wait(for: [exp], timeout: 1)
+    }
+
     // MARK: - Test-host isolation
 
     /// The default (no-URL) database must never be the production one under

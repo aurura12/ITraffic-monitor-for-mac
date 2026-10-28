@@ -11,6 +11,7 @@ enum SharedStore {
     static let statusDataModel = StatusDataModel()
     static let recorder = TrafficRecorder()
     static let trafficSamplingDiagnostics = TrafficSamplingDiagnostics()
+    static let storageDiagnostics = TrafficStorageDiagnostics()
 }
 
 extension View {

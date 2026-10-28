@@ -120,6 +120,13 @@ final class LocalizationManager: ObservableObject {
         "nettop sampling active": "nettop 采样正常",
         "nettop sampling restarting": "nettop 采样重启中",
         "nettop sampling failed, retrying": "nettop 采样失败，正按最长 30 秒间隔重试",
+
+        // Storage diagnostics
+        "Storage": "存储",
+        "Opening database": "正在打开数据库",
+        "Database ready": "数据库正常",
+        "Database unavailable": "数据库不可用",
+        "New traffic is not being saved while the database is unavailable.": "数据库不可用期间，新流量不会被保存到历史记录。",
         "Skipped nettop rows": "已跳过的 nettop 行",
 
         // Network Extension / calibration status

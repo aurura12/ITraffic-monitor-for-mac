@@ -57,6 +57,7 @@ struct SettingsView: View {
     @AppStorage(MenuBarDisplayMode.defaultsKey) private var menuBarDisplayModeRaw = MenuBarDisplayMode.both.rawValue
 
     @ObservedObject private var sampling = SharedStore.trafficSamplingDiagnostics
+    @ObservedObject private var storage = SharedStore.storageDiagnostics
     @StateObject private var launchAtLogin = LaunchAtLoginManager()
 
     var body: some View {
@@ -100,6 +101,20 @@ struct SettingsView: View {
                 Text(i18n.text("Totals use nettop non-loopback interface socket traffic; this is not a physical Wi-Fi/Ethernet counter."))
                     .font(.caption)
                     .foregroundColor(.secondary)
+            }
+
+            Section(i18n.text("Storage")) {
+                Text(storageStatusText)
+                    .foregroundColor(storageTint)
+                if case .failed(let reason) = storage.state {
+                    Text(reason)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .textSelection(.enabled)
+                    Text(i18n.text("New traffic is not being saved while the database is unavailable."))
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
             }
 
             Section(i18n.text("Sampling diagnostics")) {
@@ -153,6 +168,19 @@ struct SettingsView: View {
         let marketing = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
         return "\(marketing) · build \(build) · \(GeneratedBuildInfo.buildDate)"
+    }
+
+    private var storageStatusText: String {
+        switch storage.state {
+        case .opening: return i18n.text("Opening database")
+        case .ready: return i18n.text("Database ready")
+        case .failed: return i18n.text("Database unavailable")
+        }
+    }
+
+    private var storageTint: Color {
+        if case .failed = storage.state { return .orange }
+        return .secondary
     }
 
     private var samplingStatusText: String {
