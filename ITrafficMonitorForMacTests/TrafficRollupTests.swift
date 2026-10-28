@@ -27,6 +27,17 @@ final class TrafficRollupTests: XCTestCase {
         return (TrafficDatabase(databaseURL: url), url)
     }
 
+    /// A file that is not a SQLite database. `sqlite3_open_v2` is lazy and
+    /// succeeds, but every statement fails to prepare, so the read paths take
+    /// their error branch (unlike a path that cannot be opened at all).
+    private func makeUnopenableDatabase() -> TrafficDatabase {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("itraffic-corrupt-\(UUID().uuidString).sqlite3")
+        dbURLs.append(url)
+        try? Data("this file is not a sqlite database".utf8).write(to: url)
+        return TrafficDatabase(databaseURL: url)
+    }
+
     /// One minute's aggregate, as an Equatable value for series comparisons.
     private struct MinuteTotal: Equatable {
         let bucket: Int
@@ -538,6 +549,41 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM traffic_totals;", in: url), 1)
         XCTAssertEqual(readTotal(db, start: b0, end: b0 + 60).inBytes, 100)
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='accounted_traffic';", in: url), 1)
+    }
+
+    // MARK: - Query failure delivery
+
+    /// A query that cannot even be prepared (here: the file is not a database)
+    /// must still deliver its completion on the main queue. The dashboard
+    /// assigns these results to `@Published` state, so calling back from
+    /// `dbQueue` would publish from a background thread.
+    func testDailyTrafficFailureCompletesOnMainThread() {
+        let db = makeUnopenableDatabase()
+
+        let exp = expectation(description: "daily traffic failure")
+        var deliveredOnMain: Bool?
+        db.dailyTraffic(start: 0, end: 60) { rows in
+            XCTAssertTrue(rows.isEmpty)
+            deliveredOnMain = Thread.isMainThread
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2)
+        XCTAssertEqual(deliveredOnMain, true)
+    }
+
+    /// Same rule for the chart series query.
+    func testTrafficSeriesFailureCompletesOnMainThread() {
+        let db = makeUnopenableDatabase()
+
+        let exp = expectation(description: "traffic series failure")
+        var deliveredOnMain: Bool?
+        db.trafficSeries(start: 0, end: 60, granularity: .minute) { points in
+            XCTAssertTrue(points.isEmpty)
+            deliveredOnMain = Thread.isMainThread
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2)
+        XCTAssertEqual(deliveredOnMain, true)
     }
 
     // MARK: - Storage diagnostics

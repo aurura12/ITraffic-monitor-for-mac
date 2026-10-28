@@ -758,7 +758,10 @@ final class TrafficDatabase {
             var stmt: OpaquePointer?
             let sql = "SELECT day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start >= ? AND bucket_start < ? GROUP BY day ORDER BY day;"
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-                completion([]); return
+                // Completions always land on the main queue, including failures:
+                // callers assign the result to @Published state.
+                DispatchQueue.main.async { completion([]) }
+                return
             }
             sqlite3_bind_int64(stmt, 1, Int64(start))
             sqlite3_bind_int64(stmt, 2, Int64(end))
@@ -857,7 +860,9 @@ final class TrafficDatabase {
                 """
             }
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-                completion([]); return
+                // Same rule as every other read: never call back on dbQueue.
+                DispatchQueue.main.async { completion([]) }
+                return
             }
             sqlite3_bind_int64(stmt, 1, Int64(start))
             sqlite3_bind_int64(stmt, 2, Int64(end))
