@@ -76,7 +76,7 @@ Notes on signing: this repo has **no Apple Developer Team configured**. `xcodebu
 
 `update.sh` also auto-increments the build number: it reads `.itraffic-build-number` (or `ITRAFFIC_VERSION_COUNTER_FILE`), passes `CURRENT_PROJECT_VERSION=<n+1>` to `xcodebuild`, and writes the new value back. `MARKETING_VERSION` is bumped manually in `project.yml`. Other knobs: `ITRAFFIC_XCODEBUILD_TIMEOUT_SECONDS` (default 900) caps the `xcodebuild` run, and `ITRAFFIC_BUILD_COUNTER_DIR` relocates the pre-build script's counter (see Pitfalls) — it is the only way to make that counter survive a clean.
 
-There is no linter or CI configuration in the repo.
+CI lives in `.github/workflows/ci.yml` (GitHub Actions, `macos-latest`, ~30 min timeout): installs XcodeGen, runs `xcodegen generate` and **fails if the committed `ITrafficMonitorForMac.xcodeproj` changes**, runs `scripts/update_test.sh`, then the full `xcodebuild test` command above. It uploads `dist/DerivedData/Logs/Test` when a run fails. There is no linter.
 
 ## Code layout
 
@@ -91,6 +91,7 @@ There is no linter or CI configuration in the repo.
   - `TrafficFilterTests` (5) — nettop sampling status transitions, the restart-backoff curve, and menu-bar rate text.
   - `TrafficRollupTests` (19) — DB-level minute rollup, chunked backfill, the per-App-removal migration, the one-shot compaction, storage-health reporting, and the guard that keeps a test run out of the production database.
 - `scripts/update.sh` — build/run script described above; `scripts/update_test.sh` is a static-grep self-check of that script (no build), asserting the flags/bounds the script is expected to keep.
+- `.github/workflows/ci.yml` — the only CI: XcodeGen drift check, `update_test.sh`, and the full test run.
 - Docs: `CURRENT_PROGRESS.md` (current state, Chinese), `FEATURES.md` (feature list, Chinese), `README.md` (English, user-facing), `TROUBLESHOOTING.md` (Chinese post-mortems: the macOS 26 Control Center bundle-ID block plus the 2026-10-08 menu-bar and 2026-10-10 dashboard CPU regressions — the evidence behind the bundle-ID and menu-bar-rendering pitfalls below), `docs/superpowers/{plans,specs}/` (dated specs, mostly the **removed** per-App/VPN work, kept as history). **`PLAN.md` is stale** — it still describes a deleted `TrafficHeatmap.swift` and a per-App `heatmap(start:end:)` API; the file is now `TrafficCalendarHeatmap.swift` with a different API. Do not treat it as current. `CURRENT_PROGRESS.md` is the dated change log and is updated in the same commit as behavior changes (as are `FEATURES.md` / `TROUBLESHOOTING.md` when they apply) — keep that habit so it does not drift behind the code the way `PLAN.md` did.
 
 ## Runtime data flow

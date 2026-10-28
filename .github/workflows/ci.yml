@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and test
+    # Any current macOS runner can build this: the deployment target is 14.0
+    # and there are no SPM dependencies.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+          xcodegen --version
+
+      # The generated project is committed, so a stale copy silently breaks
+      # every clone that does not run xcodegen themselves.
+      - name: Check the committed project matches project.yml
+        run: |
+          xcodegen generate
+          if ! git diff --exit-code -- ITrafficMonitorForMac.xcodeproj; then
+            echo "::error::ITrafficMonitorForMac.xcodeproj is stale. Run 'xcodegen generate' and commit the result."
+            exit 1
+          fi
+
+      # Static greps, no build: asserts the flags update.sh depends on and the
+      # os.Logger subsystem / bundle-id alignment.
+      - name: Check update.sh invariants
+        run: ./scripts/update_test.sh
+
+      # The test bundle is hosted by the app, so this also proves the app
+      # itself launches with an unsigned, ad-hoc-hosted build.
+      - name: Run unit tests
+        run: |
+          xcodebuild \
+            -project ITrafficMonitorForMac.xcodeproj \
+            -scheme ITrafficMonitorForMac \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath dist/DerivedData \
+            test CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: dist/DerivedData/Logs/Test
+          if-no-files-found: ignore
