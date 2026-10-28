@@ -212,7 +212,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ aNotification: Notification) {
         if AppEnvironment.isRunningTests { return }
-        print("applicationWillTerminate")
+        Log.app.info("applicationWillTerminate")
         network?.stopListenNetwork()
         SharedStore.recorder.flush()
     }

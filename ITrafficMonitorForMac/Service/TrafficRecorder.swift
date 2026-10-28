@@ -107,7 +107,7 @@ final class TrafficRecorder {
                 guard let next = self.database.oldestFinalizedBucket(below: finalCutoff) else { return }
                 let high = min(next + Self.backfillChunkBuckets, finalCutoff)
                 guard self.rollUpChunk(before: high) else {
-                    print("[TrafficRecorder] backfill gave up at bucket \(high); will retry on next launch")
+                    Log.recorder.error("backfill gave up at bucket \(high); will retry on next launch")
                     return
                 }
                 // After a successful sweep every finalized bucket below `high`

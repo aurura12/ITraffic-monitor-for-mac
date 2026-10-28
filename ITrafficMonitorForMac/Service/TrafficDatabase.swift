@@ -181,7 +181,7 @@ final class TrafficDatabase {
         }
         guard sqlite3_open_v2(dbPath, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else {
             let msg = db.map { String(cString: sqlite3_errmsg($0)) } ?? "unknown"
-            print("[TrafficDatabase] open failed: \(msg)")
+            Log.db.error("open failed: \(msg, privacy: .public)")
             return
         }
         self.databasePath = dbPath
@@ -238,7 +238,7 @@ final class TrafficDatabase {
         );
         """
         guard sqlite3_exec(db, schema, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] schema creation failed: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("schema creation failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return false
         }
         return true
@@ -267,7 +267,7 @@ final class TrafficDatabase {
           FROM traffic_samples WHERE finalized = 1;
         """
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] accounted_traffic view creation failed: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("accounted_traffic view creation failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return false
         }
         return true
@@ -302,7 +302,7 @@ final class TrafficDatabase {
         }
 
         guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] per-app removal BEGIN failed: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("per-app removal BEGIN failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return
         }
         var ok = createCoreTables()
@@ -319,10 +319,10 @@ final class TrafficDatabase {
         }
         let bump = "PRAGMA user_version = \(Self.currentSchemaVersion);"
         if ok, sqlite3_exec(db, bump, nil, nil, nil) == SQLITE_OK {
-            _ = commitTransaction(db, failureMessage: "[TrafficDatabase] per-app removal COMMIT failed")
+            _ = commitTransaction(db, failureMessage: "per-app removal COMMIT failed")
         } else {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            print("[TrafficDatabase] per-app removal rolled back: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("per-app removal rolled back: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
         }
     }
 
@@ -354,7 +354,7 @@ final class TrafficDatabase {
         GROUP BY a.bucket_start;
         """
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] per-app fold failed: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("per-app fold failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return false
         }
         return true
@@ -372,7 +372,7 @@ final class TrafficDatabase {
         DROP INDEX IF EXISTS idx_sample_allocations_app;
         """
         guard sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] legacy per-app drop failed: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("legacy per-app drop failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return false
         }
         return true
@@ -391,10 +391,10 @@ final class TrafficDatabase {
         let backupPath = "\(databasePath).pre-perapp-removal-\(Int(Date().timeIntervalSince1970)).bak"
         let escaped = backupPath.replacingOccurrences(of: "'", with: "''")
         if sqlite3_exec(db, "VACUUM INTO '\(escaped)';", nil, nil, nil) == SQLITE_OK {
-            print("[TrafficDatabase] per-app removal backup written to \(backupPath)")
+            Log.db.notice("per-app removal backup written to \(backupPath, privacy: .public)")
             prunePerAppRemovalBackups(keepingNewest: 1)
         } else {
-            print("[TrafficDatabase] per-app removal backup skipped: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("per-app removal backup skipped: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
         }
     }
 
@@ -425,7 +425,7 @@ final class TrafficDatabase {
         var stmt: OpaquePointer?
         let tableInfo = "PRAGMA table_info(archived_samples);"
         guard sqlite3_prepare_v2(db, tableInfo, -1, &stmt, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] archived_samples schema inspection failed: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("archived_samples schema inspection failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return
         }
 
@@ -441,19 +441,19 @@ final class TrafficDatabase {
         if !hasArchivedAt {
             let alter = "ALTER TABLE archived_samples ADD COLUMN archived_at INTEGER NOT NULL DEFAULT 0;"
             guard sqlite3_exec(db, alter, nil, nil, nil) == SQLITE_OK else {
-                print("[TrafficDatabase] archived_samples timestamp migration failed: \(String(cString: sqlite3_errmsg(db)))")
+                Log.db.error("archived_samples timestamp migration failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
                 return
             }
             let backfill = "UPDATE archived_samples SET archived_at = CAST(strftime('%s','now') AS INTEGER) WHERE archived_at = 0;"
             guard sqlite3_exec(db, backfill, nil, nil, nil) == SQLITE_OK else {
-                print("[TrafficDatabase] archived_samples timestamp backfill failed: \(String(cString: sqlite3_errmsg(db)))")
+                Log.db.error("archived_samples timestamp backfill failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
                 return
             }
         }
 
         let index = "CREATE INDEX IF NOT EXISTS idx_archived_samples_at ON archived_samples(archived_at);"
         if sqlite3_exec(db, index, nil, nil, nil) != SQLITE_OK {
-            print("[TrafficDatabase] archived_samples timestamp index migration failed: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("archived_samples timestamp index migration failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
         }
     }
 
@@ -478,7 +478,7 @@ final class TrafficDatabase {
     /// structural: `traffic_samples.raw_*` is the only byte source.
     func commitSample(_ sample: TrafficSample) {
         guard sample.rawInBytes >= 0, sample.rawOutBytes >= 0 else {
-            print("[TrafficDatabase] rejected negative sample \(sample.id)")
+            Log.db.error("rejected negative sample \(sample.id, privacy: .public)")
             return
         }
         dbQueue.sync {
@@ -525,7 +525,7 @@ final class TrafficDatabase {
     private func rollupCompletedBucketsLocked(before beforeBucket: Int) -> Bool {
         guard let db else { return false }
         guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] rollup BEGIN failed: \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("rollup BEGIN failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return false
         }
 
@@ -537,10 +537,10 @@ final class TrafficDatabase {
 
         if failed {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            print("[TrafficDatabase] rolled back rollup before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("rolled back rollup before=\(beforeBucket): \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return false
         }
-        guard commitTransaction(db, failureMessage: "[TrafficDatabase] rollup COMMIT failed before=\(beforeBucket)") else {
+        guard commitTransaction(db, failureMessage: "rollup COMMIT failed before=\(beforeBucket)") else {
             return false
         }
         return true
@@ -570,7 +570,7 @@ final class TrafficDatabase {
         guard sqlite3_exec(db, "COMMIT;", nil, nil, nil) == SQLITE_OK else {
             let msg = String(cString: sqlite3_errmsg(db))
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            print("\(failureMessage): \(msg)")
+            Log.db.error("\(failureMessage, privacy: .public): \(msg, privacy: .public)")
             return false
         }
         return true
@@ -583,11 +583,11 @@ final class TrafficDatabase {
         // it. Its id is tombstoned in `archived_samples` at rollup time; a
         // replay must stay a no-op or the same bytes would be counted twice.
         if sampleWasArchived(db, sampleID: sample.id) {
-            print("[TrafficDatabase] sample \(sample.id) already archived; ignoring replay")
+            Log.db.debug("sample \(sample.id, privacy: .public) already archived; ignoring replay")
             return
         }
         guard sqlite3_exec(db, "BEGIN IMMEDIATE;", nil, nil, nil) == SQLITE_OK else {
-            print("[TrafficDatabase] BEGIN failed for sample \(sample.id): \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("BEGIN failed for sample \(sample.id, privacy: .public): \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
             return
         }
 
@@ -625,7 +625,7 @@ final class TrafficDatabase {
                         failed = true
                     } else if finalized {
                         sqlite3_finalize(stmt)
-                        _ = commitTransaction(db, failureMessage: "[TrafficDatabase] COMMIT failed for sample \(sample.id)")
+                        _ = commitTransaction(db, failureMessage: "COMMIT failed for sample \(sample.id)")
                         return
                     }
                 } else {
@@ -652,9 +652,9 @@ final class TrafficDatabase {
 
         if failed {
             sqlite3_exec(db, "ROLLBACK;", nil, nil, nil)
-            print("[TrafficDatabase] rolled back sample \(sample.id): \(String(cString: sqlite3_errmsg(db)))")
+            Log.db.error("rolled back sample \(sample.id, privacy: .public): \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
         } else {
-            _ = commitTransaction(db, failureMessage: "[TrafficDatabase] COMMIT failed for sample \(sample.id)")
+            _ = commitTransaction(db, failureMessage: "COMMIT failed for sample \(sample.id)")
         }
     }
 

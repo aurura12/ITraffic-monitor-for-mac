@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		04BDC687851FAE38F5203BB8 /* DashboardViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FE676AD39F6427F84E3CA1B /* DashboardViewModel.swift */; };
 		07CFBEA99D4A7579D4E4AC71 /* Utils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D30F89C22ACDFD9102801CD /* Utils.swift */; };
+		086F63927392D25662019181 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A6B2F3C13AEC7A236B9F6F9 /* Log.swift */; };
 		1938B3E5D68DE73D4EC289DF /* Store.swift in Sources */ = {isa = PBXBuildFile; fileRef = 748FB46B5B1D40583CCBFC28 /* Store.swift */; };
 		33C440AED95888F010013660 /* Network.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4DE4AB076FAF20A640BD23F /* Network.swift */; };
 		3B03C3F2B98B05E93EEBE510 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11F0324CEDB56F043E9676BA /* DashboardView.swift */; };
@@ -49,6 +50,7 @@
 		031A75F509B62CC97841A678 /* TrafficRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficRecorder.swift; sourceTree = "<group>"; };
 		065D4B4260EC8645AF7E7918 /* TrafficBarChartView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrafficBarChartView.swift; sourceTree = "<group>"; };
 		08982BEA9591C5710684F088 /* MenuBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBar.swift; sourceTree = "<group>"; };
+		0A6B2F3C13AEC7A236B9F6F9 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
 		0B401534AD37D838AA9B5A60 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		116719D934B1B6383F92CBDC /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		11F0324CEDB56F043E9676BA /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 				5E88E37B0EA128E65459AEE5 /* AppDelegate.swift */,
 				8DC67E0DE60F9255C3A54E63 /* Assets.xcassets */,
 				8DE533394707409DB44B2D69 /* GeneratedBuildInfo.swift */,
+				0A6B2F3C13AEC7A236B9F6F9 /* Log.swift */,
 				08982BEA9591C5710684F088 /* MenuBar.swift */,
 				B4DE4AB076FAF20A640BD23F /* Network.swift */,
 				748FB46B5B1D40583CCBFC28 /* Store.swift */,
@@ -305,6 +308,7 @@
 				40EFC85DD540245FF296E5FA /* ExportView.swift in Sources */,
 				AED77EB854A3D9CA2251354C /* GeneratedBuildInfo.swift in Sources */,
 				D4C75F33BA95B8E5322266EA /* LocalizationManager.swift in Sources */,
+				086F63927392D25662019181 /* Log.swift in Sources */,
 				545E2BC0646328833772AF12 /* MenuBar.swift in Sources */,
 				3CD3C483420F51057FC93505 /* NettopRunner.swift in Sources */,
 				33C440AED95888F010013660 /* Network.swift in Sources */,

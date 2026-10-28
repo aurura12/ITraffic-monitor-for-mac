@@ -146,7 +146,7 @@ final class NettopRunner {
             try task.run()
             self.process = task
         } catch {
-            print("[NettopRunner] failed to spawn: \(error)")
+            Log.nettop.error("failed to spawn: \(error.localizedDescription, privacy: .public)")
             if shouldRestart {
                 scheduleRestart(after: 1.0)
             }

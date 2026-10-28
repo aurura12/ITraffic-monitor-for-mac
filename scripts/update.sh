@@ -260,7 +260,7 @@ case "$MODE" in
     ;;
   --telemetry|telemetry)
     open_app
-    /usr/bin/log stream --info --style compact --predicate 'subsystem == "com.foamzou.ITrafficMonitorForMac"'
+    /usr/bin/log stream --info --style compact --predicate 'subsystem == "com.foamzou.ITrafficMonitorV2"'
     ;;
   --verify|verify)
     open_app
