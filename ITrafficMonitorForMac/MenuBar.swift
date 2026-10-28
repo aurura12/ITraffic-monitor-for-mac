@@ -32,12 +32,6 @@ enum MenuBarStatusItemConfiguration {
     static let autosaveName = "com.foamzou.ITrafficMonitorV2.menuBar"
 }
 
-enum MenuBarPopoverConfiguration {
-    /// Do not leave a transient status-item popover stranded on screen if the
-    /// user clicks elsewhere without explicitly closing it.
-    static let autoDismissInterval: TimeInterval = 5
-}
-
 enum MenuBarPopoverLayout {
     static let width: CGFloat = 320
     /// Floor for the measured content height. The hosting view reports a zero
@@ -341,7 +335,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     private let rateView: MenuBarRateView
     private let todayUsage = TodayUsageModel()
     private var refreshTimer: Timer?
-    private var popoverDismissTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
     /// Set by AppDelegate once sampling is wired up. Wrapped weakly: the
     /// delegate owns the Network instance.
@@ -369,7 +362,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
 
     deinit {
         refreshTimer?.invalidate()
-        popoverDismissTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
     }
 
@@ -426,6 +418,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     private func configurePopover() {
+        // `.transient` is the whole dismissal policy: a click anywhere else or
+        // deactivating the app closes the popover. There is deliberately no
+        // timer — auto-closing it would yank the numbers away mid-read.
         popover.behavior = .transient
         popover.delegate = self
         // The popover is already built at launch; avoid adding an opening
@@ -465,27 +460,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         popover.contentSize = NSSize(width: MenuBarPopoverLayout.width, height: height)
     }
 
-    private func schedulePopoverAutoDismiss() {
-        popoverDismissTimer?.invalidate()
-
-        let timer = Timer(
-            timeInterval: MenuBarPopoverConfiguration.autoDismissInterval,
-            repeats: false
-        ) { [weak self] _ in
-            guard let self else { return }
-            self.popoverDismissTimer = nil
-            guard self.popover.isShown else { return }
-            self.popover.performClose(nil)
-        }
-        popoverDismissTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
-    }
-
-    private func cancelPopoverAutoDismiss() {
-        popoverDismissTimer?.invalidate()
-        popoverDismissTimer = nil
-    }
-
     /// Query the current local day's total from the history database.
     private func refreshTodayUsage() {
         let day = dayIndex(for: Date(), calendar: .current)
@@ -515,7 +489,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         refreshTimer?.invalidate()
         refreshTimer = nil
-        cancelPopoverAutoDismiss()
     }
 
     /// Route a status-item click by mouse button: secondary (right click or
@@ -536,7 +509,6 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     /// we attach it, simulate the click, then detach it to keep the primary
     /// click wired to the popover.
     private func showContextMenu() {
-        cancelPopoverAutoDismiss()
         if popover.isShown { popover.performClose(nil) }
 
         let menu = makeContextMenu()
@@ -592,29 +564,24 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     @objc private func togglePopover(_ sender: Any?) {
         guard let button = statusItem.button else { return }
         if popover.isShown {
-            cancelPopoverAutoDismiss()
             popover.performClose(sender)
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
-            schedulePopoverAutoDismiss()
         }
     }
 
     private func openDashboard() {
-        cancelPopoverAutoDismiss()
         popover.performClose(nil)
         AppDelegate.showDashboard()
     }
 
     private func openSettings() {
-        cancelPopoverAutoDismiss()
         popover.performClose(nil)
         AppDelegate.showSettings()
     }
 
     private func quit() {
-        cancelPopoverAutoDismiss()
         popover.performClose(nil)
         NSApp.terminate(nil)
     }

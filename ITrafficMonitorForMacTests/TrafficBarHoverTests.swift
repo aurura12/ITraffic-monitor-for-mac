@@ -168,13 +168,19 @@ final class TrafficBarHoverTests: XCTestCase {
         XCTAssertGreaterThan(popover.contentSize.height, 100)
     }
 
-    func testMenuBarPopoverUsesTransientBehaviorAndHasAnAutoDismissFallback() {
+    /// Dismissal is the transient behavior alone: clicking elsewhere or
+    /// deactivating the app. There is no timer, so reading the numbers is never
+    /// cut short by an auto-close.
+    func testMenuBarPopoverIsTransientOnly() {
         let controller = MenuBarController()
         let popover = Mirror(reflecting: controller).children
             .first { $0.label == "popover" }?.value as? NSPopover
 
         XCTAssertEqual(popover?.behavior, .transient)
-        XCTAssertEqual(MenuBarPopoverConfiguration.autoDismissInterval, 5)
+        XCTAssertNil(
+            Mirror(reflecting: controller).children.first { $0.label == "popoverDismissTimer" },
+            "A dismissal timer would close the popover while the user is reading"
+        )
     }
 
     func testMenuBarRateOverlayLeavesStatusButtonInChargeOfClicks() {
