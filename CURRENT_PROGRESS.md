@@ -41,6 +41,7 @@
 - rollup 改为按 bucket 聚合原始总量，不再有 allocation 维度。
 - 守恒变成结构性：`traffic_samples.raw_*` 是唯一字节来源，写入时只做非负校验。
 - 查询失败（SQLite 无法 prepare）与成功路径一致，回调统一走主队列；此前 `dailyTraffic` / `trafficSeries` 会在数据库队列上回调，调用方从后台线程写 `@Published`。
+- 小时粒度导出的时间点改为本地整点（交给 `Calendar` 解析），不再用「当日零点 + hour×3600」，否则夏令时切换当天该小时之后的行会整体偏移 1 小时。
 
 ### 迁移
 

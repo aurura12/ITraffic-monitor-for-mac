@@ -419,6 +419,20 @@ func dayIndex(for date: Date, calendar: Calendar) -> Int {
 
 /// Local midnight Date for a `day` value stored in the DB.
 func dateFromDay(_ day: Int) -> Date {
-    Calendar.current.date(byAdding: .day, value: day, to: epochDayZero)
+    dateFromDay(day, calendar: .current, dayZero: epochDayZero)
+}
+
+/// Calendar-aware variant, for callers that need a specific time zone (export
+/// timestamps and their tests). `dayIndex(for:calendar:)` is relative to the
+/// same calendar, so the two round-trip for any calendar.
+func dateFromDay(_ day: Int, calendar: Calendar) -> Date {
+    let dayZero = calendar.startOfDay(for: Date(timeIntervalSince1970: 0))
+    return dateFromDay(day, calendar: calendar, dayZero: dayZero)
+}
+
+/// Shared implementation; `dayZero` is precomputed because the heatmap calls
+/// this per cell (and per hover event).
+private func dateFromDay(_ day: Int, calendar: Calendar, dayZero: Date) -> Date {
+    calendar.date(byAdding: .day, value: day, to: dayZero)
         ?? Date(timeIntervalSince1970: TimeInterval(day) * 86400)
 }

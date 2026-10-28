@@ -107,6 +107,41 @@ final class TrafficRollupTests: XCTestCase {
         return result
     }
 
+    private func readExport(
+        _ database: TrafficDatabase,
+        start: Int,
+        end: Int,
+        granularity: ExportGranularity
+    ) -> [ExportTrafficRow] {
+        let exp = expectation(description: "export [\(start), \(end))")
+        var result: [ExportTrafficRow] = []
+        database.exportRows(start: start, end: end, granularity: granularity) { rows in
+            result = rows
+            exp.fulfill()
+        }
+        wait(for: [exp], timeout: 2)
+        return result
+    }
+
+    /// Fixed-zone Gregorian calendar so DST tests do not depend on the machine
+    /// time zone.
+    private func fixedCalendar(_ timeZoneIdentifier: String) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: timeZoneIdentifier)!
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        return calendar
+    }
+
+    private func localDate(
+        _ year: Int,
+        _ month: Int,
+        _ day: Int,
+        _ hour: Int,
+        calendar: Calendar
+    ) -> Date {
+        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: hour))!
+    }
+
     // MARK: - Raw helpers (row counts / seeding legacy rows / unfinalized samples)
 
     private func rawCount(_ sql: String, in url: URL) -> Int {
@@ -549,6 +584,80 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM traffic_totals;", in: url), 1)
         XCTAssertEqual(readTotal(db, start: b0, end: b0 + 60).inBytes, 100)
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='accounted_traffic';", in: url), 1)
+    }
+
+    // MARK: - Export timestamps
+
+    /// 2026-03-08 in Los Angeles skips 02:00–03:00 (PST → PDT). Hour 3 starts
+    /// at 03:00 local, which is *not* "midnight + 3 h" (that lands at 04:00),
+    /// so reconstructing the period from the offset shifts every later hour of
+    /// that day by one.
+    func testExportHourStartHandlesSpringForwardGap() {
+        let calendar = fixedCalendar("America/Los_Angeles")
+        let midnight = localDate(2026, 3, 8, 0, calendar: calendar)
+        let day = dayIndex(for: midnight, calendar: calendar)
+
+        let hourStart = exportHourStart(day: day, hour: 3, calendar: calendar)
+        XCTAssertEqual(hourStart, localDate(2026, 3, 8, 3, calendar: calendar))
+        XCTAssertEqual(calendar.component(.hour, from: hourStart), 3)
+        XCTAssertNotEqual(
+            hourStart,
+            dateFromDay(day, calendar: calendar).addingTimeInterval(3 * 3600),
+            "midnight + 3 h is 04:00 local on this day"
+        )
+    }
+
+    /// Without a DST transition the hour start is still the plain midnight
+    /// offset, so the fix does not move ordinary rows.
+    func testExportHourStartMatchesMidnightOffsetOnNormalDays() {
+        let calendar = fixedCalendar("Asia/Shanghai")
+        let day = dayIndex(for: localDate(2026, 6, 15, 0, calendar: calendar), calendar: calendar)
+
+        XCTAssertEqual(
+            exportHourStart(day: day, hour: 9, calendar: calendar),
+            dateFromDay(day, calendar: calendar).addingTimeInterval(9 * 3600)
+        )
+        XCTAssertEqual(
+            exportHourStart(day: day, hour: 0, calendar: calendar),
+            dateFromDay(day, calendar: calendar)
+        )
+    }
+
+    /// Hourly export rows are anchored at the local hour start rather than at
+    /// the first sample's minute, so the CSV stays hour-aligned.
+    func testHourlyExportUsesLocalHourStart() {
+        let (db, _) = makeDatabase()
+        let calendar = Calendar.current
+        let captured = localDate(2026, 5, 20, 10, calendar: calendar)
+            .addingTimeInterval(37 * 60)
+        let bucket = TrafficRecorder.minuteBucket(for: captured)
+        let (day, hour) = TrafficRecorder.dayAndHour(for: captured, calendar: calendar)
+        XCTAssertEqual(hour, 10)
+
+        db.commitSample(TrafficSample(
+            id: "h1",
+            capturedAtMs: Int64(captured.timeIntervalSince1970 * 1_000),
+            bucketStart: bucket,
+            day: day,
+            hour: hour,
+            rawInBytes: 300,
+            rawOutBytes: 100
+        ))
+        db.commitSample(TrafficSample(
+            id: "h2",
+            capturedAtMs: Int64(captured.timeIntervalSince1970 * 1_000) + 60_000,
+            bucketStart: bucket + 60,
+            day: day,
+            hour: hour,
+            rawInBytes: 200,
+            rawOutBytes: 50
+        ))
+
+        let rows = readExport(db, start: bucket, end: bucket + 120, granularity: .hour)
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].period, localDate(2026, 5, 20, 10, calendar: calendar))
+        XCTAssertEqual(rows[0].inBytes, 500)
+        XCTAssertEqual(rows[0].outBytes, 150)
     }
 
     // MARK: - Query failure delivery

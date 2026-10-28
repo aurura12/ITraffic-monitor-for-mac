@@ -130,6 +130,20 @@ DELETE FROM traffic_samples
 WHERE finalized = 1 AND bucket_start < ?;
 """
 
+/// Start of the local wall-clock hour an exported (day, hour) row stands for.
+///
+/// "Local midnight + hour * 3600" looks equivalent but is wrong on DST
+/// transition days: after a skipped or repeated hour every later hour of that
+/// day is shifted by one. The `hour` column was recorded with
+/// `Calendar.current`, so resolve it with a calendar (the same one by default).
+func exportHourStart(day: Int, hour: Int, calendar: Calendar = .current) -> Date {
+    let dayStart = dateFromDay(day, calendar: calendar)
+    return calendar.date(
+        bySettingHour: hour, minute: 0, second: 0,
+        of: dayStart, matchingPolicy: .nextTime
+    ) ?? dayStart
+}
+
 struct TrafficSample: Equatable {
     let id: String
     let capturedAtMs: Int64
@@ -907,7 +921,7 @@ final class TrafficDatabase {
                 rows = self.exportTotals(db: db, start: start, end: end,
                                          sql: "SELECT day, hour, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY day, hour ORDER BY day, hour;",
                                          hasHour: true,
-                                         period: { day, hour in dateFromDay(day).addingTimeInterval(TimeInterval(hour) * 3600) })
+                                         period: { day, hour in exportHourStart(day: day, hour: hour) })
             case .day:
                 rows = self.exportTotals(db: db, start: start, end: end,
                                          sql: "SELECT day, SUM(in_bytes), SUM(out_bytes) FROM accounted_traffic WHERE bucket_start>=? AND bucket_start<? GROUP BY day ORDER BY day;",
