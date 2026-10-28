@@ -414,7 +414,7 @@ final class TrafficRollupTests: XCTestCase {
 
         let migrated = TrafficDatabase(databaseURL: url)
 
-        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 2)
+        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 3)
         XCTAssertEqual(rawCount(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('app_traffic','sample_allocations','apps');",
             in: url), 0)
@@ -445,7 +445,7 @@ final class TrafficRollupTests: XCTestCase {
         XCTAssertEqual(rawCount("SELECT in_bytes FROM traffic_totals WHERE bucket_start=1000;", in: url), 999)
         XCTAssertEqual(rawCount(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='app_traffic';", in: url), 0)
-        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 2)
+        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 3)
     }
 
     /// A failed fold must never blank history: the legacy app-keyed view has to
@@ -482,7 +482,7 @@ final class TrafficRollupTests: XCTestCase {
     func testFreshDatabaseIsTotalOnlyAtCurrentVersion() {
         let (db, url) = makeDatabase()
         _ = db
-        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 2)
+        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 3)
         XCTAssertEqual(rawCount(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='traffic_totals';", in: url), 1)
         XCTAssertEqual(rawCount(
@@ -499,9 +499,45 @@ final class TrafficRollupTests: XCTestCase {
         db.rollupCompletedBuckets(before: b0 + 60)
 
         let reopened = TrafficDatabase(databaseURL: url)
-        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 2)
+        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 3)
         XCTAssertEqual(rawCount("SELECT COUNT(*) FROM traffic_totals;", in: url), 1)
         XCTAssertEqual(readTotal(reopened, start: b0, end: b0 + 60).inBytes, 100)
+    }
+
+    // MARK: - One-shot post-migration compaction
+
+    /// Dropping the per-App tables frees pages without shrinking the file, so
+    /// opening a version-2 database compacts it once and advances to the
+    /// current version, leaving history untouched.
+    func testCompactionReclaimsFreePagesOnce() {
+        let (db, url) = makeDatabase()
+        let b0 = baseBucket
+        db.commitSample(makeSample(id: "keep", bucketStart: b0, inBytes: 100, outBytes: 50))
+        db.rollupCompletedBuckets(before: b0 + 60)
+
+        // Stand in for the legacy drop: churn enough rows through the file that
+        // a large part of it lands on the freelist, then rewind the version.
+        XCTAssertTrue(execRaw("""
+            WITH RECURSIVE seq(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM seq WHERE x < 60000)
+            INSERT INTO traffic_totals(bucket_start,day,hour,in_bytes,out_bytes,sample_count)
+            SELECT 9000000000 + x, 1, 0, 1024, 1024, 1 FROM seq;
+            """, in: url))
+        XCTAssertTrue(execRaw("DELETE FROM traffic_totals WHERE bucket_start >= 9000000000;", in: url))
+        XCTAssertTrue(execRaw("PRAGMA user_version = 2;", in: url))
+
+        let freeBefore = rawCount("PRAGMA freelist_count;", in: url)
+        let pagesBefore = rawCount("PRAGMA page_count;", in: url)
+        XCTAssertGreaterThanOrEqual(freeBefore, 256)
+
+        db.compactFreePagesIfNeeded()
+
+        XCTAssertEqual(rawCount("PRAGMA user_version;", in: url), 3)
+        XCTAssertLessThan(rawCount("PRAGMA freelist_count;", in: url), freeBefore)
+        XCTAssertLessThan(rawCount("PRAGMA page_count;", in: url), pagesBefore)
+        // The rewrite preserves history and the query surface.
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM traffic_totals;", in: url), 1)
+        XCTAssertEqual(readTotal(db, start: b0, end: b0 + 60).inBytes, 100)
+        XCTAssertEqual(rawCount("SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name='accounted_traffic';", in: url), 1)
     }
 
     // MARK: - Test-host isolation

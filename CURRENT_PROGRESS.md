@@ -1,6 +1,6 @@
 # 当前进度：纯总量流量统计
 
-更新时间：2026-10-10
+更新时间：2026-10-28
 
 ## 目标
 
@@ -28,6 +28,8 @@
 ### 数据层
 
 - `traffic_totals(bucket_start PK, day, hour, in_bytes, out_bytes, sample_count)` 取代 `app_traffic`。
+- 一次性压缩（`user_version` 2 → 3）：`DROP TABLE` 只把旧 per-App 页放进 freelist，不会缩小文件；`compactFreePagesIfNeeded()` 在折叠完成且空闲页 ≥ 256 页（1 MB）且 ≥ 5% 时执行一次 `VACUUM`，成功后才置 3。生产库实测 119 MB → 约 20 MB。
+- 日志统一走 `os.Logger`（`Log.swift`），不再用 `print()`：GUI 启动时 stdout 被丢弃，`update.sh --telemetry` 的 subsystem 也已对齐当前 bundle id。
 - `accounted_traffic` 视图直接读 `traffic_totals` + 未汇总的 `traffic_samples.raw_*`，已无 `app_key`。
 - rollup 改为按 bucket 聚合原始总量，不再有 allocation 维度。
 - 守恒变成结构性：`traffic_samples.raw_*` 是唯一字节来源，写入时只做非负校验。

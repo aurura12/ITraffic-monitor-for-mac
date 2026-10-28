@@ -204,6 +204,7 @@ final class TrafficDatabase {
         createCoreTables()
         migrateArchivedSamplesTimestamp()
         migratePerAppRemovalIfNeeded()
+        compactFreePagesIfNeeded()
     }
 
     /// Create the total-only tables and indexes. Idempotent; runs on every
@@ -273,9 +274,20 @@ final class TrafficDatabase {
         return true
     }
 
-    /// `PRAGMA user_version` for the total-only schema. Databases at 1 (the
-    /// retired dirty-data cleanup) or 0 (older) migrate to it exactly once.
-    private static let currentSchemaVersion: Int32 = 2
+    /// `PRAGMA user_version` reached once the per-App fold has committed.
+    /// Databases at 1 (the retired dirty-data cleanup) or 0 (older) migrate to
+    /// it exactly once.
+    private static let totalOnlySchemaVersion: Int32 = 2
+
+    /// `PRAGMA user_version` reached after the one-shot compaction. Kept
+    /// separate from `totalOnlySchemaVersion` so a database that already
+    /// migrated to 2 still reclaims the pages the per-App drop left behind.
+    private static let currentSchemaVersion: Int32 = 3
+
+    /// A VACUUM is worth its rewrite only when the file is meaningfully empty:
+    /// at least this many free pages (1 MB at the 4 KB default) and 5% of the
+    /// file. The per-App drop left 84% of a real database free.
+    private static let compactionMinimumFreePages = 256
 
     /// One-time migration from the per-app schema to the total-only schema,
     /// gated by `PRAGMA user_version`. The legacy history is folded losslessly
@@ -287,7 +299,7 @@ final class TrafficDatabase {
     private func migratePerAppRemovalIfNeeded() {
         guard let db else { return }
         let hasLegacy = legacyPerAppTablesPresent()
-        if !hasLegacy, userVersion() >= Self.currentSchemaVersion {
+        if !hasLegacy, userVersion() >= Self.totalOnlySchemaVersion {
             // Already on the total-only schema. Re-assert the view definition
             // (idempotent). There is no pending fold, so replacing the view
             // here cannot blank history.
@@ -317,7 +329,7 @@ final class TrafficDatabase {
         if ok {
             ok = ensureAccountedTrafficView()
         }
-        let bump = "PRAGMA user_version = \(Self.currentSchemaVersion);"
+        let bump = "PRAGMA user_version = \(Self.totalOnlySchemaVersion);"
         if ok, sqlite3_exec(db, bump, nil, nil, nil) == SQLITE_OK {
             _ = commitTransaction(db, failureMessage: "per-app removal COMMIT failed")
         } else {
@@ -468,6 +480,53 @@ final class TrafficDatabase {
         defer { sqlite3_finalize(stmt) }
         guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
         return sqlite3_column_int(stmt, 0)
+    }
+
+    /// Read a single-integer PRAGMA. Runs on `dbQueue`.
+    private func pragmaInt(_ sql: String) -> Int {
+        guard let db else { return 0 }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return 0 }
+        return Int(sqlite3_column_int64(stmt, 0))
+    }
+
+    // MARK: - Compaction
+
+    /// One-shot reclaim of the pages the retired per-App tables left behind.
+    /// `DROP TABLE` moves pages to the freelist but never shrinks the file, so a
+    /// migrated database keeps its old size (84% free on a real one) until a
+    /// VACUUM rewrites it.
+    ///
+    /// Runs once per database (version 2 → 3) and is skipped while a legacy
+    /// fold is still pending, so a failed migration can never mark compaction
+    /// as done. The version advances only after a successful VACUUM: the data
+    /// is intact either way, so a failure (e.g. no disk space for the rewrite)
+    /// is retried on the next launch. Runs on `dbQueue`.
+    func compactFreePagesIfNeeded() {
+        guard let db else { return }
+        let version = userVersion()
+        guard version >= Self.totalOnlySchemaVersion, version < Self.currentSchemaVersion else { return }
+        guard !legacyPerAppTablesPresent() else { return }
+
+        let pages = pragmaInt("PRAGMA page_count;")
+        let freePages = pragmaInt("PRAGMA freelist_count;")
+        if freePages >= Self.compactionMinimumFreePages, freePages * 20 >= pages {
+            guard sqlite3_exec(db, "VACUUM;", nil, nil, nil) == SQLITE_OK else {
+                Log.db.error("compaction VACUUM failed, will retry next launch: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
+                return
+            }
+            Log.db.notice("compacted database, reclaimed \(freePages, privacy: .public) free pages")
+        } else if freePages > 0 {
+            Log.db.debug("compaction skipped: \(freePages, privacy: .public) free of \(pages) pages")
+        }
+
+        let bump = "PRAGMA user_version = \(Self.currentSchemaVersion);"
+        guard sqlite3_exec(db, bump, nil, nil, nil) == SQLITE_OK else {
+            Log.db.error("compaction version bump failed: \(String(cString: sqlite3_errmsg(db)), privacy: .public)")
+            return
+        }
     }
 
     // MARK: - Write
