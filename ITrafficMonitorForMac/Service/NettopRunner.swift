@@ -18,12 +18,37 @@
 
 import Foundation
 
+/// First restart delay. A crash loop doubles from here instead of hammering
+/// the system once every 0.5 s forever.
+let nettopRestartInitialDelay: TimeInterval = 0.5
+
+/// Upper bound for the backoff: a nettop that keeps failing is retried twice a
+/// minute, which is cheap enough to stay self-healing after a system update
+/// re-enables it.
+let nettopRestartMaximumDelay: TimeInterval = 30
+
+/// Consecutive failed spawns/exits after which sampling is reported as failed
+/// instead of merely restarting. Retries continue at the capped delay.
+let nettopRestartFailureThreshold = 4
+
+/// Delay before the next spawn attempt, given how many attempts in a row have
+/// already failed (0 = the first retry). Exposed at file scope so the backoff
+/// curve is testable without spawning a process.
+func nettopRestartDelay(consecutiveFailures: Int) -> TimeInterval {
+    let doublings = max(0, consecutiveFailures)
+    // Clamp the exponent so a long-running failure cannot overflow the math.
+    let exponent = min(doublings, 16)
+    return min(nettopRestartInitialDelay * pow(2, Double(exponent)), nettopRestartMaximumDelay)
+}
+
 final class NettopRunner {
     /// Called once per nettop refresh with one frame's CSV lines (header
     /// dropped) and the seconds elapsed since the previous flush.
     var onFrame: (([String], TimeInterval) -> Void)?
-    /// Called when a running nettop process terminates and sampling may have a gap.
-    var onRestart: (() -> Void)?
+    /// Called when a running nettop process terminates and sampling may have a
+    /// gap. The argument is the number of consecutive failed attempts so far,
+    /// so the observer can distinguish "restarting" from "keeps failing".
+    var onRestart: ((Int) -> Void)?
 
     private let interval: Int
     private let debounceInterval: TimeInterval
@@ -40,6 +65,10 @@ final class NettopRunner {
     private var restartWork: DispatchWorkItem?
     private var droppedFirstFrame = false
     private var shouldRestart = false
+    /// Consecutive spawn failures / unexpected exits since the last delivered
+    /// frame. Reset by a frame (proof the process works) and by `start()`.
+    /// Touched only on `queue`.
+    private var consecutiveFailures = 0
     private var lastFrameAt: Date?
     private let processConfigurator: (Process, Int) -> Void
 
@@ -71,6 +100,9 @@ final class NettopRunner {
             self.restartWork?.cancel()
             self.restartWork = nil
             self.shouldRestart = true
+            // An explicit start is a fresh attempt sequence: a user resume
+            // should not inherit the previous crash loop's backoff.
+            self.consecutiveFailures = 0
             guard self.process == nil || self.process?.isRunning == false else { return }
             self.spawn()
         }
@@ -136,9 +168,10 @@ final class NettopRunner {
             self.queue.async {
                 self.cleanupHandles()
                 self.process = nil
-                self.onRestart?()
+                self.consecutiveFailures += 1
+                self.onRestart?(self.consecutiveFailures)
                 guard self.shouldRestart else { return }
-                self.scheduleRestart(after: 0.5)
+                self.scheduleRestartAfterFailure()
             }
         }
 
@@ -146,11 +179,23 @@ final class NettopRunner {
             try task.run()
             self.process = task
         } catch {
-            Log.nettop.error("failed to spawn: \(error.localizedDescription, privacy: .public)")
+            consecutiveFailures += 1
+            Log.nettop.error("failed to spawn nettop: \(error.localizedDescription, privacy: .public)")
             if shouldRestart {
-                scheduleRestart(after: 1.0)
+                scheduleRestartAfterFailure()
             }
         }
+    }
+
+    /// Back off before the next attempt, and say so once the failures are no
+    /// longer a one-off. Runs on `queue`.
+    private func scheduleRestartAfterFailure() {
+        let delay = nettopRestartDelay(consecutiveFailures: consecutiveFailures)
+        Log.nettop.error("nettop attempt \(self.consecutiveFailures, privacy: .public) failed; retrying in \(delay, privacy: .public)s")
+        if consecutiveFailures == nettopRestartFailureThreshold {
+            Log.nettop.error("nettop failed \(self.consecutiveFailures, privacy: .public) times in a row; sampling is reported as failed while retries continue")
+        }
+        scheduleRestart(after: delay)
     }
 
     private func scheduleRestart(after delay: TimeInterval) {
@@ -189,6 +234,13 @@ final class NettopRunner {
         guard !frameLines.isEmpty else { return }
         let frame = frameLines
         frameLines.removeAll(keepingCapacity: true)
+
+        // A delivered frame proves the process works: end the failure streak
+        // so the next restart starts again from the initial delay.
+        if consecutiveFailures > 0 {
+            Log.nettop.notice("nettop sampling recovered after \(self.consecutiveFailures, privacy: .public) failed attempts")
+            consecutiveFailures = 0
+        }
 
         let now = Date()
         let measured = lastFrameAt.map { now.timeIntervalSince($0) } ?? Double(interval)

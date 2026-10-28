@@ -17,12 +17,18 @@ struct TrafficCounters: Equatable {
 enum NettopSamplingStatus: Equatable {
     case waiting
     case active
+    /// Sampling stopped and a restart is in flight (transient).
     case restarting
+    /// Repeated restarts have failed; retries continue at the backoff cap, so
+    /// this is a warning rather than a terminal state.
+    case failed
 }
 
 enum NettopSamplingEvent {
     case frame
     case restart
+    /// A restart failed after the consecutive-failure threshold.
+    case failure
 }
 
 func nextNettopSamplingStatus(
@@ -32,6 +38,7 @@ func nextNettopSamplingStatus(
     switch event {
     case .frame: return .active
     case .restart: return .restarting
+    case .failure: return .failed
     }
 }
 
@@ -61,6 +68,14 @@ final class TrafficSamplingDiagnostics: ObservableObject {
     func markNettopRestart() {
         update { snapshot in
             snapshot.nettopStatus = nextNettopSamplingStatus(snapshot.nettopStatus, event: .restart)
+        }
+    }
+
+    /// Reported once the runner crosses its consecutive-failure threshold; the
+    /// runner keeps retrying at the capped delay and a recovered frame clears it.
+    func markNettopFailure() {
+        update { snapshot in
+            snapshot.nettopStatus = nextNettopSamplingStatus(snapshot.nettopStatus, event: .failure)
         }
     }
 

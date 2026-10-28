@@ -17,8 +17,12 @@ class Network {
         r.onFrame = { [weak self] lines, seconds in
             self?.handleFrame(lines, interval: seconds)
         }
-        r.onRestart = {
-            SharedStore.trafficSamplingDiagnostics.markNettopRestart()
+        r.onRestart = { consecutiveFailures in
+            if consecutiveFailures >= nettopRestartFailureThreshold {
+                SharedStore.trafficSamplingDiagnostics.markNettopFailure()
+            } else {
+                SharedStore.trafficSamplingDiagnostics.markNettopRestart()
+            }
             // Sampling may not resume (a restart can keep failing), so drop the
             // now-stale live values rather than showing the last frame's rates.
             DispatchQueue.main.async {

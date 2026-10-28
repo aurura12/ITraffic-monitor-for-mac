@@ -119,6 +119,7 @@ final class LocalizationManager: ObservableObject {
         "Waiting for nettop sample": "等待 nettop 采样",
         "nettop sampling active": "nettop 采样正常",
         "nettop sampling restarting": "nettop 采样重启中",
+        "nettop sampling failed, retrying": "nettop 采样失败，正按最长 30 秒间隔重试",
         "Skipped nettop rows": "已跳过的 nettop 行",
 
         // Network Extension / calibration status

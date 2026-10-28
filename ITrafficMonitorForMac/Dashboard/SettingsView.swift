@@ -104,7 +104,7 @@ struct SettingsView: View {
 
             Section(i18n.text("Sampling diagnostics")) {
                 Text(samplingStatusText)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(sampling.snapshot.nettopStatus == .failed ? .orange : .secondary)
                 if let last = sampling.snapshot.lastNettopSampleAt {
                     Text(i18n.text("Last nettop sample") + ": " + last.formatted(date: .omitted, time: .standard))
                         .font(.caption)
@@ -160,6 +160,7 @@ struct SettingsView: View {
         case .waiting: return i18n.text("Waiting for nettop sample")
         case .active: return i18n.text("nettop sampling active")
         case .restarting: return i18n.text("nettop sampling restarting")
+        case .failed: return i18n.text("nettop sampling failed, retrying")
         }
     }
 
