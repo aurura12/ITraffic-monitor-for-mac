@@ -58,7 +58,6 @@
 ### 测试
 
 - 用例数 129 → 79（删除了归属 / 身份 / NetworkFilter 用例）。
-- 新增 GitHub Actions CI：`xcodegen` 漂移检查（提交的 .xcodeproj 必须与 project.yml 一致）+ `update_test.sh` + 全量测试。
 - `TrafficRollupTests` 重写为纯总量 + 迁移测试（折叠并删表置 2、逐 bucket 幂等、新库无 legacy 表、已 v2 重开为 no-op、总量查询透明）。
 
 ## 当前限制
