@@ -138,6 +138,36 @@ final class TrafficBarHoverTests: XCTestCase {
         )
     }
 
+    func testMenuBarPopoverHeightRoundsUpAndKeepsAFloor() {
+        // A not-yet-laid-out hosting view reports zero; a zero-height popover
+        // would be invisible and unreachable.
+        XCTAssertEqual(menuBarPopoverHeight(fittingHeight: 0), MenuBarPopoverLayout.minimumHeight)
+        XCTAssertEqual(menuBarPopoverHeight(fittingHeight: 210.2), 211)
+        XCTAssertEqual(menuBarPopoverHeight(fittingHeight: 320), 320)
+        XCTAssertEqual(MenuBarPopoverLayout.width, 320)
+    }
+
+    func testMenuBarPopoverResizesToContentWhenShown() {
+        let controller = MenuBarController()
+        guard let popover = Mirror(reflecting: controller).children
+            .first(where: { $0.label == "popover" })?.value as? NSPopover,
+            let view = popover.contentViewController?.view else {
+            XCTFail("MenuBarController should install a popover with content")
+            return
+        }
+
+        // Stand in for the stale frame left by a language switch.
+        popover.contentSize = NSSize(width: MenuBarPopoverLayout.width, height: 100)
+        controller.popoverWillShow(Notification(name: NSPopover.willShowNotification, object: popover))
+
+        XCTAssertEqual(
+            popover.contentSize.height,
+            menuBarPopoverHeight(fittingHeight: view.fittingSize.height),
+            accuracy: 0.1
+        )
+        XCTAssertGreaterThan(popover.contentSize.height, 100)
+    }
+
     func testMenuBarPopoverUsesTransientBehaviorAndHasAnAutoDismissFallback() {
         let controller = MenuBarController()
         let popover = Mirror(reflecting: controller).children

@@ -38,6 +38,21 @@ enum MenuBarPopoverConfiguration {
     static let autoDismissInterval: TimeInterval = 5
 }
 
+enum MenuBarPopoverLayout {
+    static let width: CGFloat = 320
+    /// Floor for the measured content height. The hosting view reports a zero
+    /// fitting size before its first layout, and a zero-height popover is
+    /// invisible with no way to open it again.
+    static let minimumHeight: CGFloat = 160
+}
+
+/// Height for the popover's fixed width: the content's fitting height, rounded
+/// up, and never below the floor. Exposed at file scope so the sizing rule is
+/// testable without a window.
+func menuBarPopoverHeight(fittingHeight: CGFloat) -> CGFloat {
+    max(MenuBarPopoverLayout.minimumHeight, ceil(fittingHeight))
+}
+
 /// What the menu-bar status item renders. Persisted in UserDefaults and
 /// switched from Settings; MenuBarController re-applies it on change.
 enum MenuBarDisplayMode: String, CaseIterable {
@@ -432,9 +447,22 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         // the header when the popover is shown again after another window was
         // opened.
         popover.contentSize = NSSize(
-            width: 320,
-            height: ceil(contentViewController.view.fittingSize.height)
+            width: MenuBarPopoverLayout.width,
+            height: menuBarPopoverHeight(fittingHeight: contentViewController.view.fittingSize.height)
         )
+    }
+
+    /// Re-measure before every show. The content height depends on the active
+    /// language and on the paused marker, so a size captured at launch clips the
+    /// buttons after a language switch. Measuring at show time is also what
+    /// keeps the hosting view from staying bottom-aligned in a stale frame.
+    private func resizePopoverToFitContent() {
+        guard let contentViewController = popover.contentViewController else { return }
+        let height = menuBarPopoverHeight(
+            fittingHeight: contentViewController.view.fittingSize.height
+        )
+        guard popover.contentSize.height != height else { return }
+        popover.contentSize = NSSize(width: MenuBarPopoverLayout.width, height: height)
     }
 
     private func schedulePopoverAutoDismiss() {
@@ -479,6 +507,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     }
 
     func popoverWillShow(_ notification: Notification) {
+        resizePopoverToFitContent()
         refreshTodayUsage()
         scheduleTodayUsageRefresh()
     }
