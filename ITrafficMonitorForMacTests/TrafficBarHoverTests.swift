@@ -928,4 +928,31 @@ final class TrafficBarHoverTests: XCTestCase {
         }
         wait(for: [expectation], timeout: 2)
     }
+
+    // MARK: - Export formatting
+
+    /// CSV is a machine-readable format: the timestamp column must not follow
+    /// the user's calendar (a Buddhist/Japanese system calendar would change
+    /// the year), so the formatter is pinned to POSIX/Gregorian.
+    func testExportTimestampFormatterIsLocaleIndependent() {
+        let formatter = exportTimestampFormatter()
+        XCTAssertEqual(formatter.locale.identifier, "en_US_POSIX")
+        XCTAssertEqual(formatter.calendar.identifier, .gregorian)
+        XCTAssertEqual(formatter.timeZone, .current)
+    }
+
+    func testCSVExportWritesHeaderAndFixedTimestamp() {
+        let period = Date(timeIntervalSince1970: 1_700_000_000)
+        let data = ExportView.totalCSVData(rows: [
+            ExportTrafficRow(period: period, inBytes: 300, outBytes: 100)
+        ])
+        let lines = String(decoding: data, as: UTF8.self)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+
+        XCTAssertEqual(lines.first, "period,in_bytes,out_bytes,total_bytes")
+        XCTAssertEqual(
+            lines.dropFirst().first,
+            "\(exportTimestampFormatter().string(from: period)),300,100,400"
+        )
+    }
 }

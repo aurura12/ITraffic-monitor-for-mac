@@ -12,6 +12,18 @@ enum ExportFormat: String, CaseIterable {
     case json = "JSON"
 }
 
+/// Formatter for the CSV `period` column. A machine-readable export must not
+/// inherit the user's calendar — a Buddhist or Japanese system calendar would
+/// rewrite the year — so pin POSIX/Gregorian while keeping local time.
+func exportTimestampFormatter() -> DateFormatter {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.timeZone = .current
+    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    return formatter
+}
+
 enum ExportRange: Int, CaseIterable {
     case oneDay = 1
     case week = 7
@@ -156,10 +168,9 @@ struct ExportView: View {
         .sorted { $0.period < $1.period }
     }
 
-    private static func totalCSVData(rows: [ExportTrafficRow]) -> Data {
+    static func totalCSVData(rows: [ExportTrafficRow]) -> Data {
         var csv = "period,in_bytes,out_bytes,total_bytes\n"
-        let fmt = DateFormatter()
-        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let fmt = exportTimestampFormatter()
         for row in totalRows(from: rows) {
             csv += "\(csvField(fmt.string(from: row.period))),\(row.inBytes),\(row.outBytes),\(row.totalBytes)\n"
         }
