@@ -7,6 +7,24 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 
+enum SettingsWindowLayout {
+    /// Width of the settings form itself.
+    static let formWidth: CGFloat = 380
+    /// Padding around the form.
+    static let contentPadding: CGFloat = 16
+    /// Content width the window must provide. `.padding` is applied outside the
+    /// fixed form width, so a window sized to `formWidth` clips the padding.
+    static var windowWidth: CGFloat {
+        settingsWindowWidth(formWidth: formWidth, padding: contentPadding)
+    }
+}
+
+/// Width needed by a form of `formWidth` with `padding` on both sides. Exposed
+/// at file scope so the sizing rule is testable without a window.
+func settingsWindowWidth(formWidth: CGFloat, padding: CGFloat) -> CGFloat {
+    formWidth + padding * 2
+}
+
 final class LaunchAtLoginManager: ObservableObject {
     @Published private(set) var isEnabled: Bool
     @Published var errorMessage: String?
@@ -137,8 +155,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 380)
-        .padding(16)
+        .frame(width: SettingsWindowLayout.formWidth)
+        .padding(SettingsWindowLayout.contentPadding)
         .background(Theme.windowBackground)
         .onChange(of: languageRaw) { _, raw in
             i18n.setLanguage(AppLanguage(rawValue: raw) ?? .system)

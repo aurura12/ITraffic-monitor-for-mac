@@ -929,6 +929,19 @@ final class TrafficBarHoverTests: XCTestCase {
         wait(for: [expectation], timeout: 2)
     }
 
+    // MARK: - Settings window sizing
+
+    /// The settings form is a fixed width with padding applied outside it, so
+    /// the window must be as wide as both or the outer padding is clipped.
+    func testSettingsWindowIsWideEnoughForThePaddedForm() {
+        XCTAssertEqual(settingsWindowWidth(formWidth: 380, padding: 16), 412)
+        XCTAssertEqual(
+            SettingsWindowLayout.windowWidth,
+            SettingsWindowLayout.formWidth + SettingsWindowLayout.contentPadding * 2
+        )
+        XCTAssertGreaterThan(SettingsWindowLayout.windowWidth, SettingsWindowLayout.formWidth)
+    }
+
     // MARK: - Export formatting
 
     /// CSV is a machine-readable format: the timestamp column must not follow
